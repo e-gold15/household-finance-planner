@@ -12,13 +12,20 @@ const localStorageMock = {
 }
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock })
 
-// Mock crypto.subtle for password hashing
+// Mock crypto — covers password hashing (subtle.digest) + token generation (getRandomValues)
+let _uuidCounter = 0
 Object.defineProperty(globalThis, 'crypto', {
   value: {
-    randomUUID: () => Math.random().toString(36).slice(2),
+    randomUUID: () => `test-uuid-${++_uuidCounter}`,
+    /** Deterministic fill: arr[i] = (i * 7 + 13) % 256 — always different from Math.random() */
+    getRandomValues: <T extends ArrayBufferView>(arr: T): T => {
+      const u8 = new Uint8Array((arr as unknown as { buffer: ArrayBuffer }).buffer)
+      for (let i = 0; i < u8.length; i++) u8[i] = (i * 7 + 13) % 256
+      return arr
+    },
     subtle: {
       digest: async (_algo: string, data: BufferSource) => {
-        // Deterministic fake hash: just returns a fixed ArrayBuffer derived from input length
+        // Deterministic fake hash: XOR each byte with its index — not crypto-secure, fine for tests
         const arr = new Uint8Array(32)
         const bytes = new Uint8Array(data as ArrayBuffer)
         for (let i = 0; i < 32; i++) arr[i] = (bytes[i % bytes.length] ?? 0) ^ i

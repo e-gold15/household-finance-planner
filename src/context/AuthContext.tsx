@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import type { LocalUser, Household, Invitation } from '@/types'
+import type { LocalUser, Household, Invitation, InviteMethod, HouseholdInvite, CreatedHouseholdInvite } from '@/types'
 import {
   getSession, persistSession, clearSession,
   signUpEmail as localSignUpEmail,
@@ -11,6 +11,7 @@ import {
   upsertUserPublic,
   upsertHouseholdPublic,
   PENDING_INVITE_KEY,
+  PENDING_INV_TOKEN_KEY,
 } from '@/lib/localAuth'
 import { initGoogleAuth, promptGoogleSignIn } from '@/lib/googleAuth'
 import type { GoogleProfile } from '@/lib/googleAuth'
@@ -23,14 +24,20 @@ import {
   acceptCloudInvitation,
   renameCloudHousehold,
   removeCloudMembership,
+  createHouseholdInvite,
+  getHouseholdInvites,
+  revokeHouseholdInvite,
+  acceptHouseholdInvite,
 } from '@/lib/cloudInvites'
 import type { CloudInvitation } from '@/lib/cloudInvites'
 
 interface AuthContextType {
   user: LocalUser | null
   household: Household | null
-  /** Pending invitations loaded from the cloud */
+  /** @deprecated Use householdInvites instead. Kept for backward compat. */
   pendingInvites: CloudInvitation[]
+  /** v2.1 — token-based invites from household_invites table */
+  householdInvites: HouseholdInvite[]
   /** Sign up with email + password. Returns error string or null on success. */
   signUpEmail: (email: string, password: string, name: string) => Promise<string | null>
   /** Sign in with email + password. Returns error string or null on success. */
@@ -38,12 +45,20 @@ interface AuthContextType {
   /** Trigger Google One-Tap / popup. */
   signInWithGoogle: () => void
   signOut: () => void
-  /** Invite a member by email (owner only). Returns error string or null. */
+  /** @deprecated Use createInvite('email', email) instead. */
   inviteMember: (email: string) => Promise<string | null>
-  /** Cancel a pending invite by its ID. */
+  /** Cancel a pending invite by its ID (legacy invitations table). */
   cancelInvite: (inviteId: string) => Promise<void>
-  /** Refresh pending invites from the cloud. */
+  /** Refresh pending invites from the cloud (both tables). */
   refreshInvites: () => Promise<void>
+  /**
+   * v2.1 — Create a token-based invite.
+   * Returns CreatedHouseholdInvite (contains raw token) on success,
+   * or an error string on failure.
+   */
+  createInvite: (method: InviteMethod, email?: string) => Promise<CreatedHouseholdInvite | string>
+  /** v2.1 — Revoke a household_invites row by its ID. */
+  revokeInvite: (inviteId: string) => Promise<void>
   /** Rename the current household. */
   renameHousehold: (name: string) => Promise<void>
   /** Remove a member (owner only). Returns error string or null. */
@@ -57,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]                         = useState<LocalUser | null>(null)
   const [household, setHousehold]               = useState<Household | null>(null)
   const [pendingInvites, setPendingInvites]      = useState<CloudInvitation[]>([])
+  const [householdInvites, setHouseholdInvites] = useState<HouseholdInvite[]>([])
 
   // ── Boot: migrate + restore session ──────────────────────────────────────
   useEffect(() => {
@@ -76,13 +92,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Load pending invites when household changes ───────────────────────────
   useEffect(() => {
-    if (household) loadPendingInvites(household.id)
-    else setPendingInvites([])
+    if (household) {
+      loadPendingInvites(household.id)
+      loadHouseholdInvites(household.id)
+    } else {
+      setPendingInvites([])
+      setHouseholdInvites([])
+    }
   }, [household?.id])
 
   const loadPendingInvites = async (householdId: string) => {
     const invites = await getCloudPendingInvites(householdId)
     setPendingInvites(invites)
+  }
+
+  const loadHouseholdInvites = async (householdId: string) => {
+    const invites = await getHouseholdInvites(householdId)
+    setHouseholdInvites(invites)
   }
 
   // ── GIS init ──────────────────────────────────────────────────────────────
@@ -91,6 +117,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── Shared helper: move a user into a joined household ───────────────────
+  function applyHouseholdJoin(authedUser: LocalUser, householdId: string, householdName: string) {
+    const updatedUser = { ...authedUser, householdId }
+    upsertUserPublic(updatedUser)
+    const sharedHousehold: Household = {
+      id: householdId,
+      name: householdName,
+      createdBy: '',
+      memberships: [{ userId: authedUser.id, role: 'member', joinedAt: new Date().toISOString() }],
+      createdAt: new Date().toISOString(),
+    }
+    upsertHouseholdPublic(sharedHousehold)
+    persistSession({ userId: updatedUser.id, householdId })
+    setUser(updatedUser)
+    setHousehold(sharedHousehold)
+  }
+
   // ── Shared post-auth handler ──────────────────────────────────────────────
   async function afterAuth(authedUser: LocalUser, authedHousehold: Household) {
     // Sync household + membership to cloud
@@ -98,28 +141,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const role = authedHousehold.memberships.find((m) => m.userId === authedUser.id)?.role ?? 'member'
     await syncMembership(authedHousehold.id, authedUser.id, role)
 
-    // Check for a pending invite token (stored by main.tsx from ?invite= URL param)
+    // ── v2.1: Check for a pending raw token (?inv= captured by main.tsx) ───
+    const invToken = localStorage.getItem(PENDING_INV_TOKEN_KEY)
+    if (invToken) {
+      localStorage.removeItem(PENDING_INV_TOKEN_KEY)
+      const result = await acceptHouseholdInvite(invToken, authedUser.id)
+      if ('householdId' in result) {
+        return applyHouseholdJoin(authedUser, result.householdId, result.householdName)
+      }
+      // If the token is invalid, fall through and use the user's own household
+    }
+
+    // ── Legacy: Check for a pending invite ID (?invite= captured by main.tsx) ─
     const inviteId = localStorage.getItem(PENDING_INVITE_KEY)
     if (inviteId) {
       localStorage.removeItem(PENDING_INVITE_KEY)
       const result = await acceptCloudInvitation(inviteId, authedUser.id)
       if ('householdId' in result) {
-        // Update user's householdId in localStorage and rebuild household object
-        const updatedUser = { ...authedUser, householdId: result.householdId }
-        upsertUserPublic(updatedUser)
-        // Build a minimal local household record for the shared household
-        const sharedHousehold: Household = {
-          id: result.householdId,
-          name: result.householdName,
-          createdBy: '',
-          memberships: [{ userId: authedUser.id, role: 'member', joinedAt: new Date().toISOString() }],
-          createdAt: new Date().toISOString(),
-        }
-        upsertHouseholdPublic(sharedHousehold)
-        persistSession({ userId: updatedUser.id, householdId: result.householdId })
-        setUser(updatedUser)
-        setHousehold(sharedHousehold)
-        return
+        return applyHouseholdJoin(authedUser, result.householdId, result.householdName)
       }
     }
 
@@ -158,9 +197,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setHousehold(null)
     setPendingInvites([])
+    setHouseholdInvites([])
   }
 
-  // ── Invite management ─────────────────────────────────────────────────────
+  // ── Invite management (legacy) ────────────────────────────────────────────
   const handleInviteMember = async (email: string): Promise<string | null> => {
     if (!user || !household) return 'Not signed in.'
     const isOwner = household.memberships.find((m) => m.userId === user.id)?.role === 'owner'
@@ -180,8 +220,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const handleRefreshInvites = useCallback(async () => {
-    if (household) await loadPendingInvites(household.id)
+    if (household) {
+      await loadPendingInvites(household.id)
+      await loadHouseholdInvites(household.id)
+    }
   }, [household?.id])
+
+  // ── Invite management v2.1 ────────────────────────────────────────────────
+  const handleCreateInvite = async (
+    method: InviteMethod,
+    email?: string
+  ): Promise<CreatedHouseholdInvite | string> => {
+    if (!user || !household) return 'Not signed in.'
+    const isOwner = household.memberships.find((m) => m.userId === user.id)?.role === 'owner'
+    if (!isOwner) return 'Only the household owner can invite members.'
+    if (method === 'email' && !email?.trim()) return 'Email address is required.'
+    try {
+      const inv = await createHouseholdInvite(household.id, user.id, method, email)
+      // Refresh list so the new invite appears (or replaces the old link invite)
+      setHouseholdInvites((prev) => {
+        const filtered = prev.filter((i) =>
+          method === 'link' ? i.method !== 'link' : i.invited_email !== inv.invited_email
+        )
+        const { token: _t, ...rowWithoutToken } = inv
+        return [rowWithoutToken, ...filtered]
+      })
+      return inv
+    } catch (e) {
+      return e instanceof Error ? e.message : 'Failed to create invite.'
+    }
+  }
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    await revokeHouseholdInvite(inviteId)
+    setHouseholdInvites((prev) => prev.filter((i) => i.id !== inviteId))
+  }
 
   // ── Household management ──────────────────────────────────────────────────
   const handleRenameHousehold = async (name: string) => {
@@ -220,6 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       household,
       pendingInvites,
+      householdInvites,
       signUpEmail: handleSignUpEmail,
       signInEmail: handleSignInEmail,
       signInWithGoogle: handleSignInWithGoogle,
@@ -227,6 +301,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       inviteMember: handleInviteMember,
       cancelInvite: handleCancelInvite,
       refreshInvites: handleRefreshInvites,
+      createInvite: handleCreateInvite,
+      revokeInvite: handleRevokeInvite,
       renameHousehold: handleRenameHousehold,
       removeMember: handleRemoveMember,
       getMembers: handleGetMembers,

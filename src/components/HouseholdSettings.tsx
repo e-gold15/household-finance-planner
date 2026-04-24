@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { Users, UserPlus, X, Copy, Mail, Crown, User, Link, RefreshCw } from 'lucide-react'
+import {
+  Users, UserPlus, X, Copy, Mail, Crown, User,
+  Link2, RefreshCw, RotateCcw, AlertCircle, Clock,
+} from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -8,11 +11,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { useAuth } from '@/context/AuthContext'
 import { t } from '@/lib/utils'
 import { useFinance } from '@/context/FinanceContext'
-import type { LocalUser } from '@/types'
-import type { CloudInvitation } from '@/lib/cloudInvites'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import type { LocalUser, HouseholdInvite, InviteMethod } from '@/types'
+import type { CreatedHouseholdInvite } from '@/types'
 
-// ─── Sub-components ────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function buildInviteUrl(token: string): string {
+  return `${window.location.origin}${window.location.pathname}?inv=${token}`
+}
+
+function daysUntil(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now()
+  const days = Math.ceil(ms / (1000 * 60 * 60 * 24))
+  if (days <= 0) return 'Expired'
+  if (days === 1) return 'Expires tomorrow'
+  return `Expires in ${days} days`
+}
+
+// ─── Member row ─────────────────────────────────────────────────────────────
 
 function MemberRow({
   member,
@@ -20,16 +38,18 @@ function MemberRow({
   isCurrentUser,
   canRemove,
   onRemove,
+  lang,
 }: {
   member: LocalUser
   role: 'owner' | 'member'
   isCurrentUser: boolean
   canRemove: boolean
   onRemove: (id: string) => void
+  lang: 'en' | 'he'
 }) {
   const displayName = member.name || member.email
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 min-h-[44px]">
       {member.avatar
         ? <img src={member.avatar} className="h-9 w-9 rounded-full object-cover shrink-0" alt={displayName} />
         : (
@@ -41,20 +61,20 @@ function MemberRow({
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">
           {displayName}
-          {isCurrentUser && <span className="text-muted-foreground font-normal"> (you)</span>}
+          {isCurrentUser && <span className="text-muted-foreground font-normal"> ({t('you', 'את/ה', lang)})</span>}
         </p>
         <p className="text-xs text-muted-foreground truncate">{member.email}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {role === 'owner'
-          ? <Badge variant="secondary" className="gap-1 text-xs"><Crown className="h-3 w-3" />Owner</Badge>
-          : <Badge variant="outline"   className="gap-1 text-xs"><User  className="h-3 w-3" />Member</Badge>
+          ? <Badge variant="secondary" className="gap-1 text-xs"><Crown className="h-3 w-3" />{t('Owner', 'בעלים', lang)}</Badge>
+          : <Badge variant="outline"   className="gap-1 text-xs"><User  className="h-3 w-3" />{t('Member', 'חבר', lang)}</Badge>
         }
         {canRemove && (
           <Button
-            variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
             onClick={() => onRemove(member.id)}
-            title="Remove member"
+            title={t('Remove member', 'הסר חבר', lang)}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -64,52 +84,38 @@ function MemberRow({
   )
 }
 
-function InviteRow({
+// ─── Email invite row ────────────────────────────────────────────────────────
+
+function EmailInviteRow({
   invite,
-  onCancel,
+  onRevoke,
+  lang,
 }: {
-  invite: CloudInvitation
-  onCancel: (id: string) => void
+  invite: HouseholdInvite
+  onRevoke: (id: string) => void
+  lang: 'en' | 'he'
 }) {
-  const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${invite.id}`
-
-  const copyLink = () => {
-    navigator.clipboard.writeText(inviteLink)
-    toast.success('Invite link copied to clipboard')
-  }
-
-  const openMailto = () => {
-    const subject = encodeURIComponent('Join my Household Finance Planner')
-    const body = encodeURIComponent(
-      `Hi!\n\nI'd like you to join my household on Household Finance Planner.\n\nClick the link to accept:\n${inviteLink}\n\nThe link expires in 7 days.`
-    )
-    window.open(`mailto:${invite.email}?subject=${subject}&body=${body}`)
-  }
-
+  const email = invite.invited_email ?? '—'
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-3 min-h-[44px]">
       <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
         <span className="text-sm font-bold text-muted-foreground">
-          {invite.email.slice(0, 1).toUpperCase()}
+          {email.slice(0, 1).toUpperCase()}
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{invite.email}</p>
-        <p className="text-xs text-muted-foreground">
-          Expires {new Date(invite.expires_at).toLocaleDateString()}
+        <p className="text-sm font-medium truncate">{email}</p>
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          {daysUntil(invite.expires_at)}
         </p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <Badge variant="warning" className="text-xs">Pending</Badge>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyLink} title="Copy invite link">
-          <Copy className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={openMailto} title="Send via email app">
-          <Mail className="h-3.5 w-3.5" />
-        </Button>
+        <Badge variant="warning" className="text-xs">{t('Pending', 'ממתין', lang)}</Badge>
         <Button
-          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-          onClick={() => onCancel(invite.id)} title="Cancel invite"
+          variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          onClick={() => onRevoke(invite.id)}
+          title={t('Revoke invite', 'בטל הזמנה', lang)}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -118,101 +124,416 @@ function InviteRow({
   )
 }
 
+// ─── Email tab ───────────────────────────────────────────────────────────────
+
+function EmailTab({
+  invites,
+  onRevoke,
+  lang,
+}: {
+  invites: HouseholdInvite[]
+  onRevoke: (id: string) => void
+  lang: 'en' | 'he'
+}) {
+  const { createInvite } = useAuth()
+  const [email, setEmail]     = useState('')
+  const [error, setError]     = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSend = async () => {
+    setError('')
+    if (!email.trim()) { setError(t('Enter an email address.', 'הכנס כתובת אימייל.', lang)); return }
+    setLoading(true)
+    const result = await createInvite('email', email.trim())
+    setLoading(false)
+    if (typeof result === 'string') { setError(result); return }
+    toast.success(t(`Invite sent to ${email.trim()}`, `הזמנה נשלחה ל-${email.trim()}`, lang))
+    setEmail('')
+  }
+
+  const emailInvites = invites.filter((i) => i.method === 'email')
+
+  return (
+    <div className="space-y-4">
+      {/* Input row */}
+      <div className="space-y-1.5">
+        <Label htmlFor="invite-email">{t('Email address', 'כתובת אימייל', lang)}</Label>
+        <div className="flex gap-2">
+          <Input
+            id="invite-email"
+            type="email"
+            placeholder="partner@example.com"
+            value={email}
+            onChange={(e) => { setEmail(e.target.value); setError('') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }}
+            className="flex-1"
+            autoFocus
+          />
+          <Button onClick={handleSend} disabled={loading} className="shrink-0 gap-1.5 min-h-[44px]">
+            <Mail className="h-4 w-4" />
+            {loading ? t('Sending…', 'שולח…', lang) : t('Send', 'שלח', lang)}
+          </Button>
+        </div>
+        {error && (
+          <p className="flex items-center gap-1.5 text-xs text-destructive">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {error}
+          </p>
+        )}
+      </div>
+
+      {/* Pending email invites */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {t('Pending', 'ממתינות', lang)}
+          {emailInvites.length > 0 && <span className="ms-1.5 text-foreground">{emailInvites.length}</span>}
+        </p>
+        {emailInvites.length === 0
+          ? (
+            <div className="rounded-lg border border-dashed p-4 text-center">
+              <Mail className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">
+                {t('No pending email invitations.', 'אין הזמנות אימייל ממתינות.', lang)}
+              </p>
+            </div>
+          )
+          : (
+            <div className="rounded-lg border divide-y">
+              {emailInvites.map((inv) => (
+                <div key={inv.id} className="px-3 py-1">
+                  <EmailInviteRow invite={inv} onRevoke={onRevoke} lang={lang} />
+                </div>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    </div>
+  )
+}
+
+// ─── Link tab ────────────────────────────────────────────────────────────────
+
+function LinkTab({
+  invites,
+  onRevoke,
+  lang,
+}: {
+  invites: HouseholdInvite[]
+  onRevoke: (id: string) => void
+  lang: 'en' | 'he'
+}) {
+  const { createInvite } = useAuth()
+  const [loading, setLoading]   = useState(false)
+  const [copied, setCopied]     = useState(false)
+  // raw token returned by createInvite — used for the current session only
+  const [liveToken, setLiveToken] = useState<string | null>(null)
+
+  const linkInvite = invites.find((i) => i.method === 'link')
+
+  const handleGenerate = async () => {
+    setLoading(true)
+    const result = await createInvite('link')
+    setLoading(false)
+    if (typeof result === 'string') { toast.error(result); return }
+    setLiveToken((result as CreatedHouseholdInvite).token)
+    toast.success(t('Shareable link generated.', 'קישור שיתוף נוצר.', lang))
+  }
+
+  const handleCopy = async () => {
+    if (!liveToken) return
+    await navigator.clipboard.writeText(buildInviteUrl(liveToken))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+    toast.success(t('Link copied!', 'הקישור הועתק!', lang))
+  }
+
+  const handleRevoke = async (id: string) => {
+    onRevoke(id)
+    setLiveToken(null)
+    toast.success(t('Invite link revoked.', 'קישור ההזמנה בוטל.', lang))
+  }
+
+  const handleRegenerate = async () => {
+    // Revoking the old one is handled server-side inside createHouseholdInvite (method='link')
+    await handleGenerate()
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {t(
+          'Anyone with this link can join your household. The link stays active until you revoke it.',
+          'כל מי שיש לו את הקישור יכול להצטרף. הקישור תקף עד שתבטל אותו.',
+          lang
+        )}
+      </p>
+
+      {!linkInvite
+        ? (
+          /* No active link — show empty state + generate button */
+          <div className="rounded-lg border border-dashed p-6 text-center space-y-3">
+            <Link2 className="h-10 w-10 text-muted-foreground/40 mx-auto" />
+            <div>
+              <p className="text-sm font-medium">{t('No shareable link yet', 'אין קישור עדיין', lang)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t('Generate a link to share with anyone.', 'צור קישור לשיתוף.', lang)}
+              </p>
+            </div>
+            <Button onClick={handleGenerate} disabled={loading} className="gap-2 min-h-[44px]">
+              <Link2 className="h-4 w-4" />
+              {loading ? t('Generating…', 'יוצר…', lang) : t('Generate Link', 'צור קישור', lang)}
+            </Button>
+          </div>
+        )
+        : liveToken
+          ? (
+            /* Link created this session — show URL + actions */
+            <div className="space-y-3">
+              <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">{t('Shareable link', 'קישור שיתוף', lang)}</p>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={buildInviteUrl(liveToken)}
+                    className="flex-1 text-xs font-mono bg-background"
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <Button
+                    variant={copied ? 'default' : 'outline'}
+                    size="icon"
+                    className="shrink-0 h-10 w-10 min-h-[44px] min-w-[44px]"
+                    onClick={handleCopy}
+                    title={t('Copy link', 'העתק קישור', lang)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {daysUntil(linkInvite.expires_at)}
+                  {' · '}
+                  {t('Multi-use — anyone with the link can join', 'רב-שימושי — כל בעל הקישור יכול להצטרף', lang)}
+                </p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline" size="sm" className="gap-1.5 min-h-[44px]"
+                  onClick={handleRegenerate} disabled={loading}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t('Regenerate', 'צור מחדש', lang)}
+                </Button>
+                <Button
+                  variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive min-h-[44px]"
+                  onClick={() => handleRevoke(linkInvite.id)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  {t('Revoke', 'בטל', lang)}
+                </Button>
+              </div>
+            </div>
+          )
+          : (
+            /* Link exists but token not in memory (page reload) — can regenerate or revoke */
+            <div className="rounded-lg border bg-muted/40 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{t('Active link', 'קישור פעיל', lang)}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {daysUntil(linkInvite.expires_at)}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {t('Active', 'פעיל', lang)}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'The link was created in a previous session. Regenerate to get a new copyable URL.',
+                  'הקישור נוצר בסשן קודם. צור מחדש כדי לקבל כתובת להעתקה.',
+                  lang
+                )}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline" size="sm" className="gap-1.5 min-h-[44px]"
+                  onClick={handleRegenerate} disabled={loading}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {loading ? t('Generating…', 'יוצר…', lang) : t('Regenerate', 'צור מחדש', lang)}
+                </Button>
+                <Button
+                  variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive min-h-[44px]"
+                  onClick={() => handleRevoke(linkInvite.id)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  {t('Revoke', 'בטל', lang)}
+                </Button>
+              </div>
+            </div>
+          )
+      }
+    </div>
+  )
+}
+
+// ─── Invite modal ─────────────────────────────────────────────────────────────
+
+type InviteTab = 'email' | 'link'
+
+function InviteModal({
+  open,
+  onOpenChange,
+  invites,
+  onRevoke,
+  lang,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  invites: HouseholdInvite[]
+  onRevoke: (id: string) => void
+  lang: 'en' | 'he'
+}) {
+  const [tab, setTab] = useState<InviteTab>('email')
+
+  const tabs: { id: InviteTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'email', label: t('By Email', 'לפי אימייל', lang), icon: <Mail className="h-4 w-4" /> },
+    { id: 'link',  label: t('Shareable Link', 'קישור שיתוף', lang), icon: <Link2 className="h-4 w-4" /> },
+  ]
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            {t('Invite a Member', 'הזמן חבר', lang)}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Tab bar */}
+        <div className="grid grid-cols-2 border rounded-lg overflow-hidden -mx-0.5">
+          {tabs.map(({ id, label, icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                'flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors min-h-[44px]',
+                tab === id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              )}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="mt-2">
+          {tab === 'email'
+            ? <EmailTab invites={invites} onRevoke={onRevoke} lang={lang} />
+            : <LinkTab  invites={invites} onRevoke={onRevoke} lang={lang} />
+          }
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Main component ────────────────────────────────────────────────────────
 
 export function HouseholdSettings() {
   const {
-    user, household, pendingInvites,
-    inviteMember, cancelInvite, refreshInvites,
+    user, household, householdInvites,
+    revokeInvite, refreshInvites,
     renameHousehold, removeMember, getMembers,
   } = useAuth()
   const { data } = useFinance()
   const lang = data.language
 
-  const [inviteEmail, setInviteEmail]         = useState('')
-  const [inviteError, setInviteError]         = useState('')
-  const [inviteLoading, setInviteLoading]     = useState(false)
-  const [inviteOpen, setInviteOpen]           = useState(false)
-  const [householdName, setHouseholdName]     = useState(household?.name ?? '')
-  const [editingName, setEditingName]         = useState(false)
-  const [refreshing, setRefreshing]           = useState(false)
+  const [inviteOpen, setInviteOpen]       = useState(false)
+  const [householdName, setHouseholdName] = useState(household?.name ?? '')
+  const [editingName, setEditingName]     = useState(false)
+  const [refreshing, setRefreshing]       = useState(false)
 
   if (!user || !household) return null
 
   const members       = getMembers()
-  const membershipMap = Object.fromEntries(household.memberships.map((m) => [m.userId, m.role as 'owner' | 'member']))
-  const isOwner       = membershipMap[user.id] === 'owner'
+  const membershipMap = Object.fromEntries(
+    household.memberships.map((m) => [m.userId, m.role as 'owner' | 'member'])
+  )
+  const isOwner = membershipMap[user.id] === 'owner'
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim()) { setInviteError('Please enter an email address.'); return }
-    setInviteLoading(true)
-    const err = await inviteMember(inviteEmail.trim())
-    setInviteLoading(false)
-    if (err) { setInviteError(err); return }
-    toast.success(`Invitation created for ${inviteEmail.trim()}`)
-    setInviteEmail('')
-    setInviteError('')
-    setInviteOpen(false)
-  }
-
-  const handleCancelInvite = async (id: string) => {
-    await cancelInvite(id)
-    toast.success('Invitation cancelled')
+  const handleRevoke = async (id: string) => {
+    await revokeInvite(id)
+    toast.success(t('Invite revoked.', 'הזמנה בוטלה.', lang))
   }
 
   const handleRefresh = async () => {
     setRefreshing(true)
     await refreshInvites()
     setRefreshing(false)
-    toast.success('Invitations refreshed')
+    toast.success(t('Invitations refreshed.', 'הזמנות רועננו.', lang))
   }
 
   const handleRename = async () => {
     if (!householdName.trim()) return
     await renameHousehold(householdName.trim())
     setEditingName(false)
-    toast.success('Household renamed')
+    toast.success(t('Household renamed.', 'שם משק הבית שונה.', lang))
   }
 
   const handleRemoveMember = async (targetId: string) => {
     const err = await removeMember(targetId)
     if (err) toast.error(err)
-    else toast.success('Member removed')
+    else toast.success(t('Member removed.', 'חבר הוסר.', lang))
   }
+
+  const pendingCount = householdInvites.length
 
   return (
     <div className="space-y-6">
+
       {/* Household name */}
       <div className="space-y-2">
         <Label>{t('Household Name', 'שם משק הבית', lang)}</Label>
-        {editingName ? (
-          <div className="flex gap-2">
-            <Input
-              value={householdName}
-              onChange={(e) => setHouseholdName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleRename() }}
-              className="flex-1"
-              autoFocus
-            />
-            <Button size="sm" onClick={handleRename}>{t('Save', 'שמור', lang)}</Button>
-            <Button size="sm" variant="ghost" onClick={() => { setEditingName(false); setHouseholdName(household.name) }}>
-              {t('Cancel', 'ביטול', lang)}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{household.name}</span>
-            {isOwner && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground"
-                onClick={() => { setHouseholdName(household.name); setEditingName(true) }}>
-                {t('Rename', 'שנה שם', lang)}
+        {editingName
+          ? (
+            <div className="flex gap-2">
+              <Input
+                value={householdName}
+                onChange={(e) => setHouseholdName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleRename() }}
+                className="flex-1"
+                autoFocus
+              />
+              <Button size="sm" onClick={handleRename} className="min-h-[44px]">{t('Save', 'שמור', lang)}</Button>
+              <Button size="sm" variant="ghost" className="min-h-[44px]"
+                onClick={() => { setEditingName(false); setHouseholdName(household.name) }}>
+                {t('Cancel', 'ביטול', lang)}
               </Button>
-            )}
-          </div>
-        )}
+            </div>
+          )
+          : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{household.name}</span>
+              {isOwner && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground"
+                  onClick={() => { setHouseholdName(household.name); setEditingName(true) }}>
+                  {t('Rename', 'שנה שם', lang)}
+                </Button>
+              )}
+            </div>
+          )
+        }
       </div>
 
-      {/* Members */}
+      {/* Members list */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -221,101 +542,58 @@ export function HouseholdSettings() {
             <Badge variant="secondary">{members.length}</Badge>
           </div>
           {isOwner && (
-            <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs"
-              onClick={() => setInviteOpen(true)}>
-              <UserPlus className="h-3.5 w-3.5" />
-              {t('Invite', 'הזמן', lang)}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh}
+                title={t('Refresh', 'רענן', lang)} disabled={refreshing}>
+                <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs min-h-[44px]"
+                onClick={() => setInviteOpen(true)}>
+                <UserPlus className="h-3.5 w-3.5" />
+                {t('Invite', 'הזמן', lang)}
+                {pendingCount > 0 && (
+                  <Badge variant="warning" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                    {pendingCount}
+                  </Badge>
+                )}
+              </Button>
+            </div>
           )}
         </div>
 
-        <div className="space-y-3 rounded-lg border p-3">
+        <div className="rounded-lg border divide-y">
           {members.length === 0
-            ? <p className="text-sm text-muted-foreground text-center py-2">No members yet</p>
+            ? (
+              <div className="p-4 text-center">
+                <p className="text-sm text-muted-foreground">{t('No members yet.', 'אין חברים עדיין.', lang)}</p>
+              </div>
+            )
             : members.map((m) => (
-              <MemberRow
-                key={m.id}
-                member={m}
-                role={membershipMap[m.id] ?? 'member'}
-                isCurrentUser={m.id === user.id}
-                canRemove={isOwner && m.id !== user.id && membershipMap[m.id] !== 'owner'}
-                onRemove={handleRemoveMember}
-              />
+              <div key={m.id} className="px-3 py-1">
+                <MemberRow
+                  member={m}
+                  role={membershipMap[m.id] ?? 'member'}
+                  isCurrentUser={m.id === user.id}
+                  canRemove={isOwner && m.id !== user.id && membershipMap[m.id] !== 'owner'}
+                  onRemove={handleRemoveMember}
+                  lang={lang}
+                />
+              </div>
             ))
           }
         </div>
       </div>
 
-      {/* Pending invitations */}
+      {/* Invite modal (two-tab) */}
       {isOwner && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Link className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{t('Pending Invitations', 'הזמנות ממתינות', lang)}</span>
-              {pendingInvites.length > 0 && <Badge variant="warning">{pendingInvites.length}</Badge>}
-            </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefresh}
-              title="Refresh" disabled={refreshing}>
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
-
-          {pendingInvites.length === 0
-            ? <p className="text-xs text-muted-foreground">{t('No pending invitations.', 'אין הזמנות ממתינות.', lang)}</p>
-            : (
-              <div className="space-y-3 rounded-lg border p-3">
-                {pendingInvites.map((inv) => (
-                  <InviteRow key={inv.id} invite={inv} onCancel={handleCancelInvite} />
-                ))}
-              </div>
-            )
-          }
-        </div>
+        <InviteModal
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          invites={householdInvites}
+          onRevoke={handleRevoke}
+          lang={lang}
+        />
       )}
-
-      {/* Invite dialog */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              {t('Invite a Member', 'הזמן חבר', lang)}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <p className="text-sm text-muted-foreground">
-              {t(
-                'Enter their email. You\'ll get a link to share — valid for 7 days.',
-                'הכנס את האימייל. תקבל קישור לשיתוף — בתוקף ל-7 ימים.',
-                lang
-              )}
-            </p>
-            <div className="space-y-1.5">
-              <Label htmlFor="invite-email">{t('Email address', 'כתובת אימייל', lang)}</Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="partner@example.com"
-                value={inviteEmail}
-                onChange={(e) => { setInviteEmail(e.target.value); setInviteError('') }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleInvite() }}
-                autoFocus
-              />
-              {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => { setInviteOpen(false); setInviteEmail(''); setInviteError('') }}>
-                {t('Cancel', 'ביטול', lang)}
-              </Button>
-              <Button onClick={handleInvite} disabled={inviteLoading} className="gap-1.5">
-                <Mail className="h-4 w-4" />
-                {inviteLoading ? t('Sending…', 'שולח…', lang) : t('Send Invitation', 'שלח הזמנה', lang)}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

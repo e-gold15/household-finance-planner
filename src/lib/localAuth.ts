@@ -22,8 +22,10 @@ const INVITATIONS_KEY = 'hf-invitations'
 const SESSION_KEY     = 'hf-session'
 /** Legacy key from the old single-user auth system */
 const LEGACY_ACCOUNTS_KEY = 'hf-accounts'
-/** Key used to store a pending invite token before the user is signed in */
+/** Legacy key — stores a pending invite ID (old invitations table) before auth */
 export const PENDING_INVITE_KEY = 'hf-pending-invite'
+/** v2.1 key — stores a pending raw invite token (household_invites table) before auth */
+export const PENDING_INV_TOKEN_KEY = 'hf-pending-inv-token'
 
 // ─── Generic localStorage helpers ─────────────────────────────────────────
 function load<T>(key: string): T[] {

@@ -163,3 +163,37 @@ export interface AppSession {
   userId: string
   householdId: string
 }
+
+// ─── Invite v2 types ────────────────────────────────────────────────────────
+
+/** How the invite was created: targeted email or a reusable shareable link. */
+export type InviteMethod = 'email' | 'link'
+
+/** Lifecycle state of a household invite. */
+export type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked'
+
+/**
+ * A row in `household_invites`.
+ * The raw token is NEVER stored or returned after creation.
+ * Only token_hash is persisted in the DB.
+ */
+export interface HouseholdInvite {
+  id: string
+  household_id: string
+  /** Populated for 'email' invites; null for 'link' invites. */
+  invited_email: string | null
+  method: InviteMethod
+  status: InviteStatus
+  expires_at: string
+  created_by: string
+  created_at: string
+}
+
+/**
+ * Returned only by `createHouseholdInvite()`.
+ * Contains the raw token to embed in the URL — it is NOT stored.
+ * Callers must treat it as a secret and not log it.
+ */
+export interface CreatedHouseholdInvite extends HouseholdInvite {
+  token: string
+}

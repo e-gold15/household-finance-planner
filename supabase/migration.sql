@@ -47,3 +47,32 @@ drop policy if exists "allow_all" on public.invitations;
 create policy "allow_all" on public.households            for all using (true) with check (true);
 create policy "allow_all" on public.household_memberships for all using (true) with check (true);
 create policy "allow_all" on public.invitations           for all using (true) with check (true);
+
+-- ── v2.1 — Household Invites (token-based, method-aware) ─────────────────────
+-- Replaces the simple `invitations` table with a more robust schema:
+--   • Raw token NEVER stored — only its SHA-256 hash (token_hash).
+--   • method: 'email' (targeted, one-time) | 'link' (reusable until revoked).
+--   • status: 'pending' | 'accepted' | 'expired' | 'revoked'.
+--   • Link invites stay 'pending' after each acceptance (multi-use).
+
+create table if not exists public.household_invites (
+  id            text        primary key,
+  household_id  text        not null references public.households(id) on delete cascade,
+  invited_email text,                          -- NULL for method='link'
+  token_hash    text        not null unique,    -- SHA-256(raw_token); raw token is never stored
+  method        text        not null check (method in ('email', 'link')),
+  status        text        not null default 'pending'
+                            check (status in ('pending', 'accepted', 'expired', 'revoked')),
+  expires_at    timestamptz not null,
+  created_by    text        not null,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists household_invites_household_id_idx on public.household_invites(household_id);
+create index if not exists household_invites_token_hash_idx   on public.household_invites(token_hash);
+create index if not exists household_invites_status_idx       on public.household_invites(status);
+
+alter table public.household_invites enable row level security;
+
+drop policy if exists "allow_all" on public.household_invites;
+create policy "allow_all" on public.household_invites for all using (true) with check (true);
