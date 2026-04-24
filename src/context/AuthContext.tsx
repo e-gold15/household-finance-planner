@@ -34,6 +34,14 @@ import type { CloudInvitation } from '@/lib/cloudInvites'
 interface AuthContextType {
   user: LocalUser | null
   household: Household | null
+  /**
+   * True immediately after a user accepts an invite and joins a shared
+   * household for the first time in this session. Used to show the
+   * "welcome to household" banner explaining local data.
+   * Call clearJustJoined() once the banner is dismissed.
+   */
+  justJoined: boolean
+  clearJustJoined: () => void
   /** @deprecated Use householdInvites instead. Kept for backward compat. */
   pendingInvites: CloudInvitation[]
   /** v2.1 — token-based invites from household_invites table */
@@ -73,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [household, setHousehold]               = useState<Household | null>(null)
   const [pendingInvites, setPendingInvites]      = useState<CloudInvitation[]>([])
   const [householdInvites, setHouseholdInvites] = useState<HouseholdInvite[]>([])
+  const [justJoined, setJustJoined]             = useState(false)
 
   // ── Boot: migrate + restore session ──────────────────────────────────────
   useEffect(() => {
@@ -132,6 +141,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistSession({ userId: updatedUser.id, householdId })
     setUser(updatedUser)
     setHousehold(sharedHousehold)
+    // Signal to the UI that the user just joined — show welcome banner
+    setJustJoined(true)
   }
 
   // ── Shared post-auth handler ──────────────────────────────────────────────
@@ -198,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHousehold(null)
     setPendingInvites([])
     setHouseholdInvites([])
+    setJustJoined(false)
   }
 
   // ── Invite management (legacy) ────────────────────────────────────────────
@@ -292,6 +304,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user,
       household,
+      justJoined,
+      clearJustJoined: () => setJustJoined(false),
       pendingInvites,
       householdInvites,
       signUpEmail: handleSignUpEmail,

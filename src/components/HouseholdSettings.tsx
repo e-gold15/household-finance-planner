@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Users, UserPlus, X, Copy, Mail, Crown, User,
-  Link2, RefreshCw, RotateCcw, AlertCircle, Clock,
+  Link2, RefreshCw, RotateCcw, AlertCircle, Clock, CheckCircle2,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import type { LocalUser, HouseholdInvite, InviteMethod } from '@/types'
 import type { CreatedHouseholdInvite } from '@/types'
+import { sendInviteEmail } from '@/lib/emailService'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -135,20 +136,74 @@ function EmailTab({
   onRevoke: (id: string) => void
   lang: 'en' | 'he'
 }) {
-  const { createInvite } = useAuth()
-  const [email, setEmail]     = useState('')
-  const [error, setError]     = useState('')
-  const [loading, setLoading] = useState(false)
+  const { createInvite, user, household } = useAuth()
+  const [email, setEmail]             = useState('')
+  const [error, setError]             = useState('')
+  const [loading, setLoading]         = useState(false)
+  // If email delivery fails we surface the URL so the owner can share it manually
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null)
+  const [emailSent, setEmailSent]     = useState(false)
 
   const handleSend = async () => {
     setError('')
-    if (!email.trim()) { setError(t('Enter an email address.', 'הכנס כתובת אימייל.', lang)); return }
+    setFallbackUrl(null)
+    setEmailSent(false)
+    if (!email.trim()) {
+      setError(t('Enter an email address.', 'הכנס כתובת אימייל.', lang))
+      return
+    }
     setLoading(true)
+
+    // Step 1 — create the invite token in Supabase
     const result = await createInvite('email', email.trim())
+    if (typeof result === 'string') {
+      setLoading(false)
+      setError(result)
+      return
+    }
+
+    const inviteUrl = buildInviteUrl(result.token)
+
+    // Step 2 — send email via /api/send-invite (Vercel serverless + Resend)
+    const emailResult = await sendInviteEmail({
+      email: email.trim(),
+      inviteUrl,
+      householdName: household?.name ?? 'our household',
+      inviterName: user?.name ?? 'Your partner',
+    })
+
     setLoading(false)
-    if (typeof result === 'string') { setError(result); return }
-    toast.success(t(`Invite sent to ${email.trim()}`, `הזמנה נשלחה ל-${email.trim()}`, lang))
-    setEmail('')
+
+    if ('ok' in emailResult) {
+      // Email delivered ✅
+      setEmailSent(true)
+      toast.success(t(`Invite email sent to ${email.trim()}`, `אימייל הזמנה נשלח ל-${email.trim()}`, lang))
+      setEmail('')
+      setTimeout(() => setEmailSent(false), 4000)
+    } else {
+      // Email failed — invite still exists, show the URL so owner can share manually
+      setFallbackUrl(inviteUrl)
+      if (emailResult.notConfigured) {
+        // Server-side key not set — informational, not an error
+        toast.info(t(
+          'Email sending is not set up — copy the link below to share manually.',
+          'שליחת אימייל אינה מוגדרת — העתק את הקישור ושתף ידנית.',
+          lang
+        ))
+      } else {
+        toast.warning(t(
+          `Invite created but email failed: ${emailResult.error}. Copy the link to share manually.`,
+          `הזמנה נוצרה אך שליחת האימייל נכשלה: ${emailResult.error}. העתק את הקישור ושתף ידנית.`,
+          lang
+        ))
+      }
+    }
+  }
+
+  const handleCopyFallback = async () => {
+    if (!fallbackUrl) return
+    await navigator.clipboard.writeText(fallbackUrl)
+    toast.success(t('Link copied!', 'הקישור הועתק!', lang))
   }
 
   const emailInvites = invites.filter((i) => i.method === 'email')
@@ -164,21 +219,49 @@ function EmailTab({
             type="email"
             placeholder="partner@example.com"
             value={email}
-            onChange={(e) => { setEmail(e.target.value); setError('') }}
+            onChange={(e) => { setEmail(e.target.value); setError(''); setFallbackUrl(null) }}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }}
             className="flex-1"
             autoFocus
           />
           <Button onClick={handleSend} disabled={loading} className="shrink-0 gap-1.5 min-h-[44px]">
-            <Mail className="h-4 w-4" />
-            {loading ? t('Sending…', 'שולח…', lang) : t('Send', 'שלח', lang)}
+            {emailSent
+              ? <CheckCircle2 className="h-4 w-4" />
+              : <Mail className="h-4 w-4" />
+            }
+            {loading
+              ? t('Sending…', 'שולח…', lang)
+              : emailSent
+                ? t('Sent!', 'נשלח!', lang)
+                : t('Send', 'שלח', lang)
+            }
           </Button>
         </div>
+
+        {/* Validation error */}
         {error && (
           <p className="flex items-center gap-1.5 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             {error}
           </p>
+        )}
+
+        {/* Fallback URL when email delivery failed or not configured */}
+        {fallbackUrl && (
+          <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0" />
+              {t('Share this link manually:', 'שתף את הקישור הזה ידנית:', lang)}
+            </p>
+            <div className="flex gap-2">
+              <Input readOnly value={fallbackUrl} className="flex-1 text-xs font-mono bg-background"
+                onFocus={(e) => e.target.select()} />
+              <Button variant="outline" size="icon" className="shrink-0 min-h-[44px] min-w-[44px]"
+                onClick={handleCopyFallback} title={t('Copy link', 'העתק קישור', lang)}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

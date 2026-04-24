@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -14,6 +14,38 @@ import { History as HistoryTab } from './components/History'
 import { t } from './lib/utils'
 import { cn } from './lib/utils'
 
+// ─── Welcome banner (shown once after accepting an invite) ──────────────────
+
+function JoinedHouseholdBanner({ lang }: { lang: 'en' | 'he' }) {
+  const { household, clearJustJoined } = useAuth()
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 mb-5 flex gap-3 items-start">
+      <PartyPopper className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-primary">
+          {t(`You've joined ${household?.name ?? 'the household'}! 🎉`,
+             `הצטרפת ל-${household?.name ?? 'משק הבית'}! 🎉`,
+             lang)}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+          {t(
+            "This app is privacy-first — each partner's financial data is stored locally on their own device. You're starting with a clean slate. Add your own income and expenses to get started.",
+            'האפליקציה מאחסנת נתונים מקומית — לכל שותף יש נתוניו הפרטיים במכשיר שלו. אתה מתחיל עם דף ריק. הוסף את ההכנסות וההוצאות שלך כדי להתחיל.',
+            lang
+          )}
+        </p>
+      </div>
+      <button
+        onClick={clearJustJoined}
+        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center -me-2"
+        title={t('Dismiss', 'סגור', lang)}
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
 type Tab = 'overview' | 'income' | 'expenses' | 'savings' | 'goals' | 'history'
 
 const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
@@ -27,6 +59,7 @@ const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
 
 function AppShell() {
   const { data } = useFinance()
+  const { justJoined } = useAuth()
   const [tab, setTab] = useState<Tab>('overview')
   const lang = data.language
 
@@ -40,6 +73,7 @@ function AppShell() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="max-w-4xl mx-auto px-4 py-6">
+        {justJoined && <JoinedHouseholdBanner lang={lang} />}
         <nav className="flex gap-1 mb-6 overflow-x-auto pb-1">
           {TABS.map(({ id, icon: Icon, en, he }) => (
             <button
