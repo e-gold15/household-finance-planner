@@ -117,6 +117,9 @@ export function getUserById(id: string): LocalUser | null {
   return getUsers().find((u) => u.id === id) ?? null
 }
 
+/** Public alias so AuthContext can upsert a user without importing the private fn */
+export function upsertUserPublic(user: LocalUser) { upsertUser(user) }
+
 // ─── Household CRUD ────────────────────────────────────────────────────────
 function getHouseholds(): Household[] { return load<Household>(HOUSEHOLDS_KEY) }
 function saveHouseholds(h: Household[]) { save(HOUSEHOLDS_KEY, h) }
@@ -132,6 +135,9 @@ function upsertHousehold(household: Household) {
   else all.push(household)
   saveHouseholds(all)
 }
+
+/** Public alias so AuthContext can upsert a household without importing the private fn */
+export function upsertHouseholdPublic(household: Household) { upsertHousehold(household) }
 
 function createHousehold(ownerUser: LocalUser): Household {
   const household: Household = {

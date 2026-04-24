@@ -5,7 +5,11 @@
       "Bash(npm install *)",
       "Bash(npm run *)",
       "Bash(curl -s http://localhost:5173)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(gh auth *)",
+      "Bash(git config *)",
+      "Bash(ssh -T git@github.com)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }

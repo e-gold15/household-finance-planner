@@ -1,50 +1,49 @@
--- Profiles table (one row per user)
-create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  display_name text,
-  avatar_url text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+-- ─── Household Finance Planner — Supabase Schema ─────────────────────────────
+-- Only invitation + household metadata lives here.
+-- All financial data stays in the browser (localStorage).
+-- Run this in: Supabase Dashboard → SQL Editor → New query → Run
+
+-- ── Households ────────────────────────────────────────────────────────────────
+create table if not exists public.households (
+  id          text primary key,
+  name        text        not null,
+  created_by  text        not null,
+  created_at  timestamptz not null default now()
 );
-alter table public.profiles enable row level security;
 
-create policy "Users can view own profile" on public.profiles
-  for select using (auth.uid() = id);
-create policy "Users can insert own profile" on public.profiles
-  for insert with check (auth.uid() = id);
-create policy "Users can update own profile" on public.profiles
-  for update using (auth.uid() = id);
-
--- Per-user app data (single JSONB blob keyed by user)
-create table public.app_data (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+-- ── Household memberships ─────────────────────────────────────────────────────
+create table if not exists public.household_memberships (
+  household_id  text        not null references public.households(id) on delete cascade,
+  user_id       text        not null,
+  role          text        not null default 'member' check (role in ('owner','member')),
+  joined_at     timestamptz not null default now(),
+  primary key (household_id, user_id)
 );
-alter table public.app_data enable row level security;
 
-create policy "Users can view own data" on public.app_data
-  for select using (auth.uid() = user_id);
-create policy "Users can insert own data" on public.app_data
-  for insert with check (auth.uid() = user_id);
-create policy "Users can update own data" on public.app_data
-  for update using (auth.uid() = user_id);
-create policy "Users can delete own data" on public.app_data
-  for delete using (auth.uid() = user_id);
+-- ── Invitations ───────────────────────────────────────────────────────────────
+create table if not exists public.invitations (
+  id            text        primary key,
+  email         text        not null,
+  household_id  text        not null references public.households(id) on delete cascade,
+  invited_by    text        not null,
+  status        text        not null default 'pending' check (status in ('pending','accepted','expired')),
+  created_at    timestamptz not null default now(),
+  expires_at    timestamptz not null
+);
 
--- Auto-create profile on signup
-create or replace function public.handle_new_user()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.profiles (id, display_name, avatar_url)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', new.email),
-    new.raw_user_meta_data->>'avatar_url'
-  ) on conflict (id) do nothing;
-  return new;
-end; $$;
+create index if not exists invitations_household_id_idx on public.invitations(household_id);
+create index if not exists invitations_status_idx       on public.invitations(status);
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+-- ── Row Level Security ────────────────────────────────────────────────────────
+-- Auth is handled locally (SHA-256 + Google GIS), so we allow all via anon key.
+alter table public.households             enable row level security;
+alter table public.household_memberships  enable row level security;
+alter table public.invitations            enable row level security;
+
+drop policy if exists "allow_all" on public.households;
+drop policy if exists "allow_all" on public.household_memberships;
+drop policy if exists "allow_all" on public.invitations;
+
+create policy "allow_all" on public.households            for all using (true) with check (true);
+create policy "allow_all" on public.household_memberships for all using (true) with check (true);
+create policy "allow_all" on public.invitations           for all using (true) with check (true);
