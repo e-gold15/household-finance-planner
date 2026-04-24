@@ -307,7 +307,7 @@ acceptCloudInvitation(inviteId, userId): Promise<{ householdId, householdName } 
 ### Invite URL format
 
 ```
-https://household-finance-planner.vercel.app?invite={invitationId}
+https://household-finance-planner.com?invite={invitationId}
 ```
 
 `main.tsx` reads this param on load, stores `invitationId` in `localStorage` under `hf-pending-invite`, then strips the param from the URL. After the user authenticates, `AuthContext.afterAuth()` calls `acceptCloudInvitation` and switches the user to the shared household.
@@ -596,7 +596,7 @@ Every push to `main` triggers a Vercel deployment automatically.
 2. APIs & Services → Credentials → Create OAuth 2.0 Client ID
 3. Application type: **Web application**
 4. Authorized JavaScript origins:
-   - `https://household-finance-planner.vercel.app`
+   - `https://household-finance-planner.com`
    - `http://localhost:5173`
 5. Copy the Client ID → add to Vercel env vars as `VITE_GOOGLE_CLIENT_ID`
 6. Redeploy

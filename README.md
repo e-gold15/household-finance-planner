@@ -2,7 +2,7 @@
 
 A modern, privacy-first household finance web app built for Israeli families (with multi-country support). Financial data lives in the browser — no subscriptions, no data selling. Household membership and invite links are synced via Supabase so partners can join from any device.
 
-**Live app:** https://household-finance-planner.vercel.app
+**Live app:** https://household-finance-planner.com
 
 ---
 

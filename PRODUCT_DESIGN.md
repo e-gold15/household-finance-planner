@@ -472,7 +472,7 @@ Remove button only shown for non-owner members, only to the owner.
 ### 14.4 Invite Dialog
 
 Email input → creates invite in Supabase → shows in pending list.
-Invite link format: `https://household-finance-planner.vercel.app?invite={id}`
+Invite link format: `https://household-finance-planner.com?invite={id}`
 
 ---
 
