@@ -90,7 +90,24 @@ export function initGoogleAuth(onSuccess: (profile: GoogleProfile) => void) {
 }
 
 /**
- * Trigger the One-Tap / popup prompt.
+ * Render Google's official Sign-In button inside the given DOM element.
+ * This is more reliable than the One-Tap prompt and works across all browsers.
+ */
+export function renderGoogleButton(element: HTMLElement) {
+  if (!CLIENT_ID || !window.google?.accounts?.id) return
+  window.google.accounts.id.renderButton(element, {
+    type: 'standard',
+    theme: 'outline',
+    size: 'large',
+    text: 'continue_with',
+    shape: 'rectangular',
+    logo_alignment: 'left',
+    width: element.offsetWidth || 320,
+  })
+}
+
+/**
+ * Trigger the One-Tap / popup prompt (fallback).
  * Returns 'ok' if the prompt was shown, or an error reason string.
  */
 export function promptGoogleSignIn(): Promise<'ok' | string> {
@@ -103,7 +120,7 @@ export function promptGoogleSignIn(): Promise<'ok' | string> {
       if (notification.isNotDisplayed()) {
         resolve(notification.getNotDisplayedReason())
       } else if (notification.isSkippedMoment() || notification.isDismissedMoment()) {
-        resolve('ok') // user dismissed — not an error
+        resolve('ok')
       } else {
         resolve('ok')
       }
