@@ -339,6 +339,38 @@ export async function acceptHouseholdInvite(
   }
 }
 
+/**
+ * Fetch all household memberships for a given user from Supabase.
+ * Used on login to detect whether the user already belongs to a household
+ * on another device (cloud household recovery flow).
+ *
+ * Returns [] when Supabase is not configured or on any error.
+ */
+export async function fetchUserMemberships(userId: string): Promise<Array<{
+  householdId: string
+  role: 'owner' | 'member'
+  joinedAt: string
+}>> {
+  if (!supabaseConfigured) return []
+  try {
+    const { data, error } = await supabase
+      .from('household_memberships')
+      .select('household_id, role, joined_at')
+      .eq('user_id', userId)
+    if (error) {
+      console.error('[cloudInvites] fetchUserMemberships failed:', error)
+      return []
+    }
+    return (data ?? []).map((m: { household_id: string; role: string; joined_at: string }) => ({
+      householdId: m.household_id,
+      role:        m.role === 'owner' ? 'owner' as const : 'member' as const,
+      joinedAt:    m.joined_at,
+    }))
+  } catch {
+    return []
+  }
+}
+
 // ─── User profiles ─────────────────────────────────────────────────────────
 // Public user info (name, email, avatar) is pushed to Supabase on every login
 // so that all household members can see each other across devices.

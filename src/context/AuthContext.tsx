@@ -31,6 +31,8 @@ import {
   syncUserProfile,
   fetchHouseholdMemberProfiles,
   fetchHouseholdMembers,
+  fetchUserMemberships,
+  getCloudHousehold,
 } from '@/lib/cloudInvites'
 import type { CloudInvitation } from '@/lib/cloudInvites'
 
@@ -170,7 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ── Shared helper: move a user into a joined household ───────────────────
-  async function applyHouseholdJoin(authedUser: LocalUser, householdId: string, householdName: string) {
+  async function applyHouseholdJoin(
+    authedUser: LocalUser,
+    householdId: string,
+    householdName: string,
+    showWelcome: boolean = true
+  ) {
     const updatedUser = { ...authedUser, householdId }
     upsertUserPublic(updatedUser)
 
@@ -179,7 +186,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profiles = await fetchHouseholdMemberProfiles(householdId)
     const memberships: HouseholdMembership[] = profiles.map((p) => ({
       userId:   p.id,
-      role:     p.id === authedUser.id ? 'member' as const : 'member' as const,
+      // All roles default to 'member' here; accurate roles are applied immediately
+      // after by refreshMembersFromCloud() which overwrites with Supabase data.
+      role:     'member' as const,
       joinedAt: new Date().toISOString(),
     }))
 
@@ -215,7 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(updatedUser)
     setHousehold(sharedHousehold)
     // Signal to the UI that the user just joined — show welcome banner
-    setJustJoined(true)
+    if (showWelcome) setJustJoined(true)
   }
 
   // ── Shared post-auth handler ──────────────────────────────────────────────
@@ -228,8 +237,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Sync this user's public profile so other household members can see them
     await syncUserProfile(authedUser)
 
-    // Pull the live member list so this device always shows everyone in the household
-    refreshMembersFromCloud(authedHousehold.id, authedHousehold)
+    // Pull the live member list so this device always shows everyone in the household.
+    // Awaited so it completes before the recovery check below — prevents a race where
+    // a background refresh would clobber the recovered household in React state.
+    await refreshMembersFromCloud(authedHousehold.id, authedHousehold)
+
+    // ── Cloud household recovery ──────────────────────────────────────────────
+    // On a fresh device (empty localStorage), a Google user gets a new empty
+    // household created locally. Check Supabase to see if they already own one.
+    // If a membership exists for a DIFFERENT household, switch to it silently.
+    // Priority: 'owner' role > 'member' role; most-recently-joined if multiple.
+    const allMemberships = await fetchUserMemberships(authedUser.id)
+    const otherMemberships = allMemberships.filter(
+      (m) => m.householdId !== authedHousehold.id
+    )
+    if (otherMemberships.length > 0) {
+      // Prefer a household where user is owner; otherwise take most recently joined
+      const target =
+        otherMemberships.find((m) => m.role === 'owner') ??
+        otherMemberships.sort((a, b) =>
+          new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime()
+        )[0]
+
+      console.info(
+        `[AuthContext] Cloud household recovery: switching from ${authedHousehold.id} to ${target.householdId}`
+      )
+
+      // Fetch the real household name FIRST — before touching anything — so that
+      // if this call fails we can still proceed, and we haven't partially mutated state.
+      const cloudH = await getCloudHousehold(target.householdId)
+
+      // Remove the orphaned empty household's membership from Supabase.
+      // Best-effort — if it fails the orphan lingers but recovery still completes.
+      await removeCloudMembership(authedHousehold.id, authedUser.id)
+
+      // Switch to the real household silently (no welcome banner — it's theirs).
+      await applyHouseholdJoin(
+        authedUser,
+        target.householdId,
+        cloudH?.name ?? 'Shared Household',
+        false   // showWelcome = false — this is a recovery, not a new join
+      )
+
+      // Immediately correct member roles for the current session.
+      // applyHouseholdJoin defaults all memberships to 'member'; this overwrites
+      // with accurate roles from Supabase so the owner can invite/rename right away.
+      const recoveredHousehold = getHouseholdById(target.householdId)
+      if (recoveredHousehold) {
+        await refreshMembersFromCloud(target.householdId, recoveredHousehold)
+      }
+      return
+    }
 
     // ── v2.1: Check for a pending raw token (?inv= captured by main.tsx) ───
     const invToken = localStorage.getItem(PENDING_INV_TOKEN_KEY)
