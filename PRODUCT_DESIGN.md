@@ -2,7 +2,7 @@
 
 > **Audience:** designers, engineers, and product stakeholders.
 > This document is the single source of truth for every feature, screen, interaction, and design decision in the app.
-> **Version:** 2.0 — April 2026
+> **Version:** 2.3-draft — April 2026
 
 ---
 
@@ -29,6 +29,7 @@
 19. [Persistence & Data Flow](#19-persistence--data-flow)
 20. [Accessibility](#20-accessibility)
 21. [Responsiveness](#21-responsiveness)
+22. [Feature Spec: Historical Expense Entry (v2.3)](#22-feature-spec-historical-expense-entry-v23)
 
 ---
 
@@ -427,6 +428,13 @@ Trend chart: 3 lines (Income teal, Expenses red, Free Cash Flow blue).
 
 Snapshots listed newest-first with free cash flow badge (green/red).
 
+Each snapshot card supports two complementary ways to record what actually happened that month:
+
+1. **Log Actuals** (existing, v2.2) — set a single total per category (e.g. "Food: ₪3,400"). Quick, summary-level.
+2. **Historical Expense Entry** (new, v2.3) — add individual named line items to the snapshot (e.g. "Dentist ₪800", "Car service ₪1,200"). Items automatically adjust the corresponding category actual total.
+
+See [Section 22](#22-feature-spec-historical-expense-entry-v23) for the full spec.
+
 ---
 
 ## 13. Settings Panel
@@ -677,5 +685,376 @@ On invite accept:
 
 ---
 
-*Document version: 2.0 — reflects app state as of April 2026*
-*Previous version: 1.0 (single-user, email-only auth, no household model)*
+*Document version: 2.3-draft — reflects app state as of April 2026*
+*Previous version: 2.0 (v2.2 shipped: F1–F5 expense intelligence features)*
+
+---
+
+## 22. Feature Spec: Historical Expense Entry (v2.3)
+
+### 22.1 Problem
+
+**User pain:** A user remembers in May that they paid ₪2,800 for a dentist visit and ₪1,400 for a car service in March. They want to record these against March's history so their spending picture is accurate — but there's currently no way to add individual named line items to a past month.
+
+**Current workaround (painful):** Open March's snapshot → "Edit Actuals" → manually calculate and type a new category total. This is lossy — the name and details of the expense are gone, and the user must do mental arithmetic.
+
+**Who is affected:**
+- **Primary:** The Israeli dual-income couple — both partners want to reconcile last month's credit-card statement against the plan.
+- **Secondary:** The freelancer — needs to log project-related one-off costs to a specific billing month.
+- **All personas** who take monthly snapshots and later want to record what they actually spent, item by item.
+
+---
+
+### 22.2 Solution Overview
+
+Add the ability to attach **individual, named expense line items** to any existing month snapshot in the History tab.
+
+Key principles:
+- **Additive, not destructive** — line items add to (or subtract from) the category actual total; they don't replace the "Log Actuals" workflow.
+- **No new tab or page** — the feature lives entirely within the existing History tab snapshot cards.
+- **Backward compatible** — existing snapshots without line items continue to work exactly as before.
+- **Category actuals stay accurate** — adding or deleting a line item automatically adjusts `categoryActuals[category]` so the F3 month-over-month delta comparison always reflects the true total.
+
+---
+
+### 22.3 Concepts & Terminology
+
+| Term | Definition |
+|------|-----------|
+| **Snapshot** | A `MonthSnapshot` record — a frozen monthly picture taken by the user |
+| **Category Actual** | The declared total spent in a category for a snapshot month (`categoryActuals[category]`) |
+| **Historical Expense** | A new `HistoricalExpense` record: a named line item attached to a snapshot |
+| **Recorded Expenses** | The list of `HistoricalExpense` items visible on a snapshot card |
+
+---
+
+### 22.4 Data Model Changes
+
+#### New type: `HistoricalExpense`
+
+```typescript
+export interface HistoricalExpense {
+  id: string               // generateId() — unique within the snapshot
+  name: string             // "Dentist", "Car service", "Birthday gift"
+  amount: number           // always a positive monetary amount for that month
+  category: ExpenseCategory
+  note?: string            // optional free-text annotation
+}
+```
+
+No `date` field — the date is implied by the snapshot it belongs to.
+No `period` field — it is always a one-time amount for that specific month.
+
+#### Updated type: `MonthSnapshot`
+
+```typescript
+export interface MonthSnapshot {
+  // ... existing fields unchanged ...
+  categoryActuals?: Partial<Record<ExpenseCategory, number>>
+  /**
+   * Individual named expense line items added retroactively to this snapshot.
+   * When items exist for a category, their sum is reflected in categoryActuals[category].
+   * Absence of this field (undefined or []) means no items have been added.
+   */
+  historicalExpenses?: HistoricalExpense[]
+}
+```
+
+#### `categoryActuals` update rule
+
+When a `HistoricalExpense` is **added** to a snapshot:
+```
+categoryActuals[item.category] = (categoryActuals[item.category] ?? 0) + item.amount
+```
+
+When a `HistoricalExpense` is **deleted** from a snapshot:
+```
+categoryActuals[item.category] = Math.max(0, (categoryActuals[item.category] ?? 0) - item.amount)
+```
+
+When a `HistoricalExpense` is **edited** (amount or category changed):
+1. Reverse the old item's effect on the old category
+2. Apply the new item's effect on the new category
+
+This ensures `categoryActuals` always equals the sum of all contributions (planned + manual overrides + line items), and the F3 delta comparison stays accurate without any extra computation.
+
+---
+
+### 22.5 New Context Methods
+
+Two new methods added to `FinanceContext`:
+
+```typescript
+/** Add a HistoricalExpense to a snapshot and update categoryActuals accordingly. */
+addHistoricalExpense: (snapshotId: string, item: Omit<HistoricalExpense, 'id'>) => void
+
+/** Remove a HistoricalExpense from a snapshot and reverse its effect on categoryActuals. */
+deleteHistoricalExpense: (snapshotId: string, itemId: string) => void
+
+/** Update an existing HistoricalExpense (handles category/amount changes correctly). */
+updateHistoricalExpense: (snapshotId: string, item: HistoricalExpense) => void
+```
+
+---
+
+### 22.6 UI Design
+
+#### 22.6.1 Snapshot card — updated layout
+
+```
+┌─────────────────────────────────────────────────────┐
+│  March 2026            01/03/2026                   │
+│                        [+₪4,200]  [📋 Actuals logged]│
+│                        [📋 Edit Actuals] [🗑]        │
+│                                                     │
+│  Income        Expenses        Savings              │
+│  ₪20,000       ₪14,200         ₪2,000               │
+│                                                     │
+│  ── Actual spending by category ──────────────────  │
+│  Housing    ₪5,200     Food       ₪3,400            │
+│  Health     ₪3,600     Transport  ₪2,000            │
+│                                                     │
+│  ── Recorded expenses (3) ────────────────────────  │
+│  Dentist            Health    ₪2,800    [✏] [🗑]    │
+│  Car service        Transport ₪1,400    [✏] [🗑]    │
+│  Birthday dinner    Leisure   ₪400      [✏] [🗑]    │
+│                                                     │
+│  [+ Add Expense to This Month]                      │
+└─────────────────────────────────────────────────────┘
+```
+
+- The **"Recorded expenses (N)"** section appears below the category actuals breakdown, only when `historicalExpenses.length > 0`.
+- The **"+ Add Expense to This Month"** button always appears at the bottom of every snapshot card that has a snapshot (even those without actuals yet).
+- The button label uses the snapshot's label: `+ Add Expense to March 2026`.
+
+#### 22.6.2 Add / Edit Historical Expense dialog
+
+Opens as a `Dialog` (same pattern as `ExpenseDialog` and `ActualsDialog`).
+
+```
+┌──────────────────────────────────────┐
+│  Add Expense — March 2026            │
+│                                      │
+│  Name                                │
+│  [________________________]          │
+│                                      │
+│  Amount          Category            │
+│  [________]      [Housing       ▼]   │
+│                                      │
+│  Note (optional)                     │
+│  [________________________]          │
+│                                      │
+│  [    Save Expense    ]              │
+│  [       Cancel       ]              │
+└──────────────────────────────────────┘
+```
+
+- **Name** — free text, required, placeholder: "e.g. Dentist visit"
+- **Amount** — number input, required, positive only, `min="0.01"`
+- **Category** — Select, same 11 options as the Expenses tab
+- **Note** — optional free text, single line
+- On Save: calls `addHistoricalExpense()` or `updateHistoricalExpense()`, closes dialog
+- Validation: name must be non-empty, amount must be > 0
+
+Edit mode: same dialog pre-filled with existing values, title changes to "Edit Expense — March 2026".
+
+#### 22.6.3 Recorded expenses row layout
+
+Each line item row (within the snapshot card):
+
+```
+[Name]                [Category badge]    ₪X,XXX    [✏] [🗑]
+[Note if present — text-xs text-muted-foreground below name]
+```
+
+- Category badge: `Badge variant="outline"` with category label
+- Amount: `font-semibold tabular-nums`
+- Edit icon: opens the Edit dialog pre-filled
+- Delete icon: removes the item, reverses the category actual; requires no confirmation (amount is small; user can re-add)
+- Tap targets: `min-h-[44px] min-w-[44px]` on icon buttons
+
+#### 22.6.4 Section header
+
+```
+── Recorded expenses (3) ─────────────────────────── [+ Add]
+```
+
+A subtle inline `[+ Add]` button in the section header allows adding another item without scrolling to the bottom. Both the header button and the bottom button open the same dialog.
+
+---
+
+### 22.7 Interaction Flows
+
+#### Flow A — Add a new historical expense
+
+1. User opens History tab
+2. User finds the relevant snapshot (e.g. March 2026)
+3. User clicks "**+ Add Expense to March 2026**"
+4. Dialog opens with empty form
+5. User fills in: Name="Dentist", Amount=2800, Category=Health
+6. User clicks "Save Expense"
+7. Dialog closes
+8. `addHistoricalExpense('snap-march', { name: 'Dentist', amount: 2800, category: 'health' })` fires
+9. `categoryActuals.health += 2800`
+10. Snapshot card updates immediately:
+    - "Recorded expenses (1)" section appears
+    - "Dentist · Health · ₪2,800" row is visible
+    - Health amount in the category breakdown increases
+    - "Actuals logged" badge appears if it wasn't already there
+
+#### Flow B — Edit a historical expense
+
+1. User clicks ✏ on "Dentist · Health · ₪2,800"
+2. Edit dialog opens, pre-filled
+3. User changes amount to 3200
+4. Clicks "Save Expense"
+5. `updateHistoricalExpense()` reverses old delta (−2800 from health), applies new (+3200 to health)
+6. Health total updates in the breakdown
+
+#### Flow C — Delete a historical expense
+
+1. User clicks 🗑 on "Dentist · Health · ₪2,800"
+2. Item is removed from `historicalExpenses`
+3. `categoryActuals.health -= 2800` (clamped to 0)
+4. Row disappears; if no items remain, "Recorded expenses" section hides
+
+#### Flow D — Mix of Log Actuals + line items
+
+1. User uses "Log Actuals" to set Food = ₪3,400 (summary level)
+2. User then uses "+ Add Expense" to add "Dentist ₪2,800" to Health
+3. `categoryActuals.health` was previously not set (or set to planned amount)
+4. After adding, `categoryActuals.health += 2,800` — stacks on top of whatever was there
+5. Both systems coexist — Log Actuals handles the categories the user doesn't itemize; line items handle specific notable purchases
+
+---
+
+### 22.8 Edge Cases & Rules
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Snapshot has no `categoryActuals` yet | Adding a line item initialises `categoryActuals = {}` and sets `categoryActuals[category] = amount` |
+| Deleting an item when `categoryActuals[category] < item.amount` | Clamp to 0 — never go negative |
+| `historicalExpenses` is `undefined` in old snapshots | Treated as `[]` — no rendering, no errors |
+| Empty `historicalExpenses: []` | "Recorded expenses" section is hidden |
+| Amount field left blank or zero | Validation error inline — Save button remains disabled |
+| Name field left blank | Validation error inline — Save button remains disabled |
+| Very long name (> 60 chars) | Truncate with ellipsis in the row display; full text in the edit dialog |
+| Category changed on edit | Old category actual decremented, new category actual incremented atomically |
+| Snapshot deleted | All its `historicalExpenses` are deleted with it (no orphan cleanup needed) |
+
+---
+
+### 22.9 i18n — All new strings
+
+| English | Hebrew |
+|---------|--------|
+| `Add Expense to {month}` | `הוסף הוצאה ל{month}` |
+| `Edit Expense — {month}` | `ערוך הוצאה — {month}` |
+| `Recorded expenses ({n})` | `הוצאות שנרשמו ({n})` |
+| `Save Expense` | `שמור הוצאה` |
+| `Note (optional)` | `הערה (אופציונלי)` |
+| `e.g. Dentist visit` | `למשל: ביקור אצל רופא שיניים` |
+| `Delete recorded expense` | `מחק הוצאה שנרשמה` |
+| `Edit recorded expense` | `ערוך הוצאה שנרשמה` |
+| `Name is required` | `שם חובה` |
+| `Amount must be greater than 0` | `הסכום חייב להיות גדול מ-0` |
+
+---
+
+### 22.10 Acceptance Criteria
+
+**Data**
+- [ ] `HistoricalExpense` type is in `src/types/index.ts`
+- [ ] `MonthSnapshot.historicalExpenses` field is optional, backward compatible
+- [ ] `addHistoricalExpense`, `updateHistoricalExpense`, `deleteHistoricalExpense` are in `FinanceContext` and typed in `FinanceContextType`
+- [ ] Adding an item increments `categoryActuals[category]` by `item.amount`
+- [ ] Deleting an item decrements `categoryActuals[category]` by `item.amount`, clamped to 0
+- [ ] Editing an item that changes category correctly adjusts both the old and new category actuals
+- [ ] Old snapshots without `historicalExpenses` render with no errors
+
+**UI**
+- [ ] "Recorded expenses (N)" section visible on snapshot cards that have line items
+- [ ] "Recorded expenses" section hidden when `historicalExpenses` is empty or missing
+- [ ] "+ Add Expense to [Month Label]" button visible on every snapshot card
+- [ ] Add/Edit dialog has Name, Amount, Category, Note (optional) fields
+- [ ] Save button disabled until Name is non-empty and Amount > 0
+- [ ] Edit button on each row opens the dialog pre-filled
+- [ ] Delete button on each row removes the item immediately
+- [ ] Category actuals breakdown in the snapshot card reflects the updated total after add/edit/delete
+- [ ] "Actuals logged" badge appears on the snapshot after the first item is added
+
+**i18n**
+- [ ] All new strings use `t(en, he, lang)` — no hardcoded English in JSX
+- [ ] Dialog title uses the snapshot label (e.g. "Add Expense — March 2026")
+- [ ] RTL layout correct for Hebrew
+
+**Accessibility**
+- [ ] Dialog has a descriptive `DialogTitle`
+- [ ] All icon-only buttons have `aria-label` and `title`
+- [ ] All inputs have associated `<Label>`
+- [ ] All interactive elements have `min-h-[44px]` tap targets
+
+**Tests (new, in `src/test/historicalExpenses.test.ts`)**
+- [ ] `addHistoricalExpense` — increments correct category actual
+- [ ] `addHistoricalExpense` — initialises `categoryActuals` when snapshot has none
+- [ ] `deleteHistoricalExpense` — decrements correct category actual
+- [ ] `deleteHistoricalExpense` — clamps to 0 (never negative)
+- [ ] `updateHistoricalExpense` — handles category change (old decremented, new incremented)
+- [ ] `updateHistoricalExpense` — handles amount change within same category
+- [ ] Snapshot without `historicalExpenses` field is backward compatible
+- [ ] Multiple items in same category accumulate correctly
+- [ ] Deleting one of two items in same category leaves the other's contribution intact
+
+---
+
+### 22.11 Out of Scope (v2.3)
+
+- **Adding expenses to "this month"** — current month has no snapshot yet; use the Expenses tab for ongoing budget items.
+- **Receipts / photo attachments** — a possible v3 feature (camera capture).
+- **Import from bank CSV** — separate roadmap item.
+- **Editing the snapshot's planned totals** (`totalIncome`, `totalExpenses`, etc.) — those remain frozen at snapshot time.
+- **Recurring historical entries** — all items are one-off line items tied to one snapshot.
+- **Reordering items within a snapshot** — not needed; sort is chronological (add order).
+
+---
+
+### 22.12 Implementation Checklist for Agents
+
+Below is the ordered task list for the other agent roles. Each role should read this spec before starting.
+
+#### 🎨 Frontend Agent
+1. Add `HistoricalExpense` interface to `src/types/index.ts`
+2. Add `historicalExpenses?: HistoricalExpense[]` to `MonthSnapshot` in `src/types/index.ts`
+3. Add three new methods to `FinanceContextType` interface in `src/context/FinanceContext.tsx`
+4. Implement the three methods in `FinanceContext` (pure `setData` mutations)
+5. Update `src/components/History.tsx`:
+   - Add `HistoricalExpenseDialog` component (add/edit)
+   - Add "Recorded expenses" section to each snapshot card
+   - Add "+ Add Expense to [label]" button to each snapshot card
+   - Wire up edit/delete row buttons
+
+#### 🖌 UX Agent
+1. Verify dialog follows existing `DialogContent` + `max-h-[85vh] overflow-y-auto` pattern
+2. Verify all icon-only buttons have `title` + `aria-label` + `min-h-[44px] min-w-[44px]`
+3. Verify "Recorded expenses" section uses HSL tokens only — no hardcoded colours
+4. Verify RTL (Hebrew) layout on the dialog and the row layout
+5. Verify mobile (375px) — rows must not overflow, amounts must not be cut off
+
+#### 🧪 QA Agent
+1. Write `src/test/historicalExpenses.test.ts` covering all 9 test cases in §22.10
+2. Run `npm test` — all 191 + 9 = 200 tests must pass
+3. Run `npm run build` — no TypeScript errors
+4. Manual QA: add → verify total changes, edit → verify old/new category both update, delete → verify clamp behaviour
+
+#### 🔍 Code Review Agent
+1. No `any` types in new code
+2. All new strings go through `t(en, he, lang)`
+3. Context methods are pure (no side effects beyond `setData`)
+4. No direct localStorage reads in `History.tsx`
+5. `historicalExpenses` access always guarded with `?? []`
+
+#### 🗄 Data Engineer Agent
+1. `HistoricalExpense` is a nested type inside `MonthSnapshot` — no Supabase schema change needed (stored as part of `household_finance.data` JSONB)
+2. Add `historicalExpenses: []` to `FINANCE_DEFAULTS` in `src/lib/cloudFinance.ts` to handle old cloud blobs
+3. `mergeFinanceData` already merges `history` wholesale — no change needed
+4. Update `src/test/cloudFinance.test.ts` fixtures if needed
