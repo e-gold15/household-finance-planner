@@ -115,13 +115,13 @@ describe('Current-user "(you)" label logic', () => {
 
 describe('Member count display string', () => {
   it('shows singular for 1 member', () => {
-    const count = 1
+    const count: number = 1
     const label = count === 1 ? '1 member' : `${count} members`
     expect(label).toBe('1 member')
   })
 
   it('shows plural for multiple members', () => {
-    const count = 3
+    const count: number = 3
     const label = count === 1 ? '1 member' : `${count} members`
     expect(label).toBe('3 members')
   })
@@ -161,8 +161,9 @@ describe('joinedAt fallback', () => {
   })
 
   it('falls back to user.createdAt if no membership joinedAt', () => {
-    const member   = makeUser({ createdAt: '2026-01-01T00:00:00Z' })
-    const joinedAt = (undefined as string | undefined) ?? member.createdAt
+    const member      = makeUser({ createdAt: '2026-01-01T00:00:00Z' })
+    const noMembership: { joinedAt?: string } = {}
+    const joinedAt    = noMembership.joinedAt ?? member.createdAt
     expect(joinedAt).toBe('2026-01-01T00:00:00Z')
   })
 })
