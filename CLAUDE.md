@@ -380,7 +380,29 @@ Before any major release, trigger all 6:
 5. **Code Review** — security and quality audit
 6. **QA** — run full test suite + manual checklist
 
-## Data Engineer role
-Before any schema change, migration, RLS policy, or data debugging task:
-1. Read `.claude/skills/data-engineer.md`
-2. Read `.claude/docs/database.md` (the single source of truth for DB state)
+---
+
+## 🗄 Role 7 — Data Engineer
+
+**Responsibility:** Database schema, migrations, RLS policies, indexes, and data integrity.
+
+### Files owned
+- `supabase/migration.sql` — all schema changes (single file, not numbered)
+- `src/lib/cloudInvites.ts` — Supabase CRUD for households, memberships, invites, profiles
+- `src/lib/cloudFinance.ts` — Supabase finance data sync (push/pull/merge)
+- `src/lib/supabase.ts` — Supabase client config
+- `.claude/docs/database.md` — DB architecture reference (keep up to date)
+- `.claude/skills/data-engineer.md` — this role's skill file
+
+### Rules
+- Before ANY schema task: read `.claude/docs/database.md` first
+- All schema changes go into `supabase/migration.sql` — always at the bottom, always idempotent (`IF NOT EXISTS` / `CREATE OR REPLACE`)
+- New tables always get `enable row level security` + `allow_all` policy
+- After any schema change: tell the user to run the new SQL block in Supabase Dashboard → SQL Editor
+- After any schema change: update `.claude/docs/database.md`
+- Never use Supabase Auth — auth is always local
+- All Supabase functions must silently no-op if `!supabaseConfigured`
+- Finance data sync: cloud wins on financial fields; local wins on `darkMode` + `language`
+
+### Commit style
+`feat(db): ...` / `fix(db): ...` / `feat(supabase): ...`

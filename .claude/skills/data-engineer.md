@@ -36,7 +36,7 @@ Supabase stores household metadata (`households`, `household_memberships`), invi
 - After adding a block, tell the user to run it in Supabase Dashboard → SQL Editor → New query → Run.
 
 ## Schema rules
-- **Primary keys:** `text` (not `uuid`) — IDs are generated with `generateId()` in `src/lib/utils.ts` (currently `Math.random().toString(36).slice(2,10)` — 8-char base-36). Known issue: not cryptographically random. See C1 in database.md Issues.
+- **Primary keys:** `text` (not `uuid`) — IDs are generated with `generateId()` in `src/lib/utils.ts` which calls `crypto.randomUUID()` (cryptographically secure UUID v4, fixed in v2.1).
 - **Always include:** `created_at timestamptz NOT NULL DEFAULT now()`
 - **Household-scoped tables must have:** `household_id text NOT NULL REFERENCES households(id) ON DELETE CASCADE`
 - **All FKs:** `ON DELETE CASCADE`
@@ -82,15 +82,20 @@ Supabase stores household metadata (`households`, `household_memberships`), invi
 - `src/lib/cloudFinance.ts`
 - `src/lib/supabase.ts`
 
-## Known issues (from initial audit — 2026-04-25)
+## Known issues (audited 2026-04-25, resolved in v2.1)
 
-### Critical
-- **C1 — `generateId()` uses `Math.random()`:** All PKs (household IDs, user IDs, invite IDs, finance item IDs) use `Math.random().toString(36).slice(2,10)`. With `allow_all` RLS, a guessable `householdId` allows direct REST API access to `household_finance`. Fix: replace with `crypto.randomUUID()` in `src/lib/utils.ts:29`.
-- **C2 — No error handling on sync calls:** `syncHousehold()`, `syncMembership()`, `renameCloudHousehold()`, `removeCloudMembership()` discard Supabase `{ error }` responses. Silent failures cause cloud/local state drift. Fix: check and log errors in `src/lib/cloudInvites.ts`.
+### Critical — ALL RESOLVED ✅
+- **C1 — `generateId()` uses `Math.random()`** → ✅ FIXED: `crypto.randomUUID()` in `src/lib/utils.ts`
+- **C2 — No error handling on sync calls** → ✅ FIXED: all write functions in `cloudInvites.ts` now check and log `{ error }`
 
-### Important
-- **I1 — Two sequential Supabase queries in `fetchHouseholdMembers()` and `fetchHouseholdMemberProfiles()`:** Two round-trips on every boot. Replace with a single JOIN in `src/lib/cloudInvites.ts:368` and `:411`.
-- **I2 — `importData()` has no validation:** `src/context/FinanceContext.tsx:241` — any JSON is accepted. Add a type guard.
-- **I3 — Sessions never expire:** `AppSession` in `src/lib/localAuth.ts` has no `expiresAt`. Add a 30-day default.
-- **I4 — `daysUntil()` not i18n'd:** `src/components/HouseholdSettings.tsx:26–31` returns hardcoded English. Pass `lang` param.
-- **I5 — Legacy `invitations` table accumulates stale rows:** Plan migration and cleanup after v2.1 is the sole entry point.
+### Important — MOSTLY RESOLVED
+- **I1 — Two sequential Supabase queries** → ✅ FIXED: `get_household_members_with_profiles` RPC (run in Supabase Dashboard)
+- **I2 — `importData()` no validation** → ✅ FIXED: type guard in `FinanceContext.tsx`
+- **I3 — Sessions never expire** → ✅ FIXED: 30-day TTL via `expiresAt` in `AppSession`
+- **I4 — `daysUntil()` not i18n'd** → ✅ FIXED: `lang` param + `t()` in `HouseholdSettings.tsx`
+- **I5 — Legacy `invitations` table** → still open; no new writes from UI, rows expire naturally (7-day TTL)
+
+### Nice to fix (still open)
+- **N1** — `authProvider: 'google'` hardcoded for other members' cached profiles (display only, no UI bug)
+- **N2** — `user_profiles` has no FK to `household_memberships` (mitigated by `coalesce` in RPC)
+- **N3** — `createHousehold()` called before user has `householdId` set (fragile but functional)
