@@ -23,12 +23,12 @@ function buildInviteUrl(token: string): string {
   return `${window.location.origin}${window.location.pathname}?inv=${token}`
 }
 
-function daysUntil(iso: string): string {
-  const ms = new Date(iso).getTime() - Date.now()
+function daysUntil(iso: string, lang: 'en' | 'he'): string {
+  const ms   = new Date(iso).getTime() - Date.now()
   const days = Math.ceil(ms / (1000 * 60 * 60 * 24))
-  if (days <= 0) return 'Expired'
-  if (days === 1) return 'Expires tomorrow'
-  return `Expires in ${days} days`
+  if (days <= 0) return t('Expired', 'פג תוקף', lang)
+  if (days === 1) return t('Expires tomorrow', 'פג מחר', lang)
+  return t(`Expires in ${days} days`, `פג בעוד ${days} ימים`, lang)
 }
 
 // ─── Member row ─────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ function EmailInviteRow({
         <p className="text-sm font-medium truncate">{email}</p>
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {daysUntil(invite.expires_at)}
+          {daysUntil(invite.expires_at, lang)}
         </p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -394,7 +394,7 @@ function LinkTab({
                 </div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  {daysUntil(linkInvite.expires_at)}
+                  {daysUntil(linkInvite.expires_at, lang)}
                   {' · '}
                   {t('Multi-use — anyone with the link can join', 'רב-שימושי — כל בעל הקישור יכול להצטרף', lang)}
                 </p>
@@ -426,7 +426,7 @@ function LinkTab({
                   <p className="text-sm font-medium">{t('Active link', 'קישור פעיל', lang)}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {daysUntil(linkInvite.expires_at)}
+                    {daysUntil(linkInvite.expires_at, lang)}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-xs shrink-0">

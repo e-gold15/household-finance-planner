@@ -57,10 +57,14 @@ function AccountDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {existing ? (
-          <Button variant="ghost" size="icon" className="h-7 w-7"><Edit2 className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+            title={t('Edit account', 'ערוך חשבון', lang)}
+            aria-label={t('Edit account', 'ערוך חשבון', lang)}>
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
         ) : (
           <Button size="sm">
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="h-4 w-4 me-1" />
             {t('Add Account', 'הוסף חשבון', lang)}
           </Button>
         )}
@@ -152,7 +156,10 @@ export function Savings() {
         <div className="flex items-center gap-1">
           <span className="font-semibold tabular-nums">{formatCurrency(account.balance, data.currency, data.locale)}</span>
           <AccountDialog existing={account} onSave={(a) => updateAccount(a)} lang={lang} />
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteAccount(account.id)}>
+          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+            onClick={() => deleteAccount(account.id)}
+            title={t('Delete account', 'מחק חשבון', lang)}
+            aria-label={t('Delete account', 'מחק חשבון', lang)}>
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>

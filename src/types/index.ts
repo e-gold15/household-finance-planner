@@ -162,6 +162,8 @@ export interface Invitation {
 export interface AppSession {
   userId: string
   householdId: string
+  /** ISO timestamp. If set and in the past, the session is considered expired. */
+  expiresAt?: string
 }
 
 // ─── Invite v2 types ────────────────────────────────────────────────────────

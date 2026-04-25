@@ -38,18 +38,20 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 // ─── Household sync ────────────────────────────────────────────────────────
 
-/** Push a newly created household to Supabase. Silently no-ops if not configured. */
+/** Push a newly created or renamed household to Supabase. Best-effort — logs errors but never throws. Silent no-op if Supabase is not configured. */
 export async function syncHousehold(id: string, name: string, createdBy: string): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase
+  const { error } = await supabase
     .from('households')
     .upsert({ id, name, created_by: createdBy }, { onConflict: 'id' })
+  if (error) console.error('[cloudInvites] syncHousehold failed:', error)
 }
 
 /** Rename a household in the cloud. */
 export async function renameCloudHousehold(id: string, name: string): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase.from('households').update({ name }).eq('id', id)
+  const { error } = await supabase.from('households').update({ name }).eq('id', id)
+  if (error) console.error('[cloudInvites] renameCloudHousehold failed:', error)
 }
 
 /** Fetch a household from the cloud by ID. */
@@ -61,26 +63,28 @@ export async function getCloudHousehold(id: string): Promise<CloudHousehold | nu
 
 // ─── Membership sync ───────────────────────────────────────────────────────
 
-/** Upsert a membership record in the cloud. */
+/** Upsert a membership record in the cloud. Best-effort — logs errors but never throws. */
 export async function syncMembership(
   householdId: string,
   userId: string,
   role: 'owner' | 'member'
 ): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase
+  const { error } = await supabase
     .from('household_memberships')
     .upsert({ household_id: householdId, user_id: userId, role }, { onConflict: 'household_id,user_id' })
+  if (error) console.error('[cloudInvites] syncMembership failed:', error)
 }
 
-/** Remove a membership from the cloud. */
+/** Remove a membership from the cloud when a member is removed by the owner. Best-effort. */
 export async function removeCloudMembership(householdId: string, userId: string): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase
+  const { error } = await supabase
     .from('household_memberships')
     .delete()
     .eq('household_id', householdId)
     .eq('user_id', userId)
+  if (error) console.error('[cloudInvites] removeCloudMembership failed:', error)
 }
 
 // ─── Invitations ───────────────────────────────────────────────────────────
@@ -133,7 +137,8 @@ export async function getCloudPendingInvites(householdId: string): Promise<Cloud
 /** Cancel (expire) an invitation. */
 export async function cancelCloudInvitation(inviteId: string): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase.from('invitations').update({ status: 'expired' }).eq('id', inviteId)
+  const { error } = await supabase.from('invitations').update({ status: 'expired' }).eq('id', inviteId)
+  if (error) console.error('[cloudInvites] cancelCloudInvitation failed:', error)
 }
 
 /** Look up a single invitation by its ID (for the accept flow). */
@@ -280,10 +285,11 @@ export async function getHouseholdInvites(householdId: string): Promise<Househol
 /** Revoke an invite by its ID. */
 export async function revokeHouseholdInvite(inviteId: string): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase
+  const { error } = await supabase
     .from('household_invites')
     .update({ status: 'revoked' })
     .eq('id', inviteId)
+  if (error) console.error('[cloudInvites] revokeHouseholdInvite failed:', error)
 }
 
 /**
@@ -345,7 +351,7 @@ export async function acceptHouseholdInvite(
  */
 export async function syncUserProfile(user: LocalUser): Promise<void> {
   if (!supabaseConfigured) return
-  await supabase
+  const { error } = await supabase
     .from('user_profiles')
     .upsert(
       {
@@ -357,37 +363,7 @@ export async function syncUserProfile(user: LocalUser): Promise<void> {
       },
       { onConflict: 'id' }
     )
-}
-
-/**
- * Fetch the public profiles of every member of a household.
- * Joins household_memberships → user_profiles to return only members of
- * the given household.
- * Returns [] when Supabase is not configured or on any error.
- */
-export async function fetchHouseholdMemberProfiles(
-  householdId: string
-): Promise<Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]> {
-  if (!supabaseConfigured) return []
-  try {
-    const { data: memberships } = await supabase
-      .from('household_memberships')
-      .select('user_id')
-      .eq('household_id', householdId)
-
-    if (!memberships?.length) return []
-
-    const userIds = memberships.map((m: { user_id: string }) => m.user_id)
-
-    const { data: profiles } = await supabase
-      .from('user_profiles')
-      .select('id, name, email, avatar')
-      .in('id', userIds)
-
-    return (profiles ?? []) as Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]
-  } catch {
-    return []
-  }
+  if (error) console.error('[cloudInvites] syncUserProfile failed:', error)
 }
 
 export interface CloudHouseholdMember {
@@ -401,50 +377,61 @@ export interface CloudHouseholdMember {
 
 /**
  * Fetch the full member list for a household — memberships (with roles) joined
- * with user_profiles (name / email / avatar).
+ * with user_profiles (name / email / avatar) in a single Postgres query.
  *
- * Used to keep the owner's device in sync after a new member joins.
- * Returns [] when Supabase is not configured, user_profiles table doesn't exist
- * yet, or on any network error.
+ * Uses the `get_household_members_with_profiles` RPC to avoid two sequential
+ * network round-trips. LEFT JOIN means members missing a user_profiles row
+ * are still returned with empty name/email fields.
+ *
+ * Returns [] when Supabase is not configured or on any network error.
  */
 export async function fetchHouseholdMembers(
   householdId: string
 ): Promise<CloudHouseholdMember[]> {
   if (!supabaseConfigured) return []
   try {
-    const { data: memberships } = await supabase
-      .from('household_memberships')
-      .select('user_id, role, joined_at')
-      .eq('household_id', householdId)
-
-    if (!memberships?.length) return []
-
-    const userIds = memberships.map((m: { user_id: string }) => m.user_id)
-
-    const { data: profiles } = await supabase
-      .from('user_profiles')
-      .select('id, name, email, avatar')
-      .in('id', userIds)
-
-    const profileMap = new Map(
-      (profiles ?? []).map((p: { id: string; name: string; email: string; avatar?: string }) => [p.id, p])
-    )
-
-    const result: CloudHouseholdMember[] = []
-    for (const m of memberships as { user_id: string; role: string; joined_at: string }[]) {
-      const profile = profileMap.get(m.user_id)
-      if (!profile) continue
-      result.push({
-        userId:   m.user_id,
-        role:     m.role === 'owner' ? 'owner' : 'member',
-        joinedAt: m.joined_at,
-        name:     profile.name,
-        email:    profile.email,
-        avatar:   profile.avatar ?? undefined,
-      })
+    const { data, error } = await supabase.rpc('get_household_members_with_profiles', {
+      p_household_id: householdId,
+    })
+    if (error) {
+      console.error('[cloudInvites] fetchHouseholdMembers RPC failed:', error)
+      return []
     }
-    return result
+    return ((data ?? []) as Array<{
+      user_id: string
+      role: string
+      joined_at: string
+      name: string
+      email: string
+      avatar: string | null
+    }>).map((row) => ({
+      userId:   row.user_id,
+      role:     row.role === 'owner' ? 'owner' : 'member',
+      joinedAt: row.joined_at,
+      name:     row.name,
+      email:    row.email,
+      avatar:   row.avatar ?? undefined,
+    }))
   } catch {
     return []
   }
+}
+
+/**
+ * Fetch the public profiles of every member of a household.
+ * Delegates to fetchHouseholdMembers() so both functions use the same
+ * single-JOIN RPC instead of two sequential queries.
+ *
+ * Returns [] when Supabase is not configured or on any error.
+ */
+export async function fetchHouseholdMemberProfiles(
+  householdId: string
+): Promise<Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]> {
+  const members = await fetchHouseholdMembers(householdId)
+  return members.map((m) => ({
+    id:     m.userId,
+    name:   m.name,
+    email:  m.email,
+    avatar: m.avatar,
+  }))
 }

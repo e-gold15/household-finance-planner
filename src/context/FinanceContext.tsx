@@ -239,8 +239,29 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
   }
 
   const importData = (json: string) => {
-    const parsed = JSON.parse(json)
-    setData(() => ({ ...defaultData, ...parsed }))
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(json)
+    } catch {
+      throw new Error('Invalid JSON — the file could not be parsed.')
+    }
+
+    // Basic type guard: must be a non-null object, not an array
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('Invalid file format — expected a household finance JSON object.')
+    }
+
+    const obj = parsed as Record<string, unknown>
+
+    // Validate critical array fields — if present, they must actually be arrays
+    const arrayFields = ['members', 'expenses', 'accounts', 'goals', 'history'] as const
+    for (const field of arrayFields) {
+      if (field in obj && !Array.isArray(obj[field])) {
+        throw new Error(`Invalid file format — "${field}" must be an array.`)
+      }
+    }
+
+    setData(() => ({ ...defaultData, ...obj }))
   }
 
   return (

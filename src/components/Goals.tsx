@@ -44,10 +44,14 @@ function GoalDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {existing ? (
-          <Button variant="ghost" size="icon" className="h-7 w-7"><Edit2 className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+            title={t('Edit goal', 'ערוך יעד', lang)}
+            aria-label={t('Edit goal', 'ערוך יעד', lang)}>
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
         ) : (
           <Button size="sm">
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="h-4 w-4 me-1" />
             {t('Add Goal', 'הוסף יעד', lang)}
           </Button>
         )}
@@ -111,8 +115,8 @@ const STATUS_ICONS: Record<GoalStatus, React.ElementType> = {
 }
 
 const STATUS_COLORS: Record<GoalStatus, string> = {
-  realistic: 'text-emerald-600',
-  tight: 'text-amber-600',
+  realistic: 'text-primary',
+  tight: 'text-[hsl(var(--chart-3))]',
   unrealistic: 'text-destructive',
   blocked: 'text-destructive',
 }
@@ -227,9 +231,10 @@ export function Goals() {
                   <Progress
                     value={pct}
                     indicatorClassName={
-                      goal.status === 'realistic' ? 'bg-emerald-500' :
-                      goal.status === 'tight' ? 'bg-amber-500' : 'bg-destructive'
+                      goal.status === 'realistic' ? 'bg-primary' :
+                      goal.status === 'tight' ? 'bg-[hsl(var(--chart-3))]' : 'bg-destructive'
                     }
+                    aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -250,16 +255,22 @@ export function Goals() {
                 {goal.notes && <p className="text-xs text-muted-foreground">{goal.notes}</p>}
                 <div className="flex items-center justify-between pt-1">
                   <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={idx === 0} onClick={() => moveGoal(goal.id, 'up')}>
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+                      disabled={idx === 0} onClick={() => moveGoal(goal.id, 'up')}
+                      title={t('Move up', 'הזז למעלה', lang)} aria-label={t('Move up', 'הזז למעלה', lang)}>
                       <ChevronUp className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={idx === allocations.length - 1} onClick={() => moveGoal(goal.id, 'down')}>
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+                      disabled={idx === allocations.length - 1} onClick={() => moveGoal(goal.id, 'down')}
+                      title={t('Move down', 'הזז למטה', lang)} aria-label={t('Move down', 'הזז למטה', lang)}>
                       <ChevronDown className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                   <div className="flex gap-1">
                     <GoalDialog existing={goal} onSave={(g) => updateGoal(g)} lang={lang} />
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteGoal(goal.id)}>
+                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+                      onClick={() => deleteGoal(goal.id)}
+                      title={t('Delete goal', 'מחק יעד', lang)} aria-label={t('Delete goal', 'מחק יעד', lang)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>

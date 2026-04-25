@@ -20,7 +20,7 @@ export function History() {
           {data.history.length} {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
         </p>
         <Button size="sm" onClick={snapshotMonth}>
-          <Camera className="h-4 w-4 mr-1" />
+          <Camera className="h-4 w-4 me-1" />
           {t('Snapshot This Month', 'צלם חודש זה', lang)}
         </Button>
       </div>
@@ -44,9 +44,9 @@ export function History() {
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v) => formatCurrency(Number(v), data.currency, data.locale)} />
                   <Legend />
-                  <Line type="monotone" dataKey="totalIncome" name={t('Income', 'הכנסה', lang)} stroke="hsl(162,63%,41%)" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="totalExpenses" name={t('Expenses', 'הוצאות', lang)} stroke="hsl(0,72%,51%)" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="freeCashFlow" name={t('Free Cash', 'תזרים חופשי', lang)} stroke="hsl(199,89%,48%)" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="totalIncome" name={t('Income', 'הכנסה', lang)} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="totalExpenses" name={t('Expenses', 'הוצאות', lang)} stroke="hsl(var(--chart-5))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="freeCashFlow" name={t('Free Cash', 'תזרים חופשי', lang)} stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -65,7 +65,10 @@ export function History() {
                       <Badge variant={snap.freeCashFlow >= 0 ? 'success' : 'destructive'}>
                         {snap.freeCashFlow >= 0 ? '+' : ''}{formatCurrency(snap.freeCashFlow, data.currency, data.locale)}
                       </Badge>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteSnapshot(snap.id)}>
+                      <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+                        onClick={() => deleteSnapshot(snap.id)}
+                        title={t('Delete snapshot', 'מחק תמונת מצב', lang)}
+                        aria-label={t('Delete snapshot', 'מחק תמונת מצב', lang)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>

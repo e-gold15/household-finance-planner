@@ -346,3 +346,8 @@ Before any major release, trigger all 6:
 4. **UX** — confirm RTL, dark mode, and mobile
 5. **Code Review** — security and quality audit
 6. **QA** — run full test suite + manual checklist
+
+## Data Engineer role
+Before any schema change, migration, RLS policy, or data debugging task:
+1. Read `.claude/skills/data-engineer.md`
+2. Read `.claude/docs/database.md` (the single source of truth for DB state)

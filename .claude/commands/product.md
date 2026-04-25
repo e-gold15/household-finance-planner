@@ -56,13 +56,24 @@ How will we know this feature is working?
 - Custom domain `household-finance-planner.com`
 - 6 specialized agent roles (CLAUDE.md)
 
-### 🔜 Next (v2.1)
+### ✅ Done (v2.1)
+- Token-based invite system (`household_invites` table, SHA-256 hashed tokens)
+- Email invites (targeted, one-time) + Link invites (reusable)
+- Cloud sync of FinanceData (`household_finance` Supabase table)
+  - Bootstrap seed: owner's existing data pushed to cloud when first member joins
+  - Race-condition guard: local edit mid-fetch is never overwritten
+  - Merge strategy: cloud wins on financial fields, device keeps `darkMode` + `language`
+- Members tab: all household members shown with role, avatar/initials, join date, remove action
+- Cross-device member visibility: `user_profiles` table + `refreshMembersFromCloud()` on every login and boot
+- New member data sync: joining member immediately sees existing household finance data
+- 6 agent skills updated with production-learned patterns
+
+### 🔜 Next (v2.2)
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
-- [ ] Shared budget view — both partners see combined income/expenses
 - [ ] Push notifications for monthly snapshot reminder
+- [ ] Shared budget view — expense breakdown split by member
 
 ### 📅 Later (v3)
-- [ ] Optional cloud sync of FinanceData (opt-in, Supabase)
 - [ ] Bank statement CSV import
 - [ ] Mobile PWA / install to home screen
 - [ ] Multi-currency conversion (live rates)

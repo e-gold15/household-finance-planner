@@ -10,7 +10,8 @@
       "Bash(git config *)",
       "Bash(ssh -T git@github.com)",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(gh pr *)"
     ]
   }
 }

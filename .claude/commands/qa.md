@@ -13,6 +13,7 @@ Test coverage, bug discovery, and regression prevention. You make sure nothing b
   - `npm test` — run all tests once
   - `npm run test:watch` — re-run on file change
   - `npm run test:coverage` — with V8 coverage report
+  - **`npm run build`** — MUST pass before every commit/push. Vercel runs `tsc -b && vite build`, which is stricter than `npm test`. Errors that slip past `tsc --noEmit` (e.g. literal type comparisons: `const count = 1; count === 3`) will break the Vercel build while tests stay green — the deploy "succeeds" but ships the old code.
 
 ## Current test coverage
 | File | Tests | Areas |
@@ -21,7 +22,9 @@ Test coverage, bug discovery, and regression prevention. You make sure nothing b
 | `taxEstimation.test.ts` | 22 | IL brackets, BL/HT caps, credit points, contributions, foreign |
 | `savingsEngine.test.ts` | 22 | realistic/tight/unrealistic/blocked, liquid savings, edge cases |
 | `localAuth.test.ts` | 15 | signUp, signIn, sessions, invitations, migration |
-| **Total** | **75** | |
+| `cloudFinance.test.ts` | varies | mergeFinanceData, bootstrap seed, race-condition guard |
+| `members.test.ts` | 17 | role resolution, ownership guard, avatar initials, join date fallback |
+| **Total** | **75+** | |
 
 ## Rules
 - All 75 existing tests must pass before any commit
@@ -63,6 +66,10 @@ describe('functionName()', () => {
 - [ ] Sign in with email → correct data loaded
 - [ ] Google Sign-In button visible and clickable (requires domain in Google Console)
 - [ ] Invite flow: create invite → copy link → open in incognito → accept → joined household
+- [ ] **Cross-device member visibility (owner):** After a new member accepts an invite, owner refreshes → Members tab shows both users without logging out
+- [ ] **Cross-device member visibility (new member):** New member who joined via invite sees all other household members in the Members tab immediately (not just themselves)
+- [ ] **Data sync:** New member sees existing income/expense data after joining — not an empty slate
+- [ ] **Data sync (owner):** Owner's existing data appears on new member's device within seconds of joining
 - [ ] Hebrew RTL: toggle language → layout mirrors correctly, no overflow
 - [ ] Dark mode: toggle → all elements visible, no invisible text
 - [ ] Mobile (375px): no overflow, tap targets reachable, dialogs scrollable
@@ -77,4 +84,23 @@ describe('functionName()', () => {
 
 ---
 
-Now begin the QA task described by the user. Run `npm test` first to establish baseline, then write/fix tests as needed. Always report the final test count and pass/fail status.
+## TypeScript gotchas in test files
+These patterns compile under `tsc --noEmit` but **fail** `tsc -b` (Vercel build):
+```typescript
+// ❌ Literal type comparison — tsc -b error TS2367
+const count = 1        // inferred as literal type `1`
+count === 3            // TypeScript: this can never be true
+
+// ✅ Fix: annotate as number
+const count: number = 1
+count === 3            // OK
+
+// ❌ Nullish check on always-non-null — tsc -b error TS2871
+undefined as string | undefined  // type is `undefined`, always nullish
+
+// ✅ Fix: use optional property pattern
+const obj: { joinedAt?: string } = {}
+obj.joinedAt ?? fallback           // OK — property can be undefined
+```
+
+Now begin the QA task described by the user. Run `npm test` first, then `npm run build` to catch type errors that only surface in the strict build. Always report the final test count and pass/fail status.

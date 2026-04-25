@@ -45,10 +45,14 @@ function ExpenseDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {existing ? (
-          <Button variant="ghost" size="icon" className="h-7 w-7"><Edit2 className="h-3.5 w-3.5" /></Button>
+          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+            title={t('Edit expense', 'ערוך הוצאה', lang)}
+            aria-label={t('Edit expense', 'ערוך הוצאה', lang)}>
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
         ) : (
           <Button size="sm">
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="h-4 w-4 me-1" />
             {t('Add Expense', 'הוסף הוצאה', lang)}
           </Button>
         )}
@@ -161,7 +165,10 @@ export function Expenses() {
                         {formatCurrency(expense.amount, data.currency, data.locale)}{expense.period === 'yearly' ? '/yr' : '/mo'}
                       </span>
                       <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteExpense(expense.id)}>
+                      <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+                        onClick={() => deleteExpense(expense.id)}
+                        title={t('Delete expense', 'מחק הוצאה', lang)}
+                        aria-label={t('Delete expense', 'מחק הוצאה', lang)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>

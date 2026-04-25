@@ -60,7 +60,9 @@ export function Header() {
           </Button>
 
           {/* Dark mode toggle */}
-          <Button variant="ghost" size="icon" onClick={toggleDark}>
+          <Button variant="ghost" size="icon" onClick={toggleDark}
+            title={t('Toggle dark mode', 'החלף מצב לילה', lang)}
+            aria-label={t('Toggle dark mode', 'החלף מצב לילה', lang)}>
             {data.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
@@ -95,7 +97,7 @@ export function Header() {
                         <Users className="h-4 w-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-md">
+                    <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                           <Users className="h-5 w-5" />
@@ -110,7 +112,8 @@ export function Header() {
                 {/* Sign out */}
                 <Button
                   variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  title="Sign out"
+                  title={t('Sign out', 'התנתק', lang)}
+                  aria-label={t('Sign out', 'התנתק', lang)}
                   onClick={signOut}
                 >
                   <LogOut className="h-4 w-4" />
@@ -122,7 +125,11 @@ export function Header() {
           {/* Settings gear */}
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon"><Settings className="h-4 w-4" /></Button>
+              <Button variant="ghost" size="icon"
+                title={t('Settings', 'הגדרות', lang)}
+                aria-label={t('Settings', 'הגדרות', lang)}>
+                <Settings className="h-4 w-4" />
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>

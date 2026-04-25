@@ -61,4 +61,59 @@ Badge text:   text-xs font-medium
 
 ---
 
+## Established component patterns (reference implementations)
+
+### Avatar (Google photo or initials fallback)
+```tsx
+// Always show 44×44 minimum, use bg-primary/10 + text-primary for initials
+{user.avatar ? (
+  <img src={user.avatar} alt={user.name} className="h-11 w-11 rounded-full object-cover" />
+) : (
+  <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center">
+    <span className="text-sm font-semibold text-primary">{getInitials(user.name)}</span>
+  </div>
+)}
+```
+
+### Role badges
+```tsx
+// Owner: Crown icon + "Owner" in outline badge
+// Member: User icon + "Member" in secondary badge
+// Always icon + text + colour — never colour alone
+<Badge variant="outline" className="gap-1 text-xs">
+  <Crown className="h-3 w-3" />
+  {t('Owner', 'בעלים', lang)}
+</Badge>
+```
+
+### Remove button on member cards
+```tsx
+// Destructive ghost button, min 44px tap target, aria-label for a11y
+// Use ms-auto (not ml-auto) for RTL support
+// disabled:opacity-50 during async operation
+<Button
+  variant="ghost"
+  size="icon"
+  className="ms-auto min-h-[44px] min-w-[44px] text-destructive hover:bg-destructive/10 disabled:opacity-50"
+  aria-label={t('Remove member', 'הסר חבר', lang)}
+  onClick={() => handleRemove(member.id)}
+  disabled={removing}
+>
+  <UserMinus className="h-4 w-4" />
+</Button>
+```
+
+### Loading skeleton for async cloud data
+```tsx
+// Show while FinanceContext isLoading is true (new member fetching cloud data)
+function DataLoadingSkeleton({ lang }: { lang: 'en' | 'he' }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-20 text-muted-foreground">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="text-sm">{t('Loading household data…', 'טוען נתוני משק הבית…', lang)}</p>
+    </div>
+  )
+}
+```
+
 Now begin the UX task described by the user. Check the existing component for patterns, make your changes, and verify against the full pre-commit checklist above before finishing.

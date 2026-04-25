@@ -113,3 +113,34 @@ alter table public.user_profiles enable row level security;
 
 drop policy if exists "allow_all" on public.user_profiles;
 create policy "allow_all" on public.user_profiles for all using (true) with check (true);
+
+-- ── Helper: fetch household members with user profiles in a single JOIN ────────
+-- Eliminates the two-round-trip pattern in fetchHouseholdMembers().
+-- LEFT JOIN ensures members without a profile row are still returned.
+-- Run this in: Supabase Dashboard → SQL Editor → New query → Run
+
+create or replace function public.get_household_members_with_profiles(p_household_id text)
+returns table (
+  user_id    text,
+  role       text,
+  joined_at  timestamptz,
+  name       text,
+  email      text,
+  avatar     text
+)
+language sql stable
+as $$
+  select
+    hm.user_id,
+    hm.role,
+    hm.joined_at,
+    coalesce(up.name,  '')    as name,
+    coalesce(up.email, '')    as email,
+    up.avatar
+  from public.household_memberships hm
+  left join public.user_profiles up on up.id = hm.user_id
+  where hm.household_id = p_household_id
+$$;
+
+-- Grant execute to the anon role (needed for client-side supabase.rpc() calls)
+grant execute on function public.get_household_members_with_profiles(text) to anon;

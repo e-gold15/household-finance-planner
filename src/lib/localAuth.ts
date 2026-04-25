@@ -165,12 +165,24 @@ export function getSession(): AppSession | null {
       if (!user) return null
       return { userId: user.id, householdId: user.householdId }
     }
+    // Check for expiry (sessions without expiresAt are grandfathered as valid)
+    if (parsed.expiresAt && new Date(parsed.expiresAt) < new Date()) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
     return parsed as AppSession
   } catch { return null }
 }
 
+/** Sessions last 30 days from the last login. */
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
 export function persistSession(session: AppSession) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  const withExpiry: AppSession = {
+    ...session,
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(withExpiry))
 }
 
 export function clearSession() {

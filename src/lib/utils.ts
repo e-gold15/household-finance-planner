@@ -26,8 +26,13 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
+/**
+ * Generate a cryptographically random ID using the Web Crypto API.
+ * Uses crypto.randomUUID() — a v4 UUID with 122 bits of entropy.
+ * This is safe in all modern browsers and Node ≥ 14.17.
+ */
 export function generateId(): string {
-  return Math.random().toString(36).slice(2, 10)
+  return crypto.randomUUID()
 }
 
 export function monthsUntil(deadline: string): number {

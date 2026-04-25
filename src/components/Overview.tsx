@@ -7,10 +7,13 @@ import { getNetMonthly } from '@/lib/taxEstimation'
 import { formatCurrency, t } from '@/lib/utils'
 import type { ExpenseCategory } from '@/types'
 
+// Use CSS custom properties so chart colours respond to dark mode automatically.
+// Values are defined in src/index.css under :root and .dark selectors.
 const CHART_COLORS = [
-  'hsl(162,63%,41%)', 'hsl(199,89%,48%)', 'hsl(38,92%,50%)',
-  'hsl(280,65%,60%)', 'hsl(0,72%,51%)', 'hsl(142,71%,45%)',
-  'hsl(217,91%,60%)', 'hsl(25,95%,53%)', 'hsl(322,65%,55%)', 'hsl(174,72%,56%)',
+  'hsl(var(--chart-1))',  'hsl(var(--chart-2))',  'hsl(var(--chart-3))',
+  'hsl(var(--chart-4))',  'hsl(var(--chart-5))',  'hsl(var(--chart-6))',
+  'hsl(var(--chart-7))',  'hsl(var(--chart-8))',  'hsl(var(--chart-9))',
+  'hsl(var(--chart-10))',
 ]
 
 function KpiCard({
@@ -26,7 +29,7 @@ function KpiCard({
           <p className="text-xs text-muted-foreground">{label}</p>
           <p className="text-xl font-bold tracking-tight">{value}</p>
           {sub && (
-            <p className={`text-xs ${positive ? 'text-emerald-600' : 'text-destructive'}`}>{sub}</p>
+            <p className={`text-xs ${positive ? 'text-primary' : 'text-destructive'}`}>{sub}</p>
           )}
         </div>
       </CardContent>
