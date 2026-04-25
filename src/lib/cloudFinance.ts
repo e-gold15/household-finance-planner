@@ -15,6 +15,21 @@
 import { supabase, supabaseConfigured } from './supabase'
 import type { FinanceData } from '@/types'
 
+// Shared fallback shape — used by mergeFinanceData to fill in fields that may be
+// absent in cloud blobs written by an older version of the app.
+const FINANCE_DEFAULTS: FinanceData = {
+  members:               [],
+  expenses:              [],
+  accounts:              [],
+  goals:                 [],
+  history:               [],
+  emergencyBufferMonths: 3,
+  currency:              'ILS',
+  locale:                'he-IL',
+  darkMode:              false,
+  language:              'en',
+}
+
 // ─── Fetch ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -69,6 +84,8 @@ export async function pushCloudFinanceData(
  * Merge cloud data on top of local data.
  *
  * Strategy:
+ *   - Start from FINANCE_DEFAULTS so any field missing from an older cloud blob
+ *     (schema added after the blob was written) is filled with a safe default.
  *   - Cloud wins on ALL financial fields (members, expenses, accounts, goals, history,
  *     currency, locale, emergencyBufferMonths) so every household member sees the same
  *     numbers.
@@ -80,6 +97,9 @@ export async function pushCloudFinanceData(
  */
 export function mergeFinanceData(cloudData: FinanceData, localData: FinanceData): FinanceData {
   return {
+    // Fill any missing fields from an older schema version
+    ...FINANCE_DEFAULTS,
+    // Cloud wins on all financial fields
     ...cloudData,
     // Preserve per-device UI prefs — never overwrite from cloud
     darkMode: localData.darkMode,

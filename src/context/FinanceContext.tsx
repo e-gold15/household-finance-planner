@@ -76,29 +76,61 @@ const FinanceContext = createContext<FinanceContextType | null>(null)
 const CLOUD_PUSH_DEBOUNCE_MS = 1500
 
 export function FinanceProvider({ children, householdId }: { children: React.ReactNode; householdId: string }) {
-  const localData = load(householdId)
+  const initialLocal = load(householdId)
 
-  // Start loading only when Supabase is configured AND the local cache is empty
-  // (brand-new member on this device).  Existing users see their data instantly.
-  const [data, setDataState] = useState<FinanceData>(localData)
-  const [isLoading, setIsLoading]   = useState(supabaseConfigured && isLocalEmpty(localData))
-  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Show the loading spinner only when Supabase is configured AND local has no data.
+  // Existing users (non-empty local) see their data instantly; the cloud fetch patches
+  // silently in the background.
+  const [data, setDataState]     = useState<FinanceData>(initialLocal)
+  const [isLoading, setIsLoading] = useState(supabaseConfigured && isLocalEmpty(initialLocal))
+
+  // Ref tracks whether the user has written anything since mount.
+  // If true, the background cloud fetch must NOT overwrite their edits.
+  const hasLocalEditRef  = useRef(false)
+  const pushTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Cloud sync: fetch on mount ─────────────────────────────────────────────
-  // Always try to pull the latest shared data from Supabase.
-  // - If local cache is empty  → show loading spinner, block on fetch.
-  // - If local cache has data  → show it immediately, silently patch from cloud.
+  //
+  // Three possible outcomes after the cloud fetch resolves:
+  //
+  //   A) Cloud has data + user hasn't edited yet
+  //      → Merge cloud data into local (new-member scenario: gets shared data)
+  //
+  //   B) Cloud has no data + local has data
+  //      → Seed the cloud immediately (owner scenario: bootstraps sharing for the
+  //        first time, or after the household_finance table was added)
+  //
+  //   C) Cloud has no data + local is empty
+  //      → Genuine new household with no data yet; just clear the loading state
+  //
+  // The guard `!hasLocalEditRef.current` in case A prevents the cloud from
+  // overwriting an edit the user made before the network request came back.
   useEffect(() => {
     let cancelled = false
+    hasLocalEditRef.current = false   // reset on household switch
 
     fetchCloudFinanceData(householdId).then((cloudData) => {
       if (cancelled) return
+
       if (cloudData) {
-        const current = load(householdId) // read fresh in case setData ran concurrently
-        const merged  = mergeFinanceData(cloudData, current)
-        save(householdId, merged)
-        setDataState(merged)
+        // Case A: cloud has data — merge into local, but only if the user
+        // hasn't already started editing (race-condition guard).
+        if (!hasLocalEditRef.current) {
+          const current = load(householdId)
+          const merged  = mergeFinanceData(cloudData, current)
+          save(householdId, merged)
+          setDataState(merged)
+        }
+      } else {
+        // Case B: no cloud row yet — if local has data, seed the cloud now so
+        // that any household member who joins will immediately see it.
+        const current = load(householdId)
+        if (!isLocalEmpty(current)) {
+          pushCloudFinanceData(householdId, current) // immediate (no debounce)
+        }
+        // Case C falls through here: cloud empty + local empty → nothing to do.
       }
+
       setIsLoading(false)
     }).catch(() => {
       if (!cancelled) setIsLoading(false)
@@ -114,7 +146,11 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       const next = updater(prev)
       save(householdId, next)
 
-      // Debounce cloud push — clear any pending timer and schedule a new one
+      // Mark that the user has made a local edit — the background cloud fetch
+      // must not overwrite this if it resolves after this write.
+      hasLocalEditRef.current = true
+
+      // Debounce cloud push — cancel the previous timer and schedule a new one.
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
       pushTimerRef.current = setTimeout(() => {
         pushCloudFinanceData(householdId, next)
@@ -124,7 +160,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     })
   }, [householdId])
 
-  // Cleanup pending timer on unmount / household switch
+  // Cleanup pending push timer on unmount / household switch.
   useEffect(() => {
     return () => {
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)

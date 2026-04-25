@@ -29,8 +29,8 @@ function JoinedHouseholdBanner({ lang }: { lang: 'en' | 'he' }) {
         </p>
         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
           {t(
-            "This app is privacy-first — each partner's financial data is stored locally on their own device. You're starting with a clean slate. Add your own income and expenses to get started.",
-            'האפליקציה מאחסנת נתונים מקומית — לכל שותף יש נתוניו הפרטיים במכשיר שלו. אתה מתחיל עם דף ריק. הוסף את ההכנסות וההוצאות שלך כדי להתחיל.',
+            "Income, expenses, goals and savings are shared across all household members. Your display preferences (dark mode, language) stay personal to this device.",
+            'הכנסות, הוצאות, יעדים וחיסכון משותפים לכל חברי משק הבית. העדפות תצוגה (מצב כהה, שפה) נשמרות במכשיר שלך בלבד.',
             lang
           )}
         </p>
