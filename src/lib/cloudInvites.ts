@@ -6,7 +6,7 @@
 
 import { supabase, supabaseConfigured } from './supabase'
 import { generateId } from './utils'
-import type { InviteMethod, HouseholdInvite, CreatedHouseholdInvite } from '@/types'
+import type { LocalUser, InviteMethod, HouseholdInvite, CreatedHouseholdInvite } from '@/types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -330,5 +330,63 @@ export async function acceptHouseholdInvite(
   return {
     householdId:   row.household_id,
     householdName: household?.name ?? 'Shared Household',
+  }
+}
+
+// ─── User profiles ─────────────────────────────────────────────────────────
+// Public user info (name, email, avatar) is pushed to Supabase on every login
+// so that all household members can see each other across devices.
+// Sensitive fields (passwordHash) are never included.
+
+/**
+ * Push the current user's public profile to Supabase.
+ * Called once in afterAuth() so the record is always fresh.
+ * Silent no-op when Supabase is not configured.
+ */
+export async function syncUserProfile(user: LocalUser): Promise<void> {
+  if (!supabaseConfigured) return
+  await supabase
+    .from('user_profiles')
+    .upsert(
+      {
+        id:         user.id,
+        name:       user.name,
+        email:      user.email,
+        avatar:     user.avatar ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
+}
+
+/**
+ * Fetch the public profiles of every member of a household.
+ * Joins household_memberships → user_profiles to return only members of
+ * the given household.
+ * Returns [] when Supabase is not configured or on any error.
+ */
+export async function fetchHouseholdMemberProfiles(
+  householdId: string
+): Promise<Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]> {
+  if (!supabaseConfigured) return []
+  try {
+    // Fetch all user_ids in this household, then their profiles
+    const { data: memberships } = await supabase
+      .from('household_memberships')
+      .select('user_id')
+      .eq('household_id', householdId)
+
+    if (!memberships?.length) return []
+
+    const userIds = memberships.map((m: { user_id: string }) => m.user_id)
+
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, name, email, avatar')
+      .in('id', userIds)
+
+    return (profiles ?? []) as Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]
+  } catch {
+    return []
   }
 }

@@ -28,6 +28,8 @@ import {
   getHouseholdInvites,
   revokeHouseholdInvite,
   acceptHouseholdInvite,
+  syncUserProfile,
+  fetchHouseholdMemberProfiles,
 } from '@/lib/cloudInvites'
 import type { CloudInvitation } from '@/lib/cloudInvites'
 
@@ -127,14 +129,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // ── Shared helper: move a user into a joined household ───────────────────
-  function applyHouseholdJoin(authedUser: LocalUser, householdId: string, householdName: string) {
+  async function applyHouseholdJoin(authedUser: LocalUser, householdId: string, householdName: string) {
     const updatedUser = { ...authedUser, householdId }
     upsertUserPublic(updatedUser)
+
+    // Fetch all existing members' profiles from Supabase and store them
+    // locally so getMembers() can find them on this device.
+    const profiles = await fetchHouseholdMemberProfiles(householdId)
+    const memberships: import('@/types').HouseholdMembership[] = profiles.map((p) => ({
+      userId:   p.id,
+      role:     p.id === authedUser.id ? 'member' as const : 'member' as const,
+      joinedAt: new Date().toISOString(),
+    }))
+
+    // Ensure current user is always in the list
+    if (!memberships.find((m) => m.userId === authedUser.id)) {
+      memberships.push({ userId: authedUser.id, role: 'member', joinedAt: new Date().toISOString() })
+    }
+
+    // Store each member's LocalUser record locally so getUserById() works
+    profiles.forEach((p) => {
+      if (p.id !== authedUser.id) {
+        upsertUserPublic({
+          id:           p.id,
+          name:         p.name,
+          email:        p.email,
+          avatar:       p.avatar,
+          authProvider: 'google', // best guess — display only, not used for auth
+          householdId,
+          createdAt:    new Date().toISOString(),
+        })
+      }
+    })
+
     const sharedHousehold: Household = {
       id: householdId,
       name: householdName,
-      createdBy: '',
-      memberships: [{ userId: authedUser.id, role: 'member', joinedAt: new Date().toISOString() }],
+      createdBy: profiles.find((p) => p.id !== authedUser.id)?.id ?? '',
+      memberships,
       createdAt: new Date().toISOString(),
     }
     upsertHouseholdPublic(sharedHousehold)
@@ -151,6 +183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await syncHousehold(authedHousehold.id, authedHousehold.name, authedHousehold.createdBy)
     const role = authedHousehold.memberships.find((m) => m.userId === authedUser.id)?.role ?? 'member'
     await syncMembership(authedHousehold.id, authedUser.id, role)
+
+    // Sync this user's public profile so other household members can see them
+    await syncUserProfile(authedUser)
 
     // ── v2.1: Check for a pending raw token (?inv= captured by main.tsx) ───
     const invToken = localStorage.getItem(PENDING_INV_TOKEN_KEY)

@@ -95,3 +95,21 @@ alter table public.household_finance enable row level security;
 
 drop policy if exists "allow_all" on public.household_finance;
 create policy "allow_all" on public.household_finance for all using (true) with check (true);
+
+-- ── User profiles (public info synced on every login) ─────────────────────────
+-- Stores the public-facing info for every user so that household members can
+-- see each other's name / avatar even across devices.
+-- Sensitive fields (passwordHash) are NEVER written here — only public info.
+
+create table if not exists public.user_profiles (
+  id          text        primary key,
+  name        text        not null,
+  email       text        not null,
+  avatar      text,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.user_profiles enable row level security;
+
+drop policy if exists "allow_all" on public.user_profiles;
+create policy "allow_all" on public.user_profiles for all using (true) with check (true);
