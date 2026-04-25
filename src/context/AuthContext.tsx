@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import type { LocalUser, Household, Invitation, InviteMethod, HouseholdInvite, CreatedHouseholdInvite } from '@/types'
+import type { LocalUser, Household, HouseholdMembership, Invitation, InviteMethod, HouseholdInvite, CreatedHouseholdInvite } from '@/types'
 import {
   getSession, persistSession, clearSession,
   signUpEmail as localSignUpEmail,
@@ -30,6 +30,7 @@ import {
   acceptHouseholdInvite,
   syncUserProfile,
   fetchHouseholdMemberProfiles,
+  fetchHouseholdMembers,
 } from '@/lib/cloudInvites'
 import type { CloudInvitation } from '@/lib/cloudInvites'
 
@@ -85,6 +86,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [householdInvites, setHouseholdInvites] = useState<HouseholdInvite[]>([])
   const [justJoined, setJustJoined]             = useState(false)
 
+  // ── Shared: pull live member list from Supabase and update local state ───────
+  // Called on boot and after every login so every device always sees the
+  // current member list, not a stale local snapshot.
+  async function refreshMembersFromCloud(householdId: string, currentHousehold: Household) {
+    const cloudMembers = await fetchHouseholdMembers(householdId)
+    if (!cloudMembers.length) return
+
+    // Store each member's LocalUser record locally so getUserById() finds them
+    cloudMembers.forEach((m) => {
+      upsertUserPublic({
+        id:           m.userId,
+        name:         m.name,
+        email:        m.email,
+        avatar:       m.avatar,
+        authProvider: 'email',
+        householdId,
+        createdAt:    m.joinedAt,
+      })
+    })
+
+    // Rebuild memberships with correct roles from Supabase
+    const memberships: HouseholdMembership[] = cloudMembers.map((m) => ({
+      userId:   m.userId,
+      role:     m.role,
+      joinedAt: m.joinedAt,
+    }))
+
+    const updatedHousehold: Household = {
+      ...currentHousehold,
+      memberships,
+      createdBy: cloudMembers.find((m) => m.role === 'owner')?.userId ?? currentHousehold.createdBy,
+    }
+    upsertHouseholdPublic(updatedHousehold)
+    setHousehold(updatedHousehold)
+  }
+
   // ── Boot: migrate + restore session ──────────────────────────────────────
   useEffect(() => {
     migrateIfNeeded()
@@ -95,10 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u && h) {
         setUser(u)
         setHousehold(h)
+        // Refresh member list from cloud so the owner always sees new members
+        // who joined since their last visit, without needing to log out/in.
+        refreshMembersFromCloud(h.id, h)
       } else {
         clearSession()
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Load pending invites when household changes ───────────────────────────
@@ -136,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Fetch all existing members' profiles from Supabase and store them
     // locally so getMembers() can find them on this device.
     const profiles = await fetchHouseholdMemberProfiles(householdId)
-    const memberships: import('@/types').HouseholdMembership[] = profiles.map((p) => ({
+    const memberships: HouseholdMembership[] = profiles.map((p) => ({
       userId:   p.id,
       role:     p.id === authedUser.id ? 'member' as const : 'member' as const,
       joinedAt: new Date().toISOString(),
@@ -186,6 +227,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Sync this user's public profile so other household members can see them
     await syncUserProfile(authedUser)
+
+    // Pull the live member list so this device always shows everyone in the household
+    refreshMembersFromCloud(authedHousehold.id, authedHousehold)
 
     // ── v2.1: Check for a pending raw token (?inv= captured by main.tsx) ───
     const invToken = localStorage.getItem(PENDING_INV_TOKEN_KEY)

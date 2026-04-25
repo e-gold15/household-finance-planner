@@ -370,7 +370,6 @@ export async function fetchHouseholdMemberProfiles(
 ): Promise<Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]> {
   if (!supabaseConfigured) return []
   try {
-    // Fetch all user_ids in this household, then their profiles
     const { data: memberships } = await supabase
       .from('household_memberships')
       .select('user_id')
@@ -386,6 +385,65 @@ export async function fetchHouseholdMemberProfiles(
       .in('id', userIds)
 
     return (profiles ?? []) as Pick<LocalUser, 'id' | 'name' | 'email' | 'avatar'>[]
+  } catch {
+    return []
+  }
+}
+
+export interface CloudHouseholdMember {
+  userId:   string
+  role:     'owner' | 'member'
+  joinedAt: string
+  name:     string
+  email:    string
+  avatar?:  string
+}
+
+/**
+ * Fetch the full member list for a household — memberships (with roles) joined
+ * with user_profiles (name / email / avatar).
+ *
+ * Used to keep the owner's device in sync after a new member joins.
+ * Returns [] when Supabase is not configured, user_profiles table doesn't exist
+ * yet, or on any network error.
+ */
+export async function fetchHouseholdMembers(
+  householdId: string
+): Promise<CloudHouseholdMember[]> {
+  if (!supabaseConfigured) return []
+  try {
+    const { data: memberships } = await supabase
+      .from('household_memberships')
+      .select('user_id, role, joined_at')
+      .eq('household_id', householdId)
+
+    if (!memberships?.length) return []
+
+    const userIds = memberships.map((m: { user_id: string }) => m.user_id)
+
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, name, email, avatar')
+      .in('id', userIds)
+
+    const profileMap = new Map(
+      (profiles ?? []).map((p: { id: string; name: string; email: string; avatar?: string }) => [p.id, p])
+    )
+
+    const result: CloudHouseholdMember[] = []
+    for (const m of memberships as { user_id: string; role: string; joined_at: string }[]) {
+      const profile = profileMap.get(m.user_id)
+      if (!profile) continue
+      result.push({
+        userId:   m.user_id,
+        role:     m.role === 'owner' ? 'owner' : 'member',
+        joinedAt: m.joined_at,
+        name:     profile.name,
+        email:    profile.email,
+        avatar:   profile.avatar ?? undefined,
+      })
+    }
+    return result
   } catch {
     return []
   }
