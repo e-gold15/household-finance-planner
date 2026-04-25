@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot } from '@/types'
 import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
+import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
+import { supabaseConfigured } from '@/lib/supabase'
 
 const defaultData: FinanceData = {
   members: [],
@@ -30,8 +32,25 @@ function save(householdId: string, data: FinanceData) {
   localStorage.setItem(storageKey(householdId), JSON.stringify(data))
 }
 
+/** True when localStorage has nothing beyond the defaults — i.e. a brand-new member on this device. */
+function isLocalEmpty(data: FinanceData): boolean {
+  return (
+    data.members.length === 0 &&
+    data.expenses.length === 0 &&
+    data.accounts.length === 0 &&
+    data.goals.length === 0 &&
+    data.history.length === 0
+  )
+}
+
 interface FinanceContextType {
   data: FinanceData
+  /**
+   * True while the initial cloud fetch is in-flight for a new member whose local
+   * cache is empty.  Components should render a skeleton/spinner instead of an
+   * empty-state UI while this is true.
+   */
+  isLoading: boolean
   setData: (updater: (prev: FinanceData) => FinanceData) => void
   addMember: (name: string) => void
   updateMember: (member: HouseholdMember) => void
@@ -53,16 +72,66 @@ interface FinanceContextType {
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
 
-export function FinanceProvider({ children, householdId }: { children: React.ReactNode; householdId: string }) {
-  const [data, setDataState] = useState<FinanceData>(() => load(householdId))
+// Cloud push debounce interval — short enough to feel live, long enough not to spam Supabase.
+const CLOUD_PUSH_DEBOUNCE_MS = 1500
 
+export function FinanceProvider({ children, householdId }: { children: React.ReactNode; householdId: string }) {
+  const localData = load(householdId)
+
+  // Start loading only when Supabase is configured AND the local cache is empty
+  // (brand-new member on this device).  Existing users see their data instantly.
+  const [data, setDataState] = useState<FinanceData>(localData)
+  const [isLoading, setIsLoading]   = useState(supabaseConfigured && isLocalEmpty(localData))
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Cloud sync: fetch on mount ─────────────────────────────────────────────
+  // Always try to pull the latest shared data from Supabase.
+  // - If local cache is empty  → show loading spinner, block on fetch.
+  // - If local cache has data  → show it immediately, silently patch from cloud.
+  useEffect(() => {
+    let cancelled = false
+
+    fetchCloudFinanceData(householdId).then((cloudData) => {
+      if (cancelled) return
+      if (cloudData) {
+        const current = load(householdId) // read fresh in case setData ran concurrently
+        const merged  = mergeFinanceData(cloudData, current)
+        save(householdId, merged)
+        setDataState(merged)
+      }
+      setIsLoading(false)
+    }).catch(() => {
+      if (!cancelled) setIsLoading(false)
+    })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId])
+
+  // ── Writes: localStorage immediately, cloud debounced ─────────────────────
   const setData = useCallback((updater: (prev: FinanceData) => FinanceData) => {
     setDataState((prev) => {
       const next = updater(prev)
       save(householdId, next)
+
+      // Debounce cloud push — clear any pending timer and schedule a new one
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+      pushTimerRef.current = setTimeout(() => {
+        pushCloudFinanceData(householdId, next)
+      }, CLOUD_PUSH_DEBOUNCE_MS)
+
       return next
     })
   }, [householdId])
+
+  // Cleanup pending timer on unmount / household switch
+  useEffect(() => {
+    return () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
+    }
+  }, [householdId])
+
+  // ── Domain helpers ─────────────────────────────────────────────────────────
 
   const addMember = (name: string) =>
     setData((d) => ({ ...d, members: [...d.members, { id: generateId(), name, sources: [] }] }))
@@ -140,7 +209,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
   return (
     <FinanceContext.Provider value={{
-      data, setData,
+      data, isLoading, setData,
       addMember, updateMember, deleteMember,
       addExpense, updateExpense, deleteExpense,
       addAccount, updateAccount, deleteAccount,

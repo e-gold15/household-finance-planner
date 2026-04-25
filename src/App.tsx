@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2 } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -57,8 +57,21 @@ const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
   { id: 'history',   icon: History,          en: 'History',   he: 'היסטוריה' },
 ]
 
+// ─── Loading skeleton (shown while fetching shared data from cloud) ────────────
+
+function DataLoadingSkeleton({ lang }: { lang: 'en' | 'he' }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 py-20 text-muted-foreground">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="text-sm">
+        {t('Loading household data…', 'טוען נתוני משק הבית…', lang)}
+      </p>
+    </div>
+  )
+}
+
 function AppShell() {
-  const { data } = useFinance()
+  const { data, isLoading } = useFinance()
   const { justJoined } = useAuth()
   const [tab, setTab] = useState<Tab>('overview')
   const lang = data.language
@@ -94,12 +107,16 @@ function AppShell() {
 
         <h1 className="sr-only">{t('Household Finance Planner', 'מתכנן פיננסי ביתי', lang)}</h1>
 
-        {tab === 'overview'  && <Overview />}
-        {tab === 'income'    && <Income />}
-        {tab === 'expenses'  && <Expenses />}
-        {tab === 'savings'   && <Savings />}
-        {tab === 'goals'     && <Goals />}
-        {tab === 'history'   && <HistoryTab />}
+        {isLoading ? <DataLoadingSkeleton lang={lang} /> : (
+          <>
+            {tab === 'overview'  && <Overview />}
+            {tab === 'income'    && <Income />}
+            {tab === 'expenses'  && <Expenses />}
+            {tab === 'savings'   && <Savings />}
+            {tab === 'goals'     && <Goals />}
+            {tab === 'history'   && <HistoryTab />}
+          </>
+        )}
       </main>
       <Toaster position="bottom-right" />
     </div>

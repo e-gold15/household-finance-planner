@@ -76,3 +76,22 @@ alter table public.household_invites enable row level security;
 
 drop policy if exists "allow_all" on public.household_invites;
 create policy "allow_all" on public.household_invites for all using (true) with check (true);
+
+-- ── Household finance data (shared cloud store for multi-member access) ────────
+-- Stores the full FinanceData JSON blob per household.
+-- Every member can read and write — last write wins (client debounces at 1.5 s).
+-- localStorage remains the primary store; this table is the sync / hand-off layer.
+-- When a new member joins they pull this row so they start with real household data
+-- instead of an empty slate.  Dark-mode and language prefs are NOT synced — those
+-- are per-device and are restored from localStorage after the cloud merge.
+
+create table if not exists public.household_finance (
+  household_id  text        primary key references public.households(id) on delete cascade,
+  data          jsonb       not null default '{}'::jsonb,
+  updated_at    timestamptz not null default now()
+);
+
+alter table public.household_finance enable row level security;
+
+drop policy if exists "allow_all" on public.household_finance;
+create policy "allow_all" on public.household_finance for all using (true) with check (true);
