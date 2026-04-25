@@ -17,6 +17,7 @@ import type { FinanceData } from '@/types'
 
 // Shared fallback shape — used by mergeFinanceData to fill in fields that may be
 // absent in cloud blobs written by an older version of the app.
+// historicalExpenses is optional on MonthSnapshot — old cloud blobs without it are safe (accessed via ?? [] in UI)
 const FINANCE_DEFAULTS: FinanceData = {
   members:               [],
   expenses:              [],
