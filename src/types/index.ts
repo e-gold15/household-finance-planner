@@ -52,6 +52,17 @@ export interface Expense {
   category: ExpenseCategory
   recurring: boolean
   period: 'monthly' | 'yearly'
+  /**
+   * 'fixed'    = same amount every month (rent, mortgage, subscriptions, insurance).
+   * 'variable' = amount changes month to month (food, entertainment, utilities).
+   * Optional for backward compat — treat undefined as 'fixed'.
+   */
+  expenseType?: 'fixed' | 'variable'
+  /**
+   * For yearly expenses: which calendar month the bill is due (1 = Jan … 12 = Dec).
+   * Used to show due-date countdown and annual smoothing display.
+   */
+  dueMonth?: number
 }
 
 export type AccountType =
@@ -106,6 +117,12 @@ export interface MonthSnapshot {
   totalExpenses: number
   totalSavings: number
   freeCashFlow: number
+  /**
+   * Actual spending per category recorded after the month ends.
+   * Pre-populated from planned amounts at snapshot time; editable retroactively.
+   * Powers the month-over-month Δ comparison in the Expenses tab.
+   */
+  categoryActuals?: Partial<Record<ExpenseCategory, number>>
 }
 
 export interface FinanceData {
@@ -119,6 +136,8 @@ export interface FinanceData {
   locale: Locale
   darkMode: boolean
   language: 'en' | 'he'
+  /** Monthly spending limit per category. Powers the budget progress bars in the Expenses tab. */
+  categoryBudgets: Partial<Record<ExpenseCategory, number>>
 }
 
 // ─── Auth / Household types ────────────────────────────────────────────────

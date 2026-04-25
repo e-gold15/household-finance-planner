@@ -1,30 +1,48 @@
-import { useState } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2 } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Badge } from './ui/badge'
+import { Progress } from './ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
+import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
 import type { Expense, ExpenseCategory } from '@/types'
 
-const CATEGORIES: { value: ExpenseCategory; en: string; he: string }[] = [
-  { value: 'housing', en: 'Housing', he: 'דיור' },
-  { value: 'food', en: 'Food', he: 'מזון' },
-  { value: 'transport', en: 'Transport', he: 'תחבורה' },
-  { value: 'education', en: 'Education', he: 'חינוך' },
-  { value: 'leisure', en: 'Leisure', he: 'פנאי' },
-  { value: 'health', en: 'Health', he: 'בריאות' },
-  { value: 'utilities', en: 'Utilities', he: 'שירותים' },
-  { value: 'clothing', en: 'Clothing', he: 'ביגוד' },
-  { value: 'insurance', en: 'Insurance', he: 'ביטוח' },
-  { value: 'savings', en: 'Savings', he: 'חיסכון' },
-  { value: 'other', en: 'Other', he: 'אחר' },
+const MONTHS: { value: number; en: string; he: string }[] = [
+  { value: 1,  en: 'January',   he: 'ינואר' },
+  { value: 2,  en: 'February',  he: 'פברואר' },
+  { value: 3,  en: 'March',     he: 'מרץ' },
+  { value: 4,  en: 'April',     he: 'אפריל' },
+  { value: 5,  en: 'May',       he: 'מאי' },
+  { value: 6,  en: 'June',      he: 'יוני' },
+  { value: 7,  en: 'July',      he: 'יולי' },
+  { value: 8,  en: 'August',    he: 'אוגוסט' },
+  { value: 9,  en: 'September', he: 'ספטמבר' },
+  { value: 10, en: 'October',   he: 'אוקטובר' },
+  { value: 11, en: 'November',  he: 'נובמבר' },
+  { value: 12, en: 'December',  he: 'דצמבר' },
 ]
+
+function monthName(m: number, lang: 'en' | 'he'): string {
+  const found = MONTHS.find((x) => x.value === m)
+  return found ? (lang === 'he' ? found.he : found.en) : ''
+}
+
+/** Months until the next occurrence of a due month (0 = this month). */
+function monthsUntilDue(dueMonth: number): number {
+  const current = new Date().getMonth() + 1
+  if (dueMonth === current) return 0
+  if (dueMonth > current) return dueMonth - current
+  return 12 - current + dueMonth
+}
+
+// ── ExpenseDialog ─────────────────────────────────────────────────────────────
 
 function ExpenseDialog({
   existing,
@@ -37,12 +55,25 @@ function ExpenseDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<Expense>(
-    existing ?? { id: generateId(), name: '', amount: 0, category: 'other', recurring: true, period: 'monthly' }
+    existing ?? {
+      id: generateId(),
+      name: '',
+      amount: 0,
+      category: 'other',
+      recurring: true,
+      period: 'monthly',
+      expenseType: 'fixed',
+    }
   )
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  const handleOpen = (o: boolean) => {
+    if (o && existing) setForm(existing)
+    setOpen(o)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
         {existing ? (
           <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
@@ -57,15 +88,25 @@ function ExpenseDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}</DialogTitle>
+          <DialogTitle>
+            {existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 mt-2">
+
+          {/* Name */}
           <div>
             <Label>{t('Name', 'שם', lang)}</Label>
-            <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Rent', 'למשל: שכ"ד', lang)} />
+            <Input
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              placeholder={t('e.g. Rent', 'למשל: שכ"ד', lang)}
+            />
           </div>
+
+          {/* Amount + Period */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>{t('Amount', 'סכום', lang)}</Label>
@@ -82,6 +123,28 @@ function ExpenseDialog({
               </Select>
             </div>
           </div>
+
+          {/* Due month — only for yearly expenses */}
+          {form.period === 'yearly' && (
+            <div>
+              <Label>{t('Due Month', 'חודש תשלום', lang)}</Label>
+              <Select
+                value={form.dueMonth?.toString() ?? ''}
+                onValueChange={(v) => set('dueMonth', v ? +v : undefined)}
+              >
+                <SelectTrigger><SelectValue placeholder={t('Select month…', 'בחר חודש…', lang)} /></SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((m) => (
+                    <SelectItem key={m.value} value={m.value.toString()}>
+                      {lang === 'he' ? m.he : m.en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Category */}
           <div>
             <Label>{t('Category', 'קטגוריה', lang)}</Label>
             <Select value={form.category} onValueChange={(v) => set('category', v as ExpenseCategory)}>
@@ -93,10 +156,50 @@ function ExpenseDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Fixed vs Variable — segmented toggle */}
+          <div>
+            <Label className="mb-2 block">{t('Expense Type', 'סוג הוצאה', lang)}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => set('expenseType', 'fixed')}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  (form.expenseType ?? 'fixed') === 'fixed'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                {t('Fixed', 'קבוע', lang)}
+              </button>
+              <button
+                type="button"
+                onClick={() => set('expenseType', 'variable')}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  form.expenseType === 'variable'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Waves className="h-3.5 w-3.5" />
+                {t('Variable', 'משתנה', lang)}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {(form.expenseType ?? 'fixed') === 'fixed'
+                ? t('Same amount every month — rent, subscriptions, insurance', 'אותו סכום כל חודש — שכ"ד, מנויים, ביטוח', lang)
+                : t('Amount changes month to month — food, dining, entertainment', 'הסכום משתנה — מזון, בילויים, בידור', lang)
+              }
+            </p>
+          </div>
+
+          {/* Recurring */}
           <div className="flex items-center gap-3">
             <Switch checked={form.recurring} onCheckedChange={(v) => set('recurring', v)} />
             <Label>{t('Recurring expense', 'הוצאה קבועה', lang)}</Label>
           </div>
+
           <Button className="w-full" onClick={() => { onSave(form); setOpen(false) }}>
             {t('Save', 'שמור', lang)}
           </Button>
@@ -106,28 +209,177 @@ function ExpenseDialog({
   )
 }
 
+// ── BudgetEditor — inline budget limit per category ──────────────────────────
+
+function BudgetEditor({
+  category,
+  lang,
+}: {
+  category: ExpenseCategory
+  lang: 'en' | 'he'
+}) {
+  const { data, updateCategoryBudget } = useFinance()
+  const budget = data.categoryBudgets[category]
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+
+  const startEdit = () => {
+    setValue(budget?.toString() ?? '')
+    setEditing(true)
+  }
+
+  const commit = () => {
+    const n = parseFloat(value)
+    updateCategoryBudget(category, isNaN(n) || n <= 0 ? undefined : n)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false) }}
+        className="w-24 text-xs border border-input rounded px-1.5 py-0.5 bg-background"
+        autoFocus
+        aria-label={t('Monthly budget limit', 'תקציב חודשי', lang)}
+      />
+    )
+  }
+
+  return (
+    <button
+      onClick={startEdit}
+      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+      title={t('Click to set budget limit', 'לחץ להגדרת תקציב', lang)}
+      aria-label={budget
+        ? t('Edit budget limit', 'ערוך תקציב', lang)
+        : t('Set budget limit', 'הגדר תקציב', lang)
+      }
+    >
+      {budget
+        ? `${t('Budget:', 'תקציב:', lang)} ${formatCurrency(budget, data.currency, data.locale)}`
+        : t('+ Set budget', '+ הגדר תקציב', lang)
+      }
+    </button>
+  )
+}
+
+// ── Main Expenses component ───────────────────────────────────────────────────
+
 export function Expenses() {
   const { data, addExpense, updateExpense, deleteExpense } = useFinance()
   const lang = data.language
+  const [comparing, setComparing] = useState(false)
 
-  const grouped = CATEGORIES.reduce<Record<ExpenseCategory, Expense[]>>((acc, cat) => {
-    acc[cat.value] = data.expenses.filter((e) => e.category === cat.value)
-    return acc
-  }, {} as Record<ExpenseCategory, Expense[]>)
+  // Stable current month value — avoids stale-capture if the tab is left open overnight
+  const currentMonth = useMemo(() => new Date().getMonth() + 1, [])
 
   const monthly = (e: Expense) => (e.period === 'yearly' ? e.amount / 12 : e.amount)
-  const total = data.expenses.reduce((s, e) => s + monthly(e), 0)
+
+  // Group expenses by category
+  const grouped = useMemo(() =>
+    CATEGORIES.reduce<Record<ExpenseCategory, Expense[]>>((acc, cat) => {
+      acc[cat.value] = data.expenses.filter((e) => e.category === cat.value)
+      return acc
+    }, {} as Record<ExpenseCategory, Expense[]>),
+    [data.expenses]
+  )
+
+  // Fixed vs variable totals (treat undefined expenseType as 'fixed')
+  const fixedTotal = useMemo(
+    () => data.expenses.filter((e) => (e.expenseType ?? 'fixed') === 'fixed').reduce((s, e) => s + monthly(e), 0),
+    [data.expenses]
+  )
+  const variableTotal = useMemo(
+    () => data.expenses.filter((e) => e.expenseType === 'variable').reduce((s, e) => s + monthly(e), 0),
+    [data.expenses]
+  )
+  const total = fixedTotal + variableTotal
+
+  // Last snapshot for month-over-month comparison
+  const lastSnapshot = useMemo(
+    () => data.history.length > 0
+      ? [...data.history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+      : null,
+    [data.history]
+  )
+
+  // Annual expenses due this month
+  const dueThisMonth = useMemo(
+    () => data.expenses.filter((e) => e.period === 'yearly' && e.dueMonth === currentMonth),
+    [data.expenses, currentMonth]
+  )
+
+  const getDelta = (category: ExpenseCategory, currentTotal: number): number | null => {
+    if (!comparing || !lastSnapshot?.categoryActuals) return null
+    const last = lastSnapshot.categoryActuals[category] ?? 0
+    return currentTotal - last
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t('Total monthly:', 'סה"כ חודשי:', lang)}{' '}
-          <span className="font-semibold text-destructive">{formatCurrency(total, data.currency, data.locale)}</span>
-        </p>
-        <ExpenseDialog onSave={(e) => addExpense(e)} lang={lang} />
+
+      {/* Header: totals + compare toggle + add button */}
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="space-y-0.5">
+          <p className="text-sm text-muted-foreground">
+            {t('Total monthly:', 'סה"כ חודשי:', lang)}{' '}
+            <span className="font-semibold text-destructive">{formatCurrency(total, data.currency, data.locale)}</span>
+          </p>
+          {data.expenses.length > 0 && (
+            <div className="flex gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                {t('Fixed:', 'קבוע:', lang)} <span className="font-medium text-foreground">{formatCurrency(fixedTotal, data.currency, data.locale)}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <Waves className="h-3 w-3" />
+                {t('Variable:', 'משתנה:', lang)} <span className="font-medium text-foreground">{formatCurrency(variableTotal, data.currency, data.locale)}</span>
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {lastSnapshot && (
+            <Button
+              variant={comparing ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setComparing((v) => !v)}
+              title={t('Compare to last month', 'השווה לחודש קודם', lang)}
+              aria-label={t('Compare to last month', 'השווה לחודש קודם', lang)}
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5 me-1" />
+              {t('Compare', 'השווה', lang)}
+            </Button>
+          )}
+          <ExpenseDialog onSave={(e) => addExpense(e)} lang={lang} />
+        </div>
       </div>
 
+      {/* Compare context label */}
+      {comparing && lastSnapshot && (
+        <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+          {t(`Comparing to: ${lastSnapshot.label}`, `משווה ל: ${lastSnapshot.label}`, lang)}
+        </p>
+      )}
+
+      {/* Annual bills due this month */}
+      {dueThisMonth.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">{t('Annual bills due this month:', 'חיובים שנתיים החודש:', lang)}</p>
+            <p className="text-xs mt-0.5">
+              {dueThisMonth.map((e) => `${e.name} (${formatCurrency(e.amount, data.currency, data.locale)})`).join(' · ')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
       {data.expenses.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
           <ShoppingCart className="h-10 w-10" />
@@ -136,44 +388,132 @@ export function Expenses() {
       ) : (
         CATEGORIES.filter((cat) => grouped[cat.value].length > 0).map((cat) => {
           const catTotal = grouped[cat.value].reduce((s, e) => s + monthly(e), 0)
+          const budget = data.categoryBudgets[cat.value]
+          const budgetPct = budget ? Math.min(100, (catTotal / budget) * 100) : null
+          const delta = getDelta(cat.value, catTotal)
+
+          const budgetColor =
+            budgetPct === null ? '' :
+            budgetPct >= 100 ? 'bg-destructive' :
+            budgetPct >= 80  ? 'bg-[hsl(var(--chart-3))]' :
+            'bg-primary'
+
           return (
             <Card key={cat.value}>
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">{lang === 'he' ? cat.he : cat.en}</CardTitle>
-                  <Badge variant="outline">{formatCurrency(catTotal, data.currency, data.locale)}/mo</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {grouped[cat.value].map((expense) => (
-                  <div key={expense.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
-                    <div>
-                      <p className="text-sm font-medium">{expense.name}</p>
-                      <div className="flex gap-1.5 mt-0.5">
-                        <Badge variant={expense.recurring ? 'secondary' : 'outline'} className="text-xs py-0">
-                          {expense.recurring ? t('Recurring', 'קבוע', lang) : t('One-time', 'חד פעמי', lang)}
-                        </Badge>
-                        {expense.period === 'yearly' && (
-                          <Badge variant="outline" className="text-xs py-0">
-                            {formatCurrency(expense.amount / 12, data.currency, data.locale)}/mo
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm font-semibold tabular-nums">
-                        {formatCurrency(expense.amount, data.currency, data.locale)}{expense.period === 'yearly' ? '/yr' : '/mo'}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <CardTitle className="text-sm">{lang === 'he' ? cat.he : cat.en}</CardTitle>
+                    {/* Month-over-month delta badge */}
+                    {delta !== null && (
+                      <span className={`text-xs font-medium flex items-center gap-0.5 ${
+                        delta > 0 ? 'text-destructive' : delta < 0 ? 'text-primary' : 'text-muted-foreground'
+                      }`}>
+                        {delta > 0 ? '▲' : delta < 0 ? '▼' : '='}{' '}
+                        {delta !== 0 && formatCurrency(Math.abs(delta), data.currency, data.locale)}
+                        {delta === 0 && t('unchanged', 'ללא שינוי', lang)}
                       </span>
-                      <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
-                      <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
-                        onClick={() => deleteExpense(expense.id)}
-                        title={t('Delete expense', 'מחק הוצאה', lang)}
-                        aria-label={t('Delete expense', 'מחק הוצאה', lang)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <BudgetEditor category={cat.value} lang={lang} />
+                    <Badge variant="outline">{formatCurrency(catTotal, data.currency, data.locale)}/mo</Badge>
+                  </div>
+                </div>
+
+                {/* Budget progress bar */}
+                {budgetPct !== null && (
+                  <div className="mt-2 space-y-1">
+                    <Progress
+                      value={budgetPct}
+                      indicatorClassName={budgetColor}
+                      aria-label={`${lang === 'he' ? cat.he : cat.en} ${t('budget', 'תקציב', lang)} ${budgetPct.toFixed(0)}%`}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{budgetPct.toFixed(0)}% {t('used', 'בשימוש', lang)}</span>
+                      {budget && catTotal > budget && (
+                        <span className="text-destructive font-medium">
+                          {formatCurrency(catTotal - budget, data.currency, data.locale)} {t('over budget', 'מעל התקציב', lang)}
+                        </span>
+                      )}
+                      {budget && catTotal <= budget && (
+                        <span className="text-primary">
+                          {formatCurrency(budget - catTotal, data.currency, data.locale)} {t('remaining', 'נותר', lang)}
+                        </span>
+                      )}
                     </div>
                   </div>
-                ))}
+                )}
+              </CardHeader>
+
+              <CardContent className="space-y-0">
+                {grouped[cat.value].map((expense) => {
+                  const isFixed = (expense.expenseType ?? 'fixed') === 'fixed'
+                  const dueIn = expense.period === 'yearly' && expense.dueMonth != null
+                    ? monthsUntilDue(expense.dueMonth)
+                    : null
+
+                  return (
+                    <div key={expense.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-sm font-medium">{expense.name}</p>
+                          {/* Fixed / Variable badge */}
+                          <Badge
+                            variant={isFixed ? 'secondary' : 'outline'}
+                            className="text-xs py-0 flex items-center gap-0.5"
+                          >
+                            {isFixed
+                              ? <><Lock className="h-2.5 w-2.5" />{t('Fixed', 'קבוע', lang)}</>
+                              : <><Waves className="h-2.5 w-2.5" />{t('Variable', 'משתנה', lang)}</>
+                            }
+                          </Badge>
+                        </div>
+
+                        {/* Annual smoothing row */}
+                        {expense.period === 'yearly' && (
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            <Badge variant="outline" className="text-xs py-0">
+                              {formatCurrency(expense.amount / 12, data.currency, data.locale)}/mo
+                            </Badge>
+                            {expense.dueMonth != null && (
+                              <span className={`text-xs flex items-center gap-0.5 ${
+                                dueIn === 0 ? 'text-destructive font-medium' :
+                                dueIn != null && dueIn <= 2 ? 'text-[hsl(var(--chart-3))]' :
+                                'text-muted-foreground'
+                              }`}>
+                                <CalendarDays className="h-3 w-3" />
+                                {dueIn === 0
+                                  ? t('Due this month!', 'פג החודש!', lang)
+                                  : dueIn === 1
+                                  ? t(`Due next month (${monthName(expense.dueMonth, lang)})`, `פג בחודש הבא (${monthName(expense.dueMonth, lang)})`, lang)
+                                  : t(`Due in ${dueIn}mo (${monthName(expense.dueMonth, lang)})`, `פג בעוד ${dueIn} חודשים (${monthName(expense.dueMonth, lang)})`, lang)
+                                }
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-sm font-semibold tabular-nums">
+                          {formatCurrency(expense.amount, data.currency, data.locale)}
+                          {expense.period === 'yearly' ? '/yr' : '/mo'}
+                        </span>
+                        <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
+                        <Button
+                          variant="ghost" size="icon"
+                          className="min-h-[44px] min-w-[44px] text-destructive"
+                          onClick={() => deleteExpense(expense.id)}
+                          title={t('Delete expense', 'מחק הוצאה', lang)}
+                          aria-label={t('Delete expense', 'מחק הוצאה', lang)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
               </CardContent>
             </Card>
           )

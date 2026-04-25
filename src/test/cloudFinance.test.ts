@@ -31,6 +31,7 @@ const defaultData: FinanceData = {
   locale: 'he-IL',
   darkMode: false,
   language: 'en',
+  categoryBudgets: {},
 }
 
 const ownerData: FinanceData = {
@@ -263,6 +264,7 @@ describe('Bootstrap seed — isLocalEmpty() gate', () => {
     const empty: FinanceData = {
       members: [], expenses: [], accounts: [], goals: [], history: [],
       emergencyBufferMonths: 3, currency: 'ILS', locale: 'he-IL', darkMode: false, language: 'en',
+      categoryBudgets: {},
     }
     // The FinanceContext uses isLocalEmpty() to decide whether to show loading.
     // Verify the shape it guards against.

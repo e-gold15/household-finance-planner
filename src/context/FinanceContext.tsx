@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot } from '@/types'
+import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory } from '@/types'
 import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
@@ -16,6 +16,7 @@ const defaultData: FinanceData = {
   locale: 'he-IL',
   darkMode: false,
   language: 'en',
+  categoryBudgets: {},
 }
 
 function storageKey(householdId: string) { return `hf-data-${householdId}` }
@@ -68,6 +69,10 @@ interface FinanceContextType {
   snapshotMonth: () => void
   exportData: () => void
   importData: (json: string) => void
+  /** Set or clear the monthly budget limit for a category. Pass undefined to remove the limit. */
+  updateCategoryBudget: (category: ExpenseCategory, budget: number | undefined) => void
+  /** Record what was actually spent per category in a past snapshot. */
+  updateSnapshotActuals: (snapshotId: string, actuals: Partial<Record<ExpenseCategory, number>>) => void
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
@@ -221,14 +226,38 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
       const totalSavings  = d.accounts.reduce((s, a) => s + a.monthlyContribution, 0)
       const label         = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+      // Pre-populate category actuals with planned amounts at snapshot time.
+      // Users can edit these retroactively in the History tab after the month ends.
+      const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+      d.expenses.forEach((e) => {
+        const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+        categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+      })
+
       const snapshot: MonthSnapshot = {
         id: generateId(), label,
         date: new Date().toISOString(),
         totalIncome, totalExpenses, totalSavings,
         freeCashFlow: totalIncome - totalExpenses - totalSavings,
+        categoryActuals,
       }
       return { ...d, history: [...d.history, snapshot] }
     })
+
+  const updateCategoryBudget = (category: ExpenseCategory, budget: number | undefined) =>
+    setData((d) => {
+      const next = { ...d.categoryBudgets }
+      if (budget === undefined || budget <= 0) delete next[category]
+      else next[category] = budget
+      return { ...d, categoryBudgets: next }
+    })
+
+  const updateSnapshotActuals = (snapshotId: string, actuals: Partial<Record<ExpenseCategory, number>>) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) => h.id === snapshotId ? { ...h, categoryActuals: actuals } : h),
+    }))
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -272,6 +301,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addAccount, updateAccount, deleteAccount,
       addGoal, updateGoal, deleteGoal, moveGoal,
       snapshotMonth, exportData, importData,
+      updateCategoryBudget, updateSnapshotActuals,
     }}>
       {children}
     </FinanceContext.Provider>

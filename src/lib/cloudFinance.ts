@@ -28,6 +28,7 @@ const FINANCE_DEFAULTS: FinanceData = {
   locale:                'he-IL',
   darkMode:              false,
   language:              'en',
+  categoryBudgets:       {},
 }
 
 // ─── Fetch ─────────────────────────────────────────────────────────────────────
