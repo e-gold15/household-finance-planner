@@ -685,8 +685,318 @@ On invite accept:
 
 ---
 
-*Document version: 2.3-draft — reflects app state as of April 2026*
-*Previous version: 2.0 (v2.2 shipped: F1–F5 expense intelligence features)*
+*Document version: 2.4-draft — reflects app state as of April 2026*
+*Previous version: 2.3 (Historical Expense Entry on snapshots in History tab)*
+
+---
+
+## 23. Feature Spec: Add Expense to Past Month from Expenses Tab (v2.4)
+
+### 23.1 Problem
+
+**User pain:** A user is on the Expenses tab and remembers they paid ₪2,800 for a dentist visit last March. The natural action is to click "Add Expense" right there — but today that only adds items to the *current ongoing budget*, not to a past month. The workaround (go to History → find the snapshot → click "Add Expense to March 2026") requires navigating away and finding the right card.
+
+**Why not just use the History tab flow (v2.3)?** The Expenses tab is where users spend most of their time. Switching tabs to log something they just thought of breaks their flow. The entry point should be where the thought occurs.
+
+**Who is affected:** All personas — anyone who realises mid-session that a past expense wasn't recorded.
+
+---
+
+### 23.2 Solution Overview
+
+Extend the existing "Add Expense" dialog in the Expenses tab with a **month selector**. By default it behaves exactly as today ("Current budget"). When the user switches to "Past month", a month/year picker appears and the expense is saved as a `HistoricalExpense` on that month's snapshot — **not** added to the recurring budget list.
+
+If no snapshot exists for the selected month, a **stub snapshot** is created automatically so the expense has somewhere to live.
+
+After saving, a **confirmation badge** briefly appears on the "History" tab label to signal where the item was recorded.
+
+---
+
+### 23.3 Key Design Decisions
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Extend existing dialog vs. separate button | Extend dialog | One mental model — "Add Expense" covers both cases |
+| Where past expenses are stored | `HistoricalExpense` on `MonthSnapshot` | Consistent with v2.3; category actuals stay accurate |
+| What happens if no snapshot exists for the month | Auto-create a stub snapshot | Zero-friction; user shouldn't need to "take a snapshot" first |
+| Stub snapshot totals | All zero (income/expenses/savings/FCF = 0) | Honest — we only know what was recorded, not the full picture |
+| Max lookback range | 24 months | Practical limit; older data has diminishing value |
+| Feedback to user | Small toast / tab badge after save | Confirms where the item was stored without blocking the flow |
+
+---
+
+### 23.4 Data Model Changes
+
+**No new types.** The feature reuses `HistoricalExpense` (from v2.3) and `MonthSnapshot`.
+
+**New context method:**
+
+```typescript
+/**
+ * Add a HistoricalExpense to a specific past month.
+ * If no snapshot exists for (year, month), a stub snapshot is created first.
+ * The stub has all financial totals set to 0 — only the historicalExpenses list is populated.
+ */
+addExpenseToMonth: (
+  year: number,
+  month: number,       // 1–12
+  item: Omit<HistoricalExpense, 'id'>
+) => void
+```
+
+**Stub snapshot shape** (created when no snapshot exists for the target month):
+
+```typescript
+const label = `${MONTH_NAMES[month - 1]} ${year}`           // e.g. "March 2026"
+const date  = new Date(year, month - 1, 1).toISOString()    // first of the month
+
+const stub: MonthSnapshot = {
+  id:            generateId(),
+  label,
+  date,
+  totalIncome:   0,
+  totalExpenses:  0,
+  totalSavings:  0,
+  freeCashFlow:  0,
+  categoryActuals:    {},
+  historicalExpenses: [],
+}
+```
+
+After creating the stub, `addHistoricalExpense` logic runs on it (increment `categoryActuals[category]`, push to `historicalExpenses`).
+
+**Implementation of `addExpenseToMonth`:**
+
+```typescript
+const addExpenseToMonth = (year: number, month: number, item: Omit<HistoricalExpense, 'id'>) =>
+  setData((d) => {
+    const newItem: HistoricalExpense = { ...item, id: generateId() }
+    const targetDate = new Date(year, month - 1, 1).toISOString()
+    const label = `${MONTH_NAMES_EN[month - 1]} ${year}`
+
+    // Find existing snapshot for this month
+    const existingIdx = d.history.findIndex((h) => {
+      const hDate = new Date(h.date)
+      return hDate.getFullYear() === year && hDate.getMonth() + 1 === month
+    })
+
+    if (existingIdx !== -1) {
+      // Snapshot exists — add item to it
+      const updatedHistory = d.history.map((h, i) => {
+        if (i !== existingIdx) return h
+        const prevActuals = h.categoryActuals ?? {}
+        return {
+          ...h,
+          historicalExpenses: [...(h.historicalExpenses ?? []), newItem],
+          categoryActuals: {
+            ...prevActuals,
+            [item.category]: (prevActuals[item.category] ?? 0) + item.amount,
+          },
+        }
+      })
+      return { ...d, history: updatedHistory }
+    } else {
+      // No snapshot — create stub then add item
+      const stub: MonthSnapshot = {
+        id: generateId(),
+        label,
+        date: targetDate,
+        totalIncome: 0,
+        totalExpenses: 0,
+        totalSavings: 0,
+        freeCashFlow: 0,
+        categoryActuals: { [item.category]: item.amount },
+        historicalExpenses: [newItem],
+      }
+      return { ...d, history: [...d.history, stub] }
+    }
+  })
+```
+
+---
+
+### 23.5 UI Design
+
+#### 23.5.1 Updated "Add Expense" dialog — new section at the top
+
+The existing `ExpenseDialog` in `Expenses.tsx` gets a new **"When?"** section as the very first field, above Name:
+
+```
+┌──────────────────────────────────────────┐
+│  Add Expense                             │
+│                                          │
+│  When?                                   │
+│  [ Current budget ]  [ Past month  ]     │  ← segmented toggle (default: Current)
+│                                          │
+│  ┌─ shown only when "Past month" ──────┐ │
+│  │  Month          Year               │ │
+│  │  [March    ▼]   [2026  ▼]          │ │
+│  └────────────────────────────────────┘ │
+│                                          │
+│  Name                                    │
+│  [________________________]              │
+│  ...rest of form unchanged...            │
+└──────────────────────────────────────────┘
+```
+
+- **"Current budget" (default):** dialog behaves exactly as today — saves to `data.expenses` as a recurring budget item
+- **"Past month":** month+year pickers appear; on Save the item is stored as a `HistoricalExpense` via `addExpenseToMonth()`
+- When "Past month" is active, the `Period` field (monthly/yearly) and the `Recurring` switch are **hidden** — past expenses are always one-time amounts
+- When "Past month" is active, the `expenseType` (Fixed/Variable) toggle is also **hidden** — irrelevant for historical items
+- The `dueMonth` field is already conditional on `period === 'yearly'`, so it auto-hides too
+
+#### 23.5.2 Month/Year pickers
+
+- **Month:** `<Select>` with January–December (same `MONTHS` constant already in `Expenses.tsx`)
+- **Year:** `<Select>` with the last 3 years (e.g. 2024, 2025, 2026 when current year is 2026)
+- Default selection: **previous month** (most common use case)
+- Restrict: cannot select the current month (use the regular budget flow for that) or future months
+
+#### 23.5.3 Confirmation feedback after saving a past-month expense
+
+After `addExpenseToMonth()` fires, show a **small inline success message** below the save button (before the dialog auto-closes):
+
+```
+✓ Added to March 2026 in History
+```
+
+This uses `text-primary text-xs` and disappears when the dialog closes. No toast library needed.
+
+#### 23.5.4 "Edit Expense" dialog for existing budget items
+
+No change — `existing` budget items always open in "Current budget" mode. The "Past month" toggle is only visible when adding a new expense (no `existing` prop).
+
+---
+
+### 23.6 Interaction Flow
+
+```
+1. User is on Expenses tab
+2. Clicks "Add Expense"
+3. Dialog opens — "When?" defaults to "Current budget"
+4. User clicks "Past month"
+   → Month/Year pickers appear
+   → Period, Recurring, and Fixed/Variable fields hide
+5. User fills: Month=March, Year=2026, Name=Dentist, Amount=2800, Category=Health
+6. Clicks "Save"
+7. addExpenseToMonth(2026, 3, { name:'Dentist', amount:2800, category:'health' }) fires
+   → If March 2026 snapshot exists: adds item to it
+   → If not: creates stub snapshot for March 2026, adds item
+8. Brief "✓ Added to March 2026 in History" message appears
+9. Dialog closes after 1 second (or immediately on a second click of Save)
+10. User can verify in History tab → March 2026 card → "Recorded expenses (1)"
+```
+
+---
+
+### 23.7 Edge Cases & Rules
+
+| Scenario | Behaviour |
+|----------|-----------|
+| User selects current month in Past Month mode | Not possible — current month is excluded from the year/month options |
+| User selects a future month | Not possible — future months are excluded |
+| Stub snapshot created — what shows in History trend chart? | Stub with 0 income/expenses; line chart shows 0 for that month. Honest, not ideal. Label in History card will show "(recorded expenses only)" to distinguish from full snapshots |
+| User takes a real snapshot for a month that already has a stub | The real snapshot replaces the stub — but this can't happen today because `snapshotMonth()` snapshots *this month*, not past ones. So stubs and real snapshots won't collide. |
+| Two expenses added to the same stub-month | Both accumulate correctly — same logic as v2.3 `addHistoricalExpense` |
+| `addExpenseToMonth` called with current month | Should not happen via UI; but if called programmatically, it finds the existing snapshot if any and adds to it |
+
+---
+
+### 23.8 i18n — New Strings
+
+| English | Hebrew |
+|---------|--------|
+| `When?` | `מתי?` |
+| `Current budget` | `תקציב שוטף` |
+| `Past month` | `חודש קודם` |
+| `Month` | `חודש` |
+| `Year` | `שנה` |
+| `Added to {label} in History` | `נוסף ל{label} בהיסטוריה` |
+| `(recorded expenses only)` | `(הוצאות שנרשמו בלבד)` |
+
+---
+
+### 23.9 Acceptance Criteria
+
+**Data**
+- [ ] `addExpenseToMonth` method exists in `FinanceContext` and `FinanceContextType`
+- [ ] When snapshot exists for target month: item added to `historicalExpenses`, `categoryActuals` updated
+- [ ] When no snapshot exists: stub created with correct `label`, `date`, zero totals; item added
+- [ ] Stub snapshot appears in History tab just like real snapshots
+- [ ] Two calls to `addExpenseToMonth` for the same month without a snapshot → second call finds the stub created by the first
+
+**UI**
+- [ ] "When?" segmented toggle appears only when `existing` is undefined (new expense only)
+- [ ] "Past month" mode shows Month + Year selects; hides Period, Recurring, Fixed/Variable
+- [ ] Month select shows only past months (excludes current and future)
+- [ ] Year select shows last 3 full years
+- [ ] Default selection is the previous calendar month
+- [ ] Saving in "Current budget" mode works exactly as before (no regression)
+- [ ] Confirmation message "✓ Added to [label] in History" appears after save
+- [ ] Dialog closes 1 second after showing the confirmation (or immediately on second Save click)
+
+**i18n**
+- [ ] All new strings use `t(en, he, lang)`
+- [ ] Month names in the select use the existing `MONTHS` constant
+
+**Accessibility**
+- [ ] Month and Year selects have associated `<Label>`
+- [ ] Toggle buttons have `aria-pressed` reflecting current state
+- [ ] All interactive elements ≥ 44px tap target
+
+**Tests (new, in `src/test/addExpenseToMonth.test.ts`)**
+- [ ] Adds to existing snapshot — `historicalExpenses` updated, `categoryActuals` incremented
+- [ ] Creates stub snapshot when none exists — correct label, date, zero totals
+- [ ] Stub creation: `categoryActuals` set from first item
+- [ ] Second item to same month (stub exists from first call): accumulates correctly
+- [ ] Does not touch other snapshots in history
+- [ ] Stub snapshot has correct `label` format ("March 2026")
+
+---
+
+### 23.10 Out of Scope (v2.4)
+
+- Editing past-month items from the Expenses tab (use History tab for that)
+- Adding income to a past month
+- Selecting a specific day within the past month (month granularity is enough)
+- Converting a stub snapshot into a full snapshot with income/savings data
+- "This month" option in Past Month mode (use regular Add Expense flow)
+
+---
+
+### 23.11 Implementation Checklist for Agents
+
+#### 🎨 Frontend Agent
+1. Add `addExpenseToMonth` to `FinanceContextType` interface and implement it in `FinanceContext.tsx`
+2. Add `MONTH_NAMES_EN` constant (string array) near the top of `FinanceContext.tsx` for use in stub label generation (reuse the existing `MONTHS` from `categories`-adjacent code, or define inline)
+3. Update `ExpenseDialog` in `Expenses.tsx`:
+   - Add `mode: 'budget' | 'past'` local state (default `'budget'`)
+   - Add "When?" toggle (two buttons)
+   - Add Month + Year selects (conditional on `mode === 'past'`)
+   - Hide Period, Recurring, Fixed/Variable when `mode === 'past'`
+   - On Save in `'past'` mode: call `addExpenseToMonth()` instead of `onSave(form)`
+   - Show confirmation message after save; close dialog after 1 s
+
+#### 🖌 UX Agent
+1. Verify "When?" toggle uses same segmented-button style as Fixed/Variable toggle
+2. Verify Month/Year selects are correctly labelled and mobile-friendly
+3. Verify hidden fields truly disappear (not just disabled) in Past Month mode
+4. Verify confirmation message uses `text-primary` and is RTL-safe
+
+#### 🧪 QA Agent
+1. Write `src/test/addExpenseToMonth.test.ts` with the 6 tests in §23.9
+2. Run `npm test` — all 202 + 6 = 208 tests must pass
+
+#### 🔍 Code Review Agent
+1. Confirm `addExpenseToMonth` is pure (no side effects beyond `setData`)
+2. Confirm month/year range calculation doesn't produce future or current months
+3. Confirm stub snapshot is added to history (not replacing existing), sorted correctly
+4. Confirm "Current budget" Save path is completely unchanged (no regression)
+
+#### 🗄 Data Engineer Agent
+1. No Supabase schema change — stub snapshots are stored inside `household_finance.data.history[]`
+2. Verify `FINANCE_DEFAULTS` and `mergeFinanceData` handle stubs (they will — same structure as real snapshots)
+3. Add `(recorded expenses only)` label logic note to `cloudFinance.ts` comment block
 
 ---
 
