@@ -122,7 +122,7 @@ function HistoricalExpenseDialog({
   existing?: HistoricalExpense
   lang: 'en' | 'he'
 }) {
-  const { data, addHistoricalExpense, updateHistoricalExpense } = useFinance()
+  const { addHistoricalExpense, updateHistoricalExpense } = useFinance()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
@@ -167,9 +167,6 @@ function HistoricalExpenseDialog({
     ? t(`Edit Expense — ${snapLabel}`, `ערוך הוצאה — ${snapLabel}`, lang)
     : t(`Add Expense — ${snapLabel}`, `הוסף הוצאה — ${snapLabel}`, lang)
 
-  // Suppress unused warning — data is used for currency display consistency
-  void data
-
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
@@ -183,9 +180,14 @@ function HistoricalExpenseDialog({
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
         ) : (
-          <Button variant="outline" size="sm" className="text-xs gap-1.5 min-h-[44px]">
+          <Button
+            variant="outline" size="sm"
+            className="text-xs gap-1.5 min-h-[44px]"
+            title={t(`Add expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
+            aria-label={t(`Add expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
+          >
             <Plus className="h-3.5 w-3.5" />
-            {t(`Add Expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
+            {t('Add Expense', 'הוסף הוצאה', lang)}
           </Button>
         )}
       </DialogTrigger>
@@ -198,8 +200,9 @@ function HistoricalExpenseDialog({
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div>
-            <Label>{t('Name', 'שם', lang)}</Label>
+            <Label htmlFor="hist-exp-name">{t('Name', 'שם', lang)}</Label>
             <Input
+              id="hist-exp-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('e.g. Dentist visit', 'למשל: ביקור אצל רופא שיניים', lang)}
@@ -212,8 +215,9 @@ function HistoricalExpenseDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>{t('Amount', 'סכום', lang)}</Label>
+              <Label htmlFor="hist-exp-amount">{t('Amount', 'סכום', lang)}</Label>
               <Input
+                id="hist-exp-amount"
                 type="number"
                 min="0.01"
                 step="0.01"
@@ -226,9 +230,9 @@ function HistoricalExpenseDialog({
               )}
             </div>
             <div>
-              <Label>{t('Category', 'קטגוריה', lang)}</Label>
+              <Label htmlFor="hist-exp-category">{t('Category', 'קטגוריה', lang)}</Label>
               <Select value={category} onValueChange={(v) => setCategory(v as ExpenseCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="hist-exp-category" aria-label={t('Category', 'קטגוריה', lang)}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c.value} value={c.value}>
@@ -241,8 +245,9 @@ function HistoricalExpenseDialog({
           </div>
 
           <div>
-            <Label>{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
+            <Label htmlFor="hist-exp-note">{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
             <Input
+              id="hist-exp-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t('Any extra detail…', 'פרטים נוספים…', lang)}
@@ -395,18 +400,21 @@ export function History() {
                           {snap.historicalExpenses!.map((item) => {
                             const catLabel = CATEGORIES.find((c) => c.value === item.category)
                             return (
-                              <div key={item.id} className="flex items-center justify-between text-xs gap-2">
+                              <div key={item.id} className="flex items-start justify-between text-xs gap-2 flex-wrap">
                                 <div className="min-w-0 flex-1">
-                                  <span className="font-medium">{item.name}</span>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-medium">{item.name}</span>
+                                    {/* Category badge — hidden on very narrow screens to prevent overflow */}
+                                    <Badge variant="outline" className="text-xs py-0 hidden sm:inline-flex">
+                                      {lang === 'he' ? catLabel?.he : catLabel?.en}
+                                    </Badge>
+                                  </div>
                                   {item.note && (
                                     <p className="text-muted-foreground text-xs truncate">{item.note}</p>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <Badge variant="outline" className="text-xs py-0">
-                                    {lang === 'he' ? catLabel?.he : catLabel?.en}
-                                  </Badge>
-                                  <span className="font-semibold tabular-nums">
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="font-semibold tabular-nums me-1">
                                     {formatCurrency(item.amount, data.currency, data.locale)}
                                   </span>
                                   <HistoricalExpenseDialog
