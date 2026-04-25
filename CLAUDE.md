@@ -16,7 +16,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (156 tests, must stay green)
+- **Tests:** Vitest — `npm test` (191 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -43,7 +43,7 @@ At the start of each session, declare which role you are acting as.
 - New localStorage keys must be documented in README.md
 - Never use Supabase Auth — auth is always local
 - All new exports must have a corresponding test in `src/test/localAuth.test.ts`
-- Run `npm test` before every commit — all 156 tests must pass
+- Run `npm test` before every commit — all 191 tests must pass
 - Run `npm run build` before every commit — catches TypeScript errors `tsc --noEmit` misses
 
 ### Supabase tables
@@ -88,6 +88,7 @@ get_household_members_with_profiles(p_household_id text)
 - `src/components/*.tsx` (except HouseholdSettings — shared with UX)
 - `src/pages/AuthPage.tsx`
 - `src/types/index.ts`
+- `src/lib/categories.ts` — shared EXPENSE_CATEGORIES constant
 
 ### Rules
 - Always use `useFinance()` for finance state — never read localStorage directly in components
@@ -190,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 156 tests green)
+- [ ] `npm test` passes (all 191 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -233,10 +234,11 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `localAuth.test.ts` | 15 | signUp, signIn, sessions, invitations, migration |
 | `cloudInvites.test.ts` | 57 | token gen/hash, invite revocation, fetchUserMemberships, recovery logic |
 | `cloudFinance.test.ts` | 24 | mergeFinanceData, push/pull no-ops, conflict resolution |
-| **Total** | **156** | |
+| `expenseFeatures.test.ts` | 35 | F1 fixed/variable, F2 budgets, F3 deltas, F4 sinking funds, F5 actuals |
+| **Total** | **191** | |
 
 ### Rules
-- All 156 existing tests must pass before any commit
+- All 191 existing tests must pass before any commit
 - Run `npm run build` before committing — not just `npm test`
 - New business logic functions require tests before merging
 - Test file mirrors lib file: `src/lib/foo.ts` → `src/test/foo.test.ts`
@@ -321,7 +323,7 @@ How will we know this feature is working?
 **Now (v2 — current)**
 - ✅ Google Sign-In via GIS renderButton
 - ✅ Household model with invite links (Supabase cloud)
-- ✅ 156 unit tests
+- ✅ 191 unit tests
 
 **v2.1 — shipped**
 - ✅ Finance data cloud sync — `household_finance` table, push/pull/merge via `cloudFinance.ts`
@@ -331,7 +333,16 @@ How will we know this feature is working?
 - ✅ `generateId()` uses `crypto.randomUUID()` — cryptographically secure IDs
 - ✅ UX audit fixes — tap targets, RTL margins, HSL colour tokens, aria labels
 
-**Next (v2.2)**
+**v2.2 — shipped**
+- ✅ F1: Fixed vs Variable expense classification — `expenseType` field, segmented toggle, Lock/Waves badges
+- ✅ F2: Category budget limits — `categoryBudgets` in FinanceData, BudgetEditor, progress bars (green/amber/red)
+- ✅ F3: Month-over-month Δ comparison — Compare toggle, delta badges (▲/▼/=) per category
+- ✅ F4: Annual expense smoothing (sinking funds) — `dueMonth` field, provision/mo badge, due countdown
+- ✅ F5: Monthly actuals log — `categoryActuals` on snapshots, ActualsDialog, snapshotMonth pre-populates
+- ✅ Shared `src/lib/categories.ts` — single source of truth for EXPENSE_CATEGORIES
+- ✅ 35 new unit tests covering all 5 features (F1–F5)
+
+**Next (v2.3)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
