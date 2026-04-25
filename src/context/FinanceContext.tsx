@@ -5,6 +5,8 @@ import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
 import { supabaseConfigured } from '@/lib/supabase'
 
+const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
 const defaultData: FinanceData = {
   members: [],
   expenses: [],
@@ -76,6 +78,7 @@ interface FinanceContextType {
   addHistoricalExpense: (snapshotId: string, item: Omit<HistoricalExpense, 'id'>) => void
   deleteHistoricalExpense: (snapshotId: string, itemId: string) => void
   updateHistoricalExpense: (snapshotId: string, item: HistoricalExpense) => void
+  addExpenseToMonth: (year: number, month: number, item: Omit<HistoricalExpense, 'id'>) => void
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
@@ -317,6 +320,49 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }),
     }))
 
+  const addExpenseToMonth = (year: number, month: number, item: Omit<HistoricalExpense, 'id'>) =>
+    setData((d) => {
+      const newItem: HistoricalExpense = { ...item, id: generateId() }
+      const label = `${MONTH_NAMES_EN[month - 1]} ${year}`
+      const targetDate = new Date(year, month - 1, 1).toISOString()
+
+      const existingIdx = d.history.findIndex((h) => {
+        const hDate = new Date(h.date)
+        return hDate.getFullYear() === year && hDate.getMonth() + 1 === month
+      })
+
+      if (existingIdx !== -1) {
+        return {
+          ...d,
+          history: d.history.map((h, i) => {
+            if (i !== existingIdx) return h
+            const prevActuals = h.categoryActuals ?? {}
+            return {
+              ...h,
+              historicalExpenses: [...(h.historicalExpenses ?? []), newItem],
+              categoryActuals: {
+                ...prevActuals,
+                [item.category]: (prevActuals[item.category] ?? 0) + item.amount,
+              },
+            }
+          }),
+        }
+      } else {
+        const stub: MonthSnapshot = {
+          id: generateId(),
+          label,
+          date: targetDate,
+          totalIncome: 0,
+          totalExpenses: 0,
+          totalSavings: 0,
+          freeCashFlow: 0,
+          categoryActuals: { [item.category]: item.amount },
+          historicalExpenses: [newItem],
+        }
+        return { ...d, history: [...d.history, stub] }
+      }
+    })
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
@@ -361,6 +407,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       snapshotMonth, exportData, importData,
       updateCategoryBudget, updateSnapshotActuals,
       addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
+      addExpenseToMonth,
     }}>
       {children}
     </FinanceContext.Provider>

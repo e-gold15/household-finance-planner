@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -12,7 +12,7 @@ import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
-import type { Expense, ExpenseCategory } from '@/types'
+import type { Expense, ExpenseCategory, HistoricalExpense } from '@/types'
 
 const MONTHS: { value: number; en: string; he: string }[] = [
   { value: 1,  en: 'January',   he: 'ינואר' },
@@ -44,6 +44,8 @@ function monthsUntilDue(dueMonth: number): number {
 
 // ── ExpenseDialog ─────────────────────────────────────────────────────────────
 
+const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
 function ExpenseDialog({
   existing,
   onSave,
@@ -53,6 +55,7 @@ function ExpenseDialog({
   onSave: (e: Expense) => void
   lang: 'en' | 'he'
 }) {
+  const { addExpenseToMonth } = useFinance()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<Expense>(
     existing ?? {
@@ -65,11 +68,46 @@ function ExpenseDialog({
       expenseType: 'fixed',
     }
   )
+  const [mode, setMode] = useState<'budget' | 'past'>('budget')
+  const [pastMonth, setPastMonth] = useState(
+    new Date().getMonth() === 0 ? 12 : new Date().getMonth()  // previous month (1-indexed)
+  )
+  const [pastYear, setPastYear] = useState(
+    new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear()
+  )
+  const [savedLabel, setSavedLabel] = useState<string | null>(null)
+
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   const handleOpen = (o: boolean) => {
     if (o && existing) setForm(existing)
+    if (o) {
+      setMode('budget')
+      setSavedLabel(null)
+      // default to previous month
+      const now = new Date()
+      if (now.getMonth() === 0) {
+        setPastMonth(12); setPastYear(now.getFullYear() - 1)
+      } else {
+        setPastMonth(now.getMonth()); setPastYear(now.getFullYear())
+      }
+    }
     setOpen(o)
+  }
+
+  const handleSave = () => {
+    if (mode === 'past') {
+      addExpenseToMonth(pastYear, pastMonth, {
+        name: form.name,
+        amount: form.amount,
+        category: form.category,
+      } as Omit<HistoricalExpense, 'id'>)
+      setSavedLabel(`${MONTH_NAMES_EN[pastMonth - 1]} ${pastYear}`)
+      setTimeout(() => { setOpen(false); setSavedLabel(null) }, 1200)
+    } else {
+      onSave(form)
+      setOpen(false)
+    }
   }
 
   return (
@@ -96,6 +134,79 @@ function ExpenseDialog({
         </DialogHeader>
         <div className="space-y-4 mt-2">
 
+          {/* When? — only for new expenses, not editing existing ones */}
+          {!existing && (
+            <div>
+              <Label className="mb-2 block">{t('When?', 'מתי?', lang)}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMode('budget')}
+                  aria-pressed={mode === 'budget'}
+                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    mode === 'budget'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <CalendarCheck className="h-3.5 w-3.5" />
+                  {t('Current budget', 'תקציב שוטף', lang)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('past')}
+                  aria-pressed={mode === 'past'}
+                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    mode === 'past'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <History className="h-3.5 w-3.5" />
+                  {t('Past month', 'חודש קודם', lang)}
+                </button>
+              </div>
+
+              {/* Month + Year pickers — only in past mode */}
+              {mode === 'past' && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <Label htmlFor="past-month">{t('Month', 'חודש', lang)}</Label>
+                    <Select value={pastMonth.toString()} onValueChange={(v) => setPastMonth(+v)}>
+                      <SelectTrigger id="past-month"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {MONTHS.filter((m) => {
+                          const now = new Date()
+                          const cur = now.getMonth() + 1
+                          const curY = now.getFullYear()
+                          // exclude current month and future months for the selected year
+                          if (pastYear === curY) return m.value < cur
+                          if (pastYear > curY) return false
+                          return true
+                        }).map((m) => (
+                          <SelectItem key={m.value} value={m.value.toString()}>
+                            {lang === 'he' ? m.he : m.en}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="past-year">{t('Year', 'שנה', lang)}</Label>
+                    <Select value={pastYear.toString()} onValueChange={(v) => setPastYear(+v)}>
+                      <SelectTrigger id="past-year"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map((y) => (
+                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <Label>{t('Name', 'שם', lang)}</Label>
@@ -112,16 +223,18 @@ function ExpenseDialog({
               <Label>{t('Amount', 'סכום', lang)}</Label>
               <Input type="number" value={form.amount} onChange={(e) => set('amount', +e.target.value)} />
             </div>
-            <div>
-              <Label>{t('Period', 'תדירות', lang)}</Label>
-              <Select value={form.period} onValueChange={(v) => set('period', v as 'monthly' | 'yearly')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monthly">{t('Monthly', 'חודשי', lang)}</SelectItem>
-                  <SelectItem value="yearly">{t('Yearly', 'שנתי', lang)}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {mode === 'budget' && (
+              <div>
+                <Label>{t('Period', 'תדירות', lang)}</Label>
+                <Select value={form.period} onValueChange={(v) => set('period', v as 'monthly' | 'yearly')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">{t('Monthly', 'חודשי', lang)}</SelectItem>
+                    <SelectItem value="yearly">{t('Yearly', 'שנתי', lang)}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {/* Due month — only for yearly expenses */}
@@ -158,51 +271,62 @@ function ExpenseDialog({
           </div>
 
           {/* Fixed vs Variable — segmented toggle */}
-          <div>
-            <Label className="mb-2 block">{t('Expense Type', 'סוג הוצאה', lang)}</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => set('expenseType', 'fixed')}
-                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                  (form.expenseType ?? 'fixed') === 'fixed'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-input text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <Lock className="h-3.5 w-3.5" />
-                {t('Fixed', 'קבוע', lang)}
-              </button>
-              <button
-                type="button"
-                onClick={() => set('expenseType', 'variable')}
-                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                  form.expenseType === 'variable'
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-input text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <Waves className="h-3.5 w-3.5" />
-                {t('Variable', 'משתנה', lang)}
-              </button>
+          {mode === 'budget' && (
+            <div>
+              <Label className="mb-2 block">{t('Expense Type', 'סוג הוצאה', lang)}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => set('expenseType', 'fixed')}
+                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    (form.expenseType ?? 'fixed') === 'fixed'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  {t('Fixed', 'קבוע', lang)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set('expenseType', 'variable')}
+                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    form.expenseType === 'variable'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Waves className="h-3.5 w-3.5" />
+                  {t('Variable', 'משתנה', lang)}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {(form.expenseType ?? 'fixed') === 'fixed'
+                  ? t('Same amount every month — rent, subscriptions, insurance', 'אותו סכום כל חודש — שכ"ד, מנויים, ביטוח', lang)
+                  : t('Amount changes month to month — food, dining, entertainment', 'הסכום משתנה — מזון, בילויים, בידור', lang)
+                }
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              {(form.expenseType ?? 'fixed') === 'fixed'
-                ? t('Same amount every month — rent, subscriptions, insurance', 'אותו סכום כל חודש — שכ"ד, מנויים, ביטוח', lang)
-                : t('Amount changes month to month — food, dining, entertainment', 'הסכום משתנה — מזון, בילויים, בידור', lang)
-              }
-            </p>
-          </div>
+          )}
 
           {/* Recurring */}
-          <div className="flex items-center gap-3">
-            <Switch checked={form.recurring} onCheckedChange={(v) => set('recurring', v)} />
-            <Label>{t('Recurring expense', 'הוצאה קבועה', lang)}</Label>
-          </div>
+          {mode === 'budget' && (
+            <div className="flex items-center gap-3">
+              <Switch checked={form.recurring} onCheckedChange={(v) => set('recurring', v)} />
+              <Label>{t('Recurring expense', 'הוצאה קבועה', lang)}</Label>
+            </div>
+          )}
 
-          <Button className="w-full" onClick={() => { onSave(form); setOpen(false) }}>
+          <Button className="w-full" onClick={handleSave}>
             {t('Save', 'שמור', lang)}
           </Button>
+
+          {savedLabel && (
+            <p className="text-xs text-primary text-center flex items-center justify-center gap-1">
+              <span>✓</span>
+              {t(`Added to ${savedLabel} in History`, `נוסף ל${savedLabel} בהיסטוריה`, lang)}
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>
