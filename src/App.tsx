@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2 } from 'lucide-react'
+import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2, Users } from 'lucide-react'
 import { Toaster } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -11,6 +11,7 @@ import { Expenses } from './components/Expenses'
 import { Savings } from './components/Savings'
 import { Goals } from './components/Goals'
 import { History as HistoryTab } from './components/History'
+import { Members } from './components/Members'
 import { t } from './lib/utils'
 import { cn } from './lib/utils'
 
@@ -46,7 +47,7 @@ function JoinedHouseholdBanner({ lang }: { lang: 'en' | 'he' }) {
   )
 }
 
-type Tab = 'overview' | 'income' | 'expenses' | 'savings' | 'goals' | 'history'
+type Tab = 'overview' | 'income' | 'expenses' | 'savings' | 'goals' | 'history' | 'members'
 
 const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
   { id: 'overview',  icon: LayoutDashboard, en: 'Overview',  he: 'סקירה' },
@@ -55,6 +56,7 @@ const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
   { id: 'savings',   icon: PiggyBank,        en: 'Savings',   he: 'חיסכון' },
   { id: 'goals',     icon: Target,           en: 'Goals',     he: 'יעדים' },
   { id: 'history',   icon: History,          en: 'History',   he: 'היסטוריה' },
+  { id: 'members',   icon: Users,            en: 'Members',   he: 'חברים' },
 ]
 
 // ─── Loading skeleton (shown while fetching shared data from cloud) ────────────
@@ -115,6 +117,7 @@ function AppShell() {
             {tab === 'savings'   && <Savings />}
             {tab === 'goals'     && <Goals />}
             {tab === 'history'   && <HistoryTab />}
+            {tab === 'members'   && <Members />}
           </>
         )}
       </main>
