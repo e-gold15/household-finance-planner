@@ -11,12 +11,12 @@ At the start of each session, declare which role you are acting as.
 
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui + Recharts
 - **Auth:** Local SHA-256 (email) + Google GIS (OAuth) — no Supabase Auth
-- **Cloud:** Supabase — invitations + household memberships ONLY
-- **Finance data:** 100% localStorage — never goes to cloud
+- **Cloud:** Supabase — invitations, household memberships, AND finance data sync
+- **Finance data:** localStorage (primary) + Supabase `household_finance` (sync layer)
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (75 tests, must stay green)
+- **Tests:** Vitest — `npm test` (156 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -28,7 +28,8 @@ At the start of each session, declare which role you are acting as.
 ### Files owned
 - `src/lib/localAuth.ts` — user/household/invite CRUD, session, migration
 - `src/lib/googleAuth.ts` — GIS integration, JWT decode, renderButton
-- `src/lib/cloudInvites.ts` — Supabase operations (households, memberships, invitations)
+- `src/lib/cloudInvites.ts` — Supabase operations (households, memberships, invitations, user profiles)
+- `src/lib/cloudFinance.ts` — Supabase finance data sync (push/pull/merge)
 - `src/lib/supabase.ts` — Supabase client config
 - `src/lib/taxEstimation.ts` — IL + foreign tax engine
 - `src/lib/savingsEngine.ts` — goal allocation algorithm
@@ -42,14 +43,33 @@ At the start of each session, declare which role you are acting as.
 - New localStorage keys must be documented in README.md
 - Never use Supabase Auth — auth is always local
 - All new exports must have a corresponding test in `src/test/localAuth.test.ts`
-- Run `npm test` before every commit — all 75 tests must pass
+- Run `npm test` before every commit — all 156 tests must pass
+- Run `npm run build` before every commit — catches TypeScript errors `tsc --noEmit` misses
 
-### Supabase tables (cloud — invite sync only)
+### Supabase tables
 ```
-households         (id, name, created_by, created_at)
-household_memberships (household_id, user_id, role, joined_at)
-invitations        (id, email, household_id, invited_by, status, expires_at)
+households              (id, name, created_by, created_at)
+household_memberships   (household_id, user_id, role, joined_at)
+invitations             (id, email, household_id, invited_by, status, expires_at)
+household_invites       (id, household_id, invited_by, method, token_hash, invited_email, status, expires_at)
+household_finance       (household_id PK, data jsonb, updated_at)  ← finance sync
+user_profiles           (id PK, name, email, avatar, updated_at)
 ```
+
+### Supabase RPC functions
+```
+get_household_members_with_profiles(p_household_id text)
+  → joins household_memberships + user_profiles in a single query
+  → must be granted execute to anon role
+```
+
+### Finance sync rules
+- `household_finance.data` is the shared source of truth for all financial fields
+- Cloud wins on: members, expenses, accounts, goals, history, currency, locale, emergencyBufferMonths
+- Local device keeps: darkMode, language (per-device UI prefs, never overwritten by cloud)
+- Push is debounced 1.5 s after every `setData` call (FinanceContext owns the timer)
+- Pull happens on FinanceProvider mount — if local is empty, shows loading spinner until cloud responds
+- If cloud has no row yet and local has data, seeds the cloud immediately (owner bootstrap)
 
 ### Commit style
 `fix(auth): ...` / `feat(auth): ...` / `feat(supabase): ...`
@@ -74,7 +94,7 @@ invitations        (id, email, household_id, invited_by, status, expires_at)
 - Always use `useAuth()` for auth state — never read `hf-session` directly
 - `FinanceProvider` must receive `key={household.id}` to remount on household switch
 - New context methods must be typed in the `AuthContextType` / `FinanceContextType` interface
-- No `any` types — use proper TypeScript. Run `npx tsc --noEmit` before committing
+- No `any` types — use proper TypeScript. Run `npm run build` before committing (catches more than `tsc --noEmit`)
 - All new features must work in both EN and Hebrew (RTL) — test by toggling language
 - Use `me-*` / `ms-*` margin utilities (logical), never `mr-*` / `ml-*`
 - Lazy-load heavy components if bundle grows past 1 MB gzipped
@@ -170,7 +190,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 75 tests green)
+- [ ] `npm test` passes (all 156 tests green)
+- [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
 
@@ -210,10 +231,13 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `taxEstimation.test.ts` | 22 | IL brackets, BL/HT caps, credit points, contributions, foreign |
 | `savingsEngine.test.ts` | 22 | realistic/tight/unrealistic/blocked, liquid savings, edge cases |
 | `localAuth.test.ts` | 15 | signUp, signIn, sessions, invitations, migration |
-| **Total** | **75** | |
+| `cloudInvites.test.ts` | 57 | token gen/hash, invite revocation, fetchUserMemberships, recovery logic |
+| `cloudFinance.test.ts` | 24 | mergeFinanceData, push/pull no-ops, conflict resolution |
+| **Total** | **156** | |
 
 ### Rules
-- All 75 existing tests must pass before any commit
+- All 156 existing tests must pass before any commit
+- Run `npm run build` before committing — not just `npm test`
 - New business logic functions require tests before merging
 - Test file mirrors lib file: `src/lib/foo.ts` → `src/test/foo.test.ts`
 - Tests must be deterministic — no `Date.now()` or `Math.random()` without mocking
@@ -245,6 +269,9 @@ describe('functionName()', () => {
 - [ ] Sign in with email → correct data loaded
 - [ ] Google Sign-In button visible and clickable
 - [ ] Invite flow: create invite → copy link → open in incognito → accept → joined household
+- [ ] **Cross-device: sign in with Google on a second device → same household + same finance data appear**
+- [ ] **Cross-device: add an expense on device A → refresh device B → expense appears within 1.5 s**
+- [ ] **Cross-device recovery: sign in on fresh device → no "welcome" banner, real household restored silently**
 - [ ] Hebrew RTL: toggle language → layout mirrors correctly
 - [ ] Dark mode: toggle → all elements visible
 - [ ] Mobile: test at 375px width → no overflow, tap targets reachable
@@ -294,15 +321,21 @@ How will we know this feature is working?
 **Now (v2 — current)**
 - ✅ Google Sign-In via GIS renderButton
 - ✅ Household model with invite links (Supabase cloud)
-- ✅ 75 unit tests
+- ✅ 156 unit tests
 
-**Next (v2.1)**
+**v2.1 — shipped**
+- ✅ Finance data cloud sync — `household_finance` table, push/pull/merge via `cloudFinance.ts`
+- ✅ Cross-device household recovery — Google users land in their real household on any device
+- ✅ Members tab — live member list fetched via `get_household_members_with_profiles` RPC
+- ✅ Session expiry — 30-day TTL on `AppSession`
+- ✅ `generateId()` uses `crypto.randomUUID()` — cryptographically secure IDs
+- ✅ UX audit fixes — tap targets, RTL margins, HSL colour tokens, aria labels
+
+**Next (v2.2)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
-- [ ] Shared budget view — both partners see combined income/expenses
 - [ ] Push notifications for monthly snapshot reminder
 
 **Later (v3)**
-- [ ] Optional cloud sync of FinanceData (opt-in, Supabase)
 - [ ] Bank statement CSV import
 - [ ] Mobile PWA / install to home screen
 - [ ] Multi-currency conversion (live rates)
