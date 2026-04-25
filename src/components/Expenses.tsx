@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -44,7 +44,6 @@ function monthsUntilDue(dueMonth: number): number {
 
 // ── ExpenseDialog ─────────────────────────────────────────────────────────────
 
-const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 function ExpenseDialog({
   existing,
@@ -102,7 +101,7 @@ function ExpenseDialog({
         amount: form.amount,
         category: form.category,
       } as Omit<HistoricalExpense, 'id'>)
-      setSavedLabel(`${MONTH_NAMES_EN[pastMonth - 1]} ${pastYear}`)
+      setSavedLabel(`${monthName(pastMonth, lang)} ${pastYear}`)
       setTimeout(() => { setOpen(false); setSavedLabel(null) }, 1200)
     } else {
       onSave(form)
@@ -173,7 +172,7 @@ function ExpenseDialog({
                   <div>
                     <Label htmlFor="past-month">{t('Month', 'חודש', lang)}</Label>
                     <Select value={pastMonth.toString()} onValueChange={(v) => setPastMonth(+v)}>
-                      <SelectTrigger id="past-month"><SelectValue /></SelectTrigger>
+                      <SelectTrigger id="past-month" aria-label={t('Month', 'חודש', lang)}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {MONTHS.filter((m) => {
                           const now = new Date()
@@ -194,7 +193,7 @@ function ExpenseDialog({
                   <div>
                     <Label htmlFor="past-year">{t('Year', 'שנה', lang)}</Label>
                     <Select value={pastYear.toString()} onValueChange={(v) => setPastYear(+v)}>
-                      <SelectTrigger id="past-year"><SelectValue /></SelectTrigger>
+                      <SelectTrigger id="past-year" aria-label={t('Year', 'שנה', lang)}><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map((y) => (
                           <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
@@ -278,6 +277,7 @@ function ExpenseDialog({
                 <button
                   type="button"
                   onClick={() => set('expenseType', 'fixed')}
+                  aria-pressed={(form.expenseType ?? 'fixed') === 'fixed'}
                   className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
                     (form.expenseType ?? 'fixed') === 'fixed'
                       ? 'bg-primary text-primary-foreground border-primary'
@@ -290,6 +290,7 @@ function ExpenseDialog({
                 <button
                   type="button"
                   onClick={() => set('expenseType', 'variable')}
+                  aria-pressed={form.expenseType === 'variable'}
                   className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
                     form.expenseType === 'variable'
                       ? 'bg-primary text-primary-foreground border-primary'
