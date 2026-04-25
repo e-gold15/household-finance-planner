@@ -109,6 +109,14 @@ export interface GoalAllocation extends Goal {
   gap: number
 }
 
+export interface HistoricalExpense {
+  id: string               // generateId() — unique within the snapshot
+  name: string             // "Dentist", "Car service", "Birthday gift"
+  amount: number           // always a positive monetary amount for that month
+  category: ExpenseCategory
+  note?: string            // optional free-text annotation
+}
+
 export interface MonthSnapshot {
   id: string
   label: string
@@ -123,6 +131,12 @@ export interface MonthSnapshot {
    * Powers the month-over-month Δ comparison in the Expenses tab.
    */
   categoryActuals?: Partial<Record<ExpenseCategory, number>>
+  /**
+   * Individual named expense line items added retroactively to this snapshot.
+   * When items exist for a category, their sum is reflected in categoryActuals[category].
+   * Absence of this field (undefined or []) means no items have been added.
+   */
+  historicalExpenses?: HistoricalExpense[]
 }
 
 export interface FinanceData {

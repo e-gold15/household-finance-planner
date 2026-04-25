@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory } from '@/types'
+import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory, HistoricalExpense } from '@/types'
 import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
@@ -73,6 +73,9 @@ interface FinanceContextType {
   updateCategoryBudget: (category: ExpenseCategory, budget: number | undefined) => void
   /** Record what was actually spent per category in a past snapshot. */
   updateSnapshotActuals: (snapshotId: string, actuals: Partial<Record<ExpenseCategory, number>>) => void
+  addHistoricalExpense: (snapshotId: string, item: Omit<HistoricalExpense, 'id'>) => void
+  deleteHistoricalExpense: (snapshotId: string, itemId: string) => void
+  updateHistoricalExpense: (snapshotId: string, item: HistoricalExpense) => void
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
@@ -259,6 +262,61 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       history: d.history.map((h) => h.id === snapshotId ? { ...h, categoryActuals: actuals } : h),
     }))
 
+  const addHistoricalExpense = (snapshotId: string, item: Omit<HistoricalExpense, 'id'>) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) => {
+        if (h.id !== snapshotId) return h
+        const newItem: HistoricalExpense = { ...item, id: generateId() }
+        const prevActuals = h.categoryActuals ?? {}
+        return {
+          ...h,
+          historicalExpenses: [...(h.historicalExpenses ?? []), newItem],
+          categoryActuals: {
+            ...prevActuals,
+            [item.category]: (prevActuals[item.category] ?? 0) + item.amount,
+          },
+        }
+      }),
+    }))
+
+  const deleteHistoricalExpense = (snapshotId: string, itemId: string) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) => {
+        if (h.id !== snapshotId) return h
+        const toDelete = (h.historicalExpenses ?? []).find((e) => e.id === itemId)
+        if (!toDelete) return h
+        const prevActuals = h.categoryActuals ?? {}
+        return {
+          ...h,
+          historicalExpenses: (h.historicalExpenses ?? []).filter((e) => e.id !== itemId),
+          categoryActuals: {
+            ...prevActuals,
+            [toDelete.category]: Math.max(0, (prevActuals[toDelete.category] ?? 0) - toDelete.amount),
+          },
+        }
+      }),
+    }))
+
+  const updateHistoricalExpense = (snapshotId: string, item: HistoricalExpense) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) => {
+        if (h.id !== snapshotId) return h
+        const old = (h.historicalExpenses ?? []).find((e) => e.id === item.id)
+        if (!old) return h
+        const prevActuals = { ...(h.categoryActuals ?? {}) }
+        prevActuals[old.category] = Math.max(0, (prevActuals[old.category] ?? 0) - old.amount)
+        prevActuals[item.category] = (prevActuals[item.category] ?? 0) + item.amount
+        return {
+          ...h,
+          historicalExpenses: (h.historicalExpenses ?? []).map((e) => e.id === item.id ? item : e),
+          categoryActuals: prevActuals,
+        }
+      }),
+    }))
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
@@ -302,6 +360,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addGoal, updateGoal, deleteGoal, moveGoal,
       snapshotMonth, exportData, importData,
       updateCategoryBudget, updateSnapshotActuals,
+      addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
     }}>
       {children}
     </FinanceContext.Provider>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, History as HistoryIcon, Trash2, ClipboardList } from 'lucide-react'
+import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -7,10 +7,11 @@ import { Badge } from './ui/badge'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
-import type { ExpenseCategory, MonthSnapshot } from '@/types'
+import type { ExpenseCategory, MonthSnapshot, HistoricalExpense } from '@/types'
 
 // ── ActualsDialog ─────────────────────────────────────────────────────────────
 // Lets the user record or edit what they actually spent per category in a past month.
@@ -107,10 +108,166 @@ function ActualsDialog({
   )
 }
 
+// ── HistoricalExpenseDialog ───────────────────────────────────────────────────
+// Lets the user add or edit a named expense line item on a past month snapshot.
+
+function HistoricalExpenseDialog({
+  snapshotId,
+  snapLabel,
+  existing,
+  lang,
+}: {
+  snapshotId: string
+  snapLabel: string
+  existing?: HistoricalExpense
+  lang: 'en' | 'he'
+}) {
+  const { data, addHistoricalExpense, updateHistoricalExpense } = useFinance()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [category, setCategory] = useState<ExpenseCategory>('other')
+  const [note, setNote] = useState('')
+
+  const handleOpen = (o: boolean) => {
+    if (o) {
+      setName(existing?.name ?? '')
+      setAmount(existing?.amount.toString() ?? '')
+      setCategory(existing?.category ?? 'other')
+      setNote(existing?.note ?? '')
+    }
+    setOpen(o)
+  }
+
+  const isValid = name.trim().length > 0 && parseFloat(amount) > 0
+
+  const handleSave = () => {
+    const amt = parseFloat(amount)
+    if (!isValid) return
+    if (existing) {
+      updateHistoricalExpense(snapshotId, {
+        ...existing,
+        name: name.trim(),
+        amount: amt,
+        category,
+        note: note.trim() || undefined,
+      })
+    } else {
+      addHistoricalExpense(snapshotId, {
+        name: name.trim(),
+        amount: amt,
+        category,
+        note: note.trim() || undefined,
+      })
+    }
+    setOpen(false)
+  }
+
+  const dialogTitle = existing
+    ? t(`Edit Expense — ${snapLabel}`, `ערוך הוצאה — ${snapLabel}`, lang)
+    : t(`Add Expense — ${snapLabel}`, `הוסף הוצאה — ${snapLabel}`, lang)
+
+  // Suppress unused warning — data is used for currency display consistency
+  void data
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        {existing ? (
+          <Button
+            variant="ghost" size="icon"
+            className="min-h-[44px] min-w-[44px]"
+            title={t('Edit recorded expense', 'ערוך הוצאה שנרשמה', lang)}
+            aria-label={t('Edit recorded expense', 'ערוך הוצאה שנרשמה', lang)}
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 min-h-[44px]">
+            <Plus className="h-3.5 w-3.5" />
+            {t(`Add Expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Receipt className="h-4 w-4" />
+            {dialogTitle}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div>
+            <Label>{t('Name', 'שם', lang)}</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('e.g. Dentist visit', 'למשל: ביקור אצל רופא שיניים', lang)}
+              aria-label={t('Expense name', 'שם הוצאה', lang)}
+            />
+            {name.length > 0 && name.trim().length === 0 && (
+              <p className="text-xs text-destructive mt-1">{t('Name is required', 'שם חובה', lang)}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>{t('Amount', 'סכום', lang)}</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                aria-label={t('Amount', 'סכום', lang)}
+              />
+              {amount.length > 0 && !(parseFloat(amount) > 0) && (
+                <p className="text-xs text-destructive mt-1">{t('Amount must be greater than 0', 'הסכום חייב להיות גדול מ-0', lang)}</p>
+              )}
+            </div>
+            <div>
+              <Label>{t('Category', 'קטגוריה', lang)}</Label>
+              <Select value={category} onValueChange={(v) => setCategory(v as ExpenseCategory)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {lang === 'he' ? c.he : c.en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label>{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
+            <Input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t('Any extra detail…', 'פרטים נוספים…', lang)}
+              aria-label={t('Note', 'הערה', lang)}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={handleSave} disabled={!isValid}>
+              {t('Save Expense', 'שמור הוצאה', lang)}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              {t('Cancel', 'ביטול', lang)}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main History component ────────────────────────────────────────────────────
 
 export function History() {
-  const { data, snapshotMonth, setData } = useFinance()
+  const { data, snapshotMonth, setData, deleteHistoricalExpense } = useFinance()
   const lang = data.language
 
   const deleteSnapshot = (id: string) =>
@@ -220,6 +377,65 @@ export function History() {
                         </div>
                       </div>
                     )}
+
+                    {/* Recorded historical expenses */}
+                    {(snap.historicalExpenses ?? []).length > 0 && (
+                      <div className="mt-3 border-t pt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {t(
+                              `Recorded expenses (${snap.historicalExpenses!.length})`,
+                              `הוצאות שנרשמו (${snap.historicalExpenses!.length})`,
+                              lang
+                            )}
+                          </p>
+                          <HistoricalExpenseDialog snapshotId={snap.id} snapLabel={snap.label} lang={lang} />
+                        </div>
+                        <div className="space-y-1">
+                          {snap.historicalExpenses!.map((item) => {
+                            const catLabel = CATEGORIES.find((c) => c.value === item.category)
+                            return (
+                              <div key={item.id} className="flex items-center justify-between text-xs gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <span className="font-medium">{item.name}</span>
+                                  {item.note && (
+                                    <p className="text-muted-foreground text-xs truncate">{item.note}</p>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge variant="outline" className="text-xs py-0">
+                                    {lang === 'he' ? catLabel?.he : catLabel?.en}
+                                  </Badge>
+                                  <span className="font-semibold tabular-nums">
+                                    {formatCurrency(item.amount, data.currency, data.locale)}
+                                  </span>
+                                  <HistoricalExpenseDialog
+                                    snapshotId={snap.id}
+                                    snapLabel={snap.label}
+                                    existing={item}
+                                    lang={lang}
+                                  />
+                                  <Button
+                                    variant="ghost" size="icon"
+                                    className="min-h-[44px] min-w-[44px] text-destructive"
+                                    onClick={() => deleteHistoricalExpense(snap.id, item.id)}
+                                    title={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
+                                    aria-label={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Add expense button — always shown */}
+                    <div className={(snap.historicalExpenses ?? []).length > 0 ? 'mt-2' : 'mt-3 border-t pt-3'}>
+                      <HistoricalExpenseDialog snapshotId={snap.id} snapLabel={snap.label} lang={lang} />
+                    </div>
                   </CardContent>
                 </Card>
               )
