@@ -276,13 +276,17 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         if (h.id !== snapshotId) return h
         const newItem: HistoricalExpense = { ...item, id: generateId() }
         const prevActuals = h.categoryActuals ?? {}
+        const newActuals = {
+          ...prevActuals,
+          [item.category]: (prevActuals[item.category] ?? 0) + item.amount,
+        }
+        const newTotalExpenses = Object.values(newActuals).reduce((s, v) => s + v, 0)
         return {
           ...h,
           historicalExpenses: [...(h.historicalExpenses ?? []), newItem],
-          categoryActuals: {
-            ...prevActuals,
-            [item.category]: (prevActuals[item.category] ?? 0) + item.amount,
-          },
+          categoryActuals: newActuals,
+          totalExpenses: newTotalExpenses,
+          freeCashFlow: h.totalIncome - newTotalExpenses - h.totalSavings,
         }
       }),
     }))
@@ -295,13 +299,17 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         const toDelete = (h.historicalExpenses ?? []).find((e) => e.id === itemId)
         if (!toDelete) return h
         const prevActuals = h.categoryActuals ?? {}
+        const newActuals = {
+          ...prevActuals,
+          [toDelete.category]: Math.max(0, (prevActuals[toDelete.category] ?? 0) - toDelete.amount),
+        }
+        const newTotalExpenses = Object.values(newActuals).reduce((s, v) => s + v, 0)
         return {
           ...h,
           historicalExpenses: (h.historicalExpenses ?? []).filter((e) => e.id !== itemId),
-          categoryActuals: {
-            ...prevActuals,
-            [toDelete.category]: Math.max(0, (prevActuals[toDelete.category] ?? 0) - toDelete.amount),
-          },
+          categoryActuals: newActuals,
+          totalExpenses: newTotalExpenses,
+          freeCashFlow: h.totalIncome - newTotalExpenses - h.totalSavings,
         }
       }),
     }))
@@ -313,13 +321,16 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         if (h.id !== snapshotId) return h
         const old = (h.historicalExpenses ?? []).find((e) => e.id === item.id)
         if (!old) return h
-        const prevActuals = { ...(h.categoryActuals ?? {}) }
-        prevActuals[old.category] = Math.max(0, (prevActuals[old.category] ?? 0) - old.amount)
-        prevActuals[item.category] = (prevActuals[item.category] ?? 0) + item.amount
+        const newActuals = { ...(h.categoryActuals ?? {}) }
+        newActuals[old.category] = Math.max(0, (newActuals[old.category] ?? 0) - old.amount)
+        newActuals[item.category] = (newActuals[item.category] ?? 0) + item.amount
+        const newTotalExpenses = Object.values(newActuals).reduce((s, v) => s + v, 0)
         return {
           ...h,
           historicalExpenses: (h.historicalExpenses ?? []).map((e) => e.id === item.id ? item : e),
-          categoryActuals: prevActuals,
+          categoryActuals: newActuals,
+          totalExpenses: newTotalExpenses,
+          freeCashFlow: h.totalIncome - newTotalExpenses - h.totalSavings,
         }
       }),
     }))
