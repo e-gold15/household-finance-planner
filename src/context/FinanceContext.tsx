@@ -366,10 +366,10 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
           id: generateId(),
           label,
           date: targetDate,
-          totalIncome: 0,
+          totalIncome: 0,           // unknown — income is not tracked for retroactive stubs
           totalExpenses: fixedTotal + item.amount,
-          totalSavings: 0,
-          freeCashFlow: 0,
+          totalSavings: 0,          // unknown
+          freeCashFlow: 0,          // unknown — not computed to avoid misleading negative display
           categoryActuals,
           historicalExpenses: [newItem],
         }

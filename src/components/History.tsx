@@ -327,11 +327,22 @@ export function History() {
                       <div>
                         <p className="font-semibold">{snap.label}</p>
                         <p className="text-xs text-muted-foreground">{new Date(snap.date).toLocaleDateString(data.locale)}</p>
+                        {snap.totalIncome === 0 && snap.totalExpenses > 0 && (
+                          <p className="text-xs text-muted-foreground/70 italic mt-0.5">
+                            {t('fixed expenses only', 'הוצאות קבועות בלבד', lang)}
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={snap.freeCashFlow >= 0 ? 'success' : 'destructive'}>
-                          {snap.freeCashFlow >= 0 ? '+' : ''}{formatCurrency(snap.freeCashFlow, data.currency, data.locale)}
-                        </Badge>
+                        {snap.totalIncome === 0 && snap.totalExpenses > 0 ? (
+                          <Badge variant="secondary" title={t('Income unknown — stub snapshot', 'הכנסה לא ידועה — תמונת מצב חלקית', lang)}>
+                            —
+                          </Badge>
+                        ) : (
+                          <Badge variant={snap.freeCashFlow >= 0 ? 'success' : 'destructive'}>
+                            {snap.freeCashFlow >= 0 ? '+' : ''}{formatCurrency(snap.freeCashFlow, data.currency, data.locale)}
+                          </Badge>
+                        )}
                         {/* Actuals indicator */}
                         {hasActuals && (
                           <Badge variant="secondary" className="text-xs gap-1">
