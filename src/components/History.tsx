@@ -341,7 +341,12 @@ function HistoricalIncomeDialog({
             <Edit2 className="h-3.5 w-3.5" />
           </Button>
         ) : (
-          <Button variant="outline" size="sm" className="text-xs gap-1.5 min-h-[44px]">
+          <Button
+            variant="outline" size="sm"
+            className="text-xs gap-1.5 min-h-[44px]"
+            title={t(`Add income to ${snapLabel}`, `הוסף הכנסה ל${snapLabel}`, lang)}
+            aria-label={t(`Add income to ${snapLabel}`, `הוסף הכנסה ל${snapLabel}`, lang)}
+          >
             <Plus className="h-3.5 w-3.5" />
             {t('Add Income', 'הוסף הכנסה', lang)}
           </Button>
@@ -525,7 +530,7 @@ export function History() {
                     {/* Recorded historical incomes — above actuals and expenses */}
                     <div className="mt-3 border-t pt-3">
                       <div className="flex items-center justify-between mb-2">
-                        {(snap.historicalIncomes ?? []).length > 0 && (
+                        {(snap.historicalIncomes ?? []).length > 0 ? (
                           <p className="text-xs font-medium text-muted-foreground">
                             {t(
                               `Recorded income (${snap.historicalIncomes!.length})`,
@@ -533,6 +538,8 @@ export function History() {
                               lang
                             )}
                           </p>
+                        ) : (
+                          <span />
                         )}
                         <HistoricalIncomeDialog
                           snapshotId={snap.id}
@@ -548,7 +555,7 @@ export function History() {
                               <div className="min-w-0 flex-1">
                                 <span className="font-medium">{item.memberName}</span>
                                 {item.note && (
-                                  <span className="text-muted-foreground ms-2 truncate">{item.note}</span>
+                                  <span className="text-muted-foreground ms-2 hidden sm:inline">{item.note}</span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
