@@ -212,13 +212,70 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     setData((d) => ({ ...d, members: d.members.filter((m) => m.id !== id) }))
 
   const addExpense = (expense: Omit<Expense, 'id'>) =>
-    setData((d) => ({ ...d, expenses: [...d.expenses, { ...expense, id: generateId() }] }))
+    setData((d) => {
+      const newExpense: Expense = { ...expense, id: generateId() }
+      const newExpenses = [...d.expenses, newExpense]
+
+      // Sync monthlyContribution on the linked account (atomic update)
+      if (newExpense.linkedAccountId && newExpense.category === 'savings') {
+        const monthly = newExpense.period === 'yearly' ? newExpense.amount / 12 : newExpense.amount
+        const newAccounts = d.accounts.map((a) =>
+          a.id === newExpense.linkedAccountId ? { ...a, monthlyContribution: monthly } : a
+        )
+        return { ...d, expenses: newExpenses, accounts: newAccounts }
+      }
+
+      return { ...d, expenses: newExpenses }
+    })
 
   const updateExpense = (expense: Expense) =>
-    setData((d) => ({ ...d, expenses: d.expenses.map((e) => (e.id === expense.id ? expense : e)) }))
+    setData((d) => {
+      const oldExpense = d.expenses.find((e) => e.id === expense.id)
+      const newExpenses = d.expenses.map((e) => (e.id === expense.id ? expense : e))
+
+      // Determine if account sync is needed
+      const oldLinkedId = oldExpense?.linkedAccountId
+      const newLinkedId = expense.linkedAccountId
+      const accountChanged = oldLinkedId !== newLinkedId
+      const categoryChangedFromSavings = oldExpense?.category === 'savings' && expense.category !== 'savings'
+
+      let newAccounts = d.accounts
+
+      // Reset old account's contribution if:
+      //   - old expense had a linked account, AND
+      //   - (the linked account changed, OR the category changed away from savings)
+      if (oldLinkedId && (accountChanged || categoryChangedFromSavings)) {
+        newAccounts = newAccounts.map((a) =>
+          a.id === oldLinkedId ? { ...a, monthlyContribution: 0 } : a
+        )
+      }
+
+      // Set new account's contribution if new expense is still savings-linked
+      if (newLinkedId && expense.category === 'savings') {
+        const monthly = expense.period === 'yearly' ? expense.amount / 12 : expense.amount
+        newAccounts = newAccounts.map((a) =>
+          a.id === newLinkedId ? { ...a, monthlyContribution: monthly } : a
+        )
+      }
+
+      return { ...d, expenses: newExpenses, accounts: newAccounts }
+    })
 
   const deleteExpense = (id: string) =>
-    setData((d) => ({ ...d, expenses: d.expenses.filter((e) => e.id !== id) }))
+    setData((d) => {
+      const toDelete = d.expenses.find((e) => e.id === id)
+      const newExpenses = d.expenses.filter((e) => e.id !== id)
+
+      // Reset contribution on the linked account when a savings expense is deleted
+      if (toDelete?.linkedAccountId && toDelete.category === 'savings') {
+        const newAccounts = d.accounts.map((a) =>
+          a.id === toDelete.linkedAccountId ? { ...a, monthlyContribution: 0 } : a
+        )
+        return { ...d, expenses: newExpenses, accounts: newAccounts }
+      }
+
+      return { ...d, expenses: newExpenses }
+    })
 
   const addAccount = (account: Omit<SavingsAccount, 'id'>) =>
     setData((d) => ({ ...d, accounts: [...d.accounts, { ...account, id: generateId() }] }))

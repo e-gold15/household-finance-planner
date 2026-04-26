@@ -63,6 +63,13 @@ export interface Expense {
    * Used to show due-date countdown and annual smoothing display.
    */
   dueMonth?: number
+  /**
+   * ID of the SavingsAccount this expense contributes to.
+   * Only meaningful when category === 'savings'.
+   * When set, addExpense/updateExpense/deleteExpense will mirror the monthly
+   * contribution amount onto the linked account's monthlyContribution field.
+   */
+  linkedAccountId?: string
 }
 
 export type AccountType =
