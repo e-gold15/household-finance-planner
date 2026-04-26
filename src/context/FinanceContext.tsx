@@ -348,15 +348,29 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
           }),
         }
       } else {
+        // Pre-populate stub with fixed recurring expenses (rent, insurance, etc.)
+        // Variable expenses are excluded — they differ month to month.
+        const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+        let fixedTotal = 0
+        d.expenses
+          .filter((e) => e.recurring && (e.expenseType ?? 'fixed') === 'fixed')
+          .forEach((e) => {
+            const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+            categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+            fixedTotal += monthly
+          })
+        // Stack the manually-entered one-off item on top
+        categoryActuals[item.category] = (categoryActuals[item.category] ?? 0) + item.amount
+
         const stub: MonthSnapshot = {
           id: generateId(),
           label,
           date: targetDate,
           totalIncome: 0,
-          totalExpenses: 0,
+          totalExpenses: fixedTotal + item.amount,
           totalSavings: 0,
           freeCashFlow: 0,
-          categoryActuals: { [item.category]: item.amount },
+          categoryActuals,
           historicalExpenses: [newItem],
         }
         return { ...d, history: [...d.history, stub] }
