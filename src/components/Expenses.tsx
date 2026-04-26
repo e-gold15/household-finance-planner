@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2 } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -12,6 +12,7 @@ import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
+import { scanReceipt, aiEnabled } from '@/lib/aiAdvisor'
 import type { Expense, ExpenseCategory, HistoricalExpense } from '@/types'
 
 const MONTHS: { value: number; en: string; he: string }[] = [
@@ -74,8 +75,11 @@ function ExpenseDialog({
   const [pastYear, setPastYear] = useState(
     new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear()
   )
-  const [savedLabel, setSavedLabel] = useState<string | null>(null)
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [savedLabel, setSavedLabel]   = useState<string | null>(null)
+  const [scanning, setScanning]       = useState(false)
+  const [scanError, setScanError]     = useState<string | null>(null)
+  const closeTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fileInputRef   = useRef<HTMLInputElement | null>(null)
 
   // Clear the auto-close timer if the dialog unmounts while it is pending.
   useEffect(() => {
@@ -116,6 +120,41 @@ function ExpenseDialog({
     setOpen(o)
   }
 
+  const handleReceiptFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset so the same file can be re-selected after an error
+    e.target.value = ''
+
+    setScanError(null)
+    setScanning(true)
+    try {
+      // Read file as base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          // Strip the "data:<mime>;base64," prefix
+          resolve(result.split(',')[1])
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const result = await scanReceipt(base64, file.type || 'image/jpeg', lang)
+      setForm((f) => ({
+        ...f,
+        name:     result.name     || f.name,
+        amount:   result.amount   || f.amount,
+        category: (result.category as ExpenseCategory) || f.category,
+      }))
+    } catch {
+      setScanError(t('Could not read receipt. Please fill in manually.', 'לא ניתן לקרוא את הקבלה. אנא מלא ידנית.', lang))
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const handleSave = () => {
     if (mode === 'past') {
       addExpenseToMonth(pastYear, pastMonth, {
@@ -153,11 +192,53 @@ function ExpenseDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle>
+              {existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}
+            </DialogTitle>
+            {aiEnabled && (
+              <>
+                {/* Hidden file input — camera on mobile, file picker on desktop */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  aria-hidden="true"
+                  onChange={handleReceiptFile}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={scanning}
+                  onClick={() => { setScanError(null); fileInputRef.current?.click() }}
+                  title={t('Scan receipt with AI', 'סרוק קבלה עם AI', lang)}
+                  aria-label={t('Scan receipt', 'סרוק קבלה', lang)}
+                  className="shrink-0 gap-1.5"
+                >
+                  {scanning
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Camera className="h-3.5 w-3.5" />
+                  }
+                  {scanning
+                    ? t('Scanning…', 'סורק…', lang)
+                    : t('Scan Receipt', 'סרוק קבלה', lang)
+                  }
+                </Button>
+              </>
+            )}
+          </div>
         </DialogHeader>
         <div className="space-y-4 mt-2">
+          {/* Scan error */}
+          {scanError && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              {scanError}
+            </div>
+          )}
 
           {/* When? — only for new expenses, not editing existing ones */}
           {!existing && (

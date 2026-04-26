@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 355 tests green)
+- [ ] `npm test` passes (all 375 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -243,7 +243,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `autoAllocateSavings.test.ts` | 19 | full funding, pro-rating, tier blocking, status transitions, order preservation, negative FCF, no mutation |
 | `overviewUtils.test.ts` | 31 | upcoming bills, budget health, savings projection, MoM trend |
 | `surplusAction.test.ts` | 24 | snapshot detection, markSurplusActioned, goal top-up, savings deposit |
-| **Total** | **355** | |
+| `receiptScan.test.ts`   | 20 | JSON parsing, category validation, amount clamping, malformed input |
+| **Total** | **375** | |
 
 ### Rules
 - All 261 existing tests must pass before any commit
@@ -429,7 +430,17 @@ How will we know this feature is working?
 - ✅ `markSurplusActioned(snapshotId)` added to `FinanceContext`
 - ✅ 24 new unit tests (355 total) in `src/test/surplusAction.test.ts`
 
-**Next (v3.1)**
+**v3.1 — shipped**
+- ✅ Receipt Scan → Auto-populate Expense — `scanReceipt()` in `aiAdvisor.ts` using Claude Vision
+- ✅ "📷 Scan Receipt" button in ExpenseDialog header (gated on `VITE_ANTHROPIC_API_KEY`)
+- ✅ Mobile: `accept="image/*" capture="environment"` opens camera directly
+- ✅ Auto-fills name, amount, category from receipt photo; user reviews before saving
+- ✅ Spinner + "Scanning…" label during AI call; inline error banner on failure
+- ✅ Images are ephemeral — never stored, only base64-encoded and sent to API
+- ✅ Markdown fence stripping + safe defaults for all fields in API response parser
+- ✅ 20 new unit tests (355 → 375 total) in `src/test/receiptScan.test.ts`
+
+**Next (v3.2)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
