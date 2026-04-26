@@ -16,7 +16,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (213 tests, must stay green)
+- **Tests:** Vitest — `npm test` (222 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -43,7 +43,7 @@ At the start of each session, declare which role you are acting as.
 - New localStorage keys must be documented in README.md
 - Never use Supabase Auth — auth is always local
 - All new exports must have a corresponding test in `src/test/localAuth.test.ts`
-- Run `npm test` before every commit — all 213 tests must pass
+- Run `npm test` before every commit — all 222 tests must pass
 - Run `npm run build` before every commit — catches TypeScript errors `tsc --noEmit` misses
 
 ### Supabase tables
@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 213 tests green)
+- [ ] `npm test` passes (all 222 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -236,11 +236,11 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `cloudFinance.test.ts` | 24 | mergeFinanceData, push/pull no-ops, conflict resolution |
 | `expenseFeatures.test.ts` | 35 | F1 fixed/variable, F2 budgets, F3 deltas, F4 sinking funds, F5 actuals |
 | `historicalExpenses.test.ts` | 11 | add/delete/update items, category change, clamp to 0, backward compat |
-| `addExpenseToMonth.test.ts` | 11 | stub creation, existing snapshot, accumulation, year boundary, siblings |
-| **Total** | **213** | |
+| `addExpenseToMonth.test.ts` | 20 | stub creation, fixed pre-pop, variable excluded, existing snapshot, year boundary |
+| **Total** | **222** | |
 
 ### Rules
-- All 213 existing tests must pass before any commit
+- All 222 existing tests must pass before any commit
 - Run `npm run build` before committing — not just `npm test`
 - New business logic functions require tests before merging
 - Test file mirrors lib file: `src/lib/foo.ts` → `src/test/foo.test.ts`
@@ -359,7 +359,9 @@ How will we know this feature is working?
 - ✅ setTimeout leak fixed (useRef + useEffect cleanup + handleOpen cancel)
 - ✅ Year-change clamping: switching to current year auto-adjusts pastMonth
 - ✅ Hebrew confirmation message uses localized month name
-- ✅ 11 new unit tests (213 total)
+- ✅ 11 new unit tests + 9 for v2.4.1 (222 total)
+- ✅ v2.4.1: stub snapshots pre-populate fixed recurring expenses in categoryActuals + totalExpenses
+- ✅ Stub visual indicator: neutral "—" FCF badge + "(fixed expenses only)" italic label
 
 **Next (v2.5)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
