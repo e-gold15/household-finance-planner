@@ -114,6 +114,7 @@ export interface GoalAllocation extends Goal {
   monthlyRecommended: number
   monthsNeeded: number
   gap: number
+  monthlyAllocated?: number
 }
 
 export interface HistoricalExpense {

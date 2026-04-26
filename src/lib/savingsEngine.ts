@@ -73,3 +73,65 @@ export function allocateGoals(input: EngineInput): GoalAllocation[] {
 
   return allocations
 }
+
+export function autoAllocateSavings(
+  goals: GoalAllocation[],
+  freeCashFlow: number,
+): GoalAllocation[] {
+  const priorityOrder: Record<GoalAllocation['priority'], number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+  }
+
+  // Build an index to restore original order
+  const withIndex = goals.map((g, i) => ({ goal: g, originalIndex: i }))
+
+  // Group by priority tier
+  const tiers: Array<Array<{ goal: GoalAllocation; originalIndex: number }>> = [[], [], []]
+  for (const item of withIndex) {
+    tiers[priorityOrder[item.goal.priority]].push(item)
+  }
+
+  // Allocate per tier
+  const result: Array<{ goal: GoalAllocation; originalIndex: number }> = []
+  let remainingFCF = Math.max(0, freeCashFlow)
+
+  for (const tier of tiers) {
+    if (tier.length === 0) continue
+    const tierSum = tier.reduce((s, { goal }) => s + goal.monthlyRecommended, 0)
+
+    for (const { goal, originalIndex } of tier) {
+      let allocated: number
+      if (remainingFCF >= tierSum) {
+        allocated = goal.monthlyRecommended
+      } else if (tierSum > 0) {
+        allocated = (goal.monthlyRecommended / tierSum) * remainingFCF
+      } else {
+        allocated = 0
+      }
+
+      let status: GoalStatus
+      if (allocated >= goal.monthlyRecommended) {
+        status = goal.status
+      } else if (allocated > 0) {
+        status = 'tight'
+      } else {
+        status = 'blocked'
+      }
+
+      result.push({
+        goal: { ...goal, monthlyAllocated: allocated, status },
+        originalIndex,
+      })
+    }
+
+    // Subtract the tier's actual draw from remaining FCF
+    const tierDraw = Math.min(tierSum, remainingFCF)
+    remainingFCF = Math.max(0, remainingFCF - tierDraw)
+  }
+
+  // Restore original order
+  result.sort((a, b) => a.originalIndex - b.originalIndex)
+  return result.map(({ goal }) => goal)
+}
