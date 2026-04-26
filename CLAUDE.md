@@ -16,7 +16,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (281 tests, must stay green)
+- **Tests:** Vitest — `npm test` (300 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 281 tests green)
+- [ ] `npm test` passes (all 300 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -240,7 +240,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `historicalIncome.test.ts` | 13 | add/delete/update income items, FCF recompute, clamp-to-zero, backward compat, stub transition |
 | `addIncomeToMonth.test.ts` | 26 | existing snapshot, stub creation, fixed pre-pop, FCF computed (not 0), immutability, year boundary |
 | `savingsLinkage.test.ts` | 20 | add/update/delete account sync, yearly÷12, account switch, ghost IDs, multi-account isolation |
-| **Total** | **281** | |
+| `autoAllocateSavings.test.ts` | 19 | full funding, pro-rating, tier blocking, status transitions, order preservation, negative FCF, no mutation |
+| **Total** | **300** | |
 
 ### Rules
 - All 261 existing tests must pass before any commit
@@ -397,7 +398,15 @@ How will we know this feature is working?
 - ✅ `--warning` HSL token system (shipped with v2.6)
 - ✅ 20 new unit tests (281 total)
 
-**Next (v2.8)**
+**v2.8 — shipped**
+- ✅ `autoAllocateSavings` — priority-tiered pro-rata allocation engine in savingsEngine.ts
+- ✅ `aiAdvisor.ts` — Claude Haiku API integration (client-side, VITE_ANTHROPIC_API_KEY gated)
+- ✅ "Allocation Plan" card in Goals tab — table, progress bars, Recalculate button
+- ✅ "Explain my plan 🤖" AI button — response in collapsible card, error handling, loading state
+- ✅ Bug fix: stub snapshots excluded from FCF source (were causing all goals to show blocked)
+- ✅ 19 new unit tests (300 total)
+
+**Next (v2.9)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
