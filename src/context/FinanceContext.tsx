@@ -82,6 +82,7 @@ interface FinanceContextType {
   addHistoricalIncome:    (snapshotId: string, item: Omit<HistoricalIncome, 'id'>) => void
   deleteHistoricalIncome: (snapshotId: string, itemId: string) => void
   updateHistoricalIncome: (snapshotId: string, item: HistoricalIncome) => void
+  addIncomeToMonth: (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) => void
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
@@ -430,6 +431,55 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }
     })
 
+  const addIncomeToMonth = (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) =>
+    setData((d) => {
+      const newItem: HistoricalIncome = { ...item, id: generateId() }
+      const label = `${MONTH_NAMES_EN[month - 1]} ${year}`
+      const targetDate = new Date(year, month - 1, 1).toISOString()
+
+      const existingIdx = d.history.findIndex((h) => {
+        const hDate = new Date(h.date)
+        return hDate.getFullYear() === year && hDate.getMonth() + 1 === month
+      })
+
+      if (existingIdx !== -1) {
+        const h = d.history[existingIdx]
+        const newTotalIncome = h.totalIncome + newItem.amount
+        const updated = {
+          ...h,
+          totalIncome: newTotalIncome,
+          freeCashFlow: newTotalIncome - h.totalExpenses - h.totalSavings,
+          historicalIncomes: [...(h.historicalIncomes ?? []), newItem],
+        }
+        const newHistory = [...d.history]
+        newHistory[existingIdx] = updated
+        return { ...d, history: newHistory }
+      } else {
+        // Build stub — pre-populate fixed recurring expenses (v2.4.1 pattern)
+        const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+        let fixedTotal = 0
+        d.expenses
+          .filter((e) => e.recurring && (e.expenseType ?? 'fixed') === 'fixed')
+          .forEach((e) => {
+            const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+            categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+            fixedTotal += monthly
+          })
+        const stub: MonthSnapshot = {
+          id: generateId(),
+          label,
+          date: targetDate,
+          totalIncome: newItem.amount,
+          totalExpenses: fixedTotal,
+          totalSavings: 0,
+          freeCashFlow: newItem.amount - fixedTotal,
+          categoryActuals,
+          historicalIncomes: [newItem],
+        }
+        return { ...d, history: [...d.history, stub] }
+      }
+    })
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
@@ -476,6 +526,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
       addExpenseToMonth,
       addHistoricalIncome, deleteHistoricalIncome, updateHistoricalIncome,
+      addIncomeToMonth,
     }}>
       {children}
     </FinanceContext.Provider>
