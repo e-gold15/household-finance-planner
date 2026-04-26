@@ -75,10 +75,32 @@ function ExpenseDialog({
     new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear()
   )
   const [savedLabel, setSavedLabel] = useState<string | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear the auto-close timer if the dialog unmounts while it is pending.
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
+  }, [])
 
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  /** Change the selected year and clamp pastMonth to a valid value for that year. */
+  const handlePastYearChange = (y: number) => {
+    setPastYear(y)
+    const now = new Date()
+    const curY = now.getFullYear()
+    const curM = now.getMonth() + 1 // 1-indexed
+    // When switching back to the current year, any month >= current month is invalid.
+    if (y === curY && pastMonth >= curM) {
+      // Clamp to the latest valid month (previous month, or December of prior year if Jan).
+      setPastMonth(curM > 1 ? curM - 1 : 12)
+    }
+  }
+
   const handleOpen = (o: boolean) => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null }
     if (o && existing) setForm(existing)
     if (o) {
       setMode('budget')
@@ -100,9 +122,13 @@ function ExpenseDialog({
         name: form.name,
         amount: form.amount,
         category: form.category,
-      } as Omit<HistoricalExpense, 'id'>)
+      })
       setSavedLabel(`${monthName(pastMonth, lang)} ${pastYear}`)
-      setTimeout(() => { setOpen(false); setSavedLabel(null) }, 1200)
+      closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null
+        setOpen(false)
+        setSavedLabel(null)
+      }, 1200)
     } else {
       onSave(form)
       setOpen(false)
@@ -425,12 +451,19 @@ export function Expenses() {
   const total = fixedTotal + variableTotal
 
   // Last snapshot for month-over-month comparison
-  const lastSnapshot = useMemo(
-    () => data.history.length > 0
-      ? [...data.history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-      : null,
-    [data.history]
-  )
+  // Last snapshot from a PREVIOUS month — excludes any snapshot taken this month
+  // so "Compare" always means "vs last month", not "vs today's own snapshot".
+  const lastSnapshot = useMemo(() => {
+    const now = new Date()
+    const curYear  = now.getFullYear()
+    const curMonth = now.getMonth() + 1
+    const previous = data.history.filter((h) => {
+      const d = new Date(h.date)
+      return d.getFullYear() < curYear || (d.getFullYear() === curYear && d.getMonth() + 1 < curMonth)
+    })
+    if (previous.length === 0) return null
+    return [...previous].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+  }, [data.history])
 
   // Annual expenses due this month
   const dueThisMonth = useMemo(
