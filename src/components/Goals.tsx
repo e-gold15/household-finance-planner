@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2 } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2, Bot, RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Switch } from './ui/switch'
 import { Slider } from './ui/slider'
 import { useFinance } from '@/context/FinanceContext'
-import { allocateGoals } from '@/lib/savingsEngine'
+import { allocateGoals, autoAllocateSavings } from '@/lib/savingsEngine'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { formatCurrency, generateId, t } from '@/lib/utils'
+import { explainGoalPlan, aiEnabled } from '@/lib/aiAdvisor'
 import type { Goal, GoalAllocation, GoalPriority, GoalStatus } from '@/types'
 
 function GoalDialog({
@@ -138,6 +139,11 @@ export function Goals() {
   const { data, addGoal, updateGoal, deleteGoal, moveGoal, setData } = useFinance()
   const lang = data.language
 
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiExplanation, setAiExplanation] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+  const [showAiCard, setShowAiCard] = useState(false)
+
   const totalIncome = useMemo(
     () => data.members.reduce((sum, m) => sum + m.sources.reduce((s, src) => s + getNetMonthly(src), 0), 0),
     [data.members]
@@ -152,6 +158,17 @@ export function Goals() {
   )
   const surplus = totalIncome - totalExpenses - totalContrib
 
+  // Derive FCF from most recent non-stub snapshot, or fall back to computed surplus.
+  // Stubs have totalIncome === 0 (income is unknown for retroactive stubs).
+  // Only snapshots where totalIncome > 0 carry a meaningful freeCashFlow figure.
+  const freeCashFlow = useMemo(() => {
+    const nonStub = [...data.history]
+      .filter((s) => s.totalIncome > 0)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    if (nonStub.length > 0) return nonStub[0].freeCashFlow
+    return surplus
+  }, [data.history, surplus])
+
   const allocations: GoalAllocation[] = useMemo(
     () =>
       allocateGoals({
@@ -163,6 +180,54 @@ export function Goals() {
       }),
     [data.goals, data.accounts, data.emergencyBufferMonths, surplus, totalExpenses]
   )
+
+  const [autoAllocations, setAutoAllocations] = useState<GoalAllocation[] | null>(null)
+
+  const displayAllocations = autoAllocations ?? allocations
+
+  const handleRecalculate = () => {
+    setAutoAllocations(autoAllocateSavings(allocations, Math.max(0, freeCashFlow)))
+    setAiExplanation(null)
+    setAiError(null)
+    setShowAiCard(false)
+  }
+
+  // Sync autoAllocations when base allocations change (goals/data changes)
+  const totalAllocated = useMemo(
+    () => displayAllocations.reduce((s, g) => s + (g.monthlyAllocated ?? g.monthlyRecommended), 0),
+    [displayAllocations]
+  )
+
+  const isOverBudget = totalAllocated > Math.max(0, freeCashFlow)
+
+  const handleExplainPlan = async () => {
+    if (aiLoading) return
+    setAiLoading(true)
+    setAiError(null)
+    setShowAiCard(true)
+    try {
+      const payload = {
+        goals: displayAllocations.map((g) => ({
+          name: g.name,
+          targetAmount: g.targetAmount,
+          currentAmount: g.currentAmount,
+          deadline: g.deadline,
+          priority: g.priority,
+          monthlyRecommended: g.monthlyRecommended,
+          monthlyAllocated: g.monthlyAllocated ?? g.monthlyRecommended,
+          status: g.status,
+        })),
+        freeCashFlow: Math.max(0, freeCashFlow),
+        currency: data.currency,
+      }
+      const explanation = await explainGoalPlan(payload, lang)
+      setAiExplanation(explanation)
+    } catch {
+      setAiError(t('Could not reach AI — check your API key', 'לא ניתן להתחבר ל-AI — בדוק את מפתח ה-API', lang))
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -190,13 +255,157 @@ export function Goals() {
         </CardContent>
       </Card>
 
+      {/* Allocation Plan */}
+      {data.goals.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">{t('Allocation Plan', 'תוכנית הקצאה', lang)}</CardTitle>
+              <div className="flex items-center gap-2">
+                {aiEnabled && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px]"
+                    onClick={handleExplainPlan}
+                    disabled={aiLoading}
+                    aria-label={t('Explain my plan', 'הסבר את התוכנית', lang)}
+                  >
+                    <Bot className="h-4 w-4 me-1" />
+                    {aiLoading
+                      ? t('Thinking…', 'חושב…', lang)
+                      : t('Explain my plan 🤖', 'הסבר את התוכנית 🤖', lang)}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px]"
+                  onClick={handleRecalculate}
+                  aria-label={t('Recalculate', 'חשב מחדש', lang)}
+                >
+                  <RefreshCw className="h-4 w-4 me-1" />
+                  {t('Recalculate', 'חשב מחדש', lang)}
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 max-h-[85vh] overflow-y-auto">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-muted-foreground border-b">
+                    <th className="text-start py-2 font-medium">{t('Goal', 'יעד', lang)}</th>
+                    <th className="text-start py-2 font-medium">{t('Priority', 'עדיפות', lang)}</th>
+                    <th className="text-start py-2 font-medium">{t('Needed/mo', 'נדרש/חודש', lang)}</th>
+                    <th className="text-start py-2 font-medium">{t('Allocated', 'מוקצה', lang)}</th>
+                    <th className="text-start py-2 font-medium">{t('Status', 'סטטוס', lang)}</th>
+                    <th className="text-start py-2 font-medium">{t('Progress', 'התקדמות', lang)}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayAllocations.map((goal) => {
+                    const pct = Math.min(100, goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0)
+                    const allocated = goal.monthlyAllocated ?? goal.monthlyRecommended
+                    const statusLabel = {
+                      realistic: t('Realistic', 'ריאלי', lang),
+                      tight: t('Tight', 'הדוק', lang),
+                      unrealistic: t('Unrealistic', 'לא ריאלי', lang),
+                      blocked: t('Blocked', 'חסום', lang),
+                    }[goal.status]
+                    const priorityLabel = {
+                      high: t('High', 'גבוה', lang),
+                      medium: t('Medium', 'בינוני', lang),
+                      low: t('Low', 'נמוך', lang),
+                    }[goal.priority]
+                    return (
+                      <tr key={goal.id} className="border-b last:border-0">
+                        <td className="py-2 font-medium">{goal.name}</td>
+                        <td className="py-2">
+                          <Badge variant={PRIORITY_BADGE[goal.priority]} className="text-xs">{priorityLabel}</Badge>
+                        </td>
+                        <td className="py-2">{formatCurrency(goal.monthlyRecommended, data.currency, data.locale)}</td>
+                        <td className="py-2 font-semibold">{formatCurrency(allocated, data.currency, data.locale)}</td>
+                        <td className="py-2">
+                          <Badge variant={STATUS_BADGE[goal.status]} className="text-xs inline-flex items-center gap-1">
+                            {(() => { const Icon = STATUS_ICONS[goal.status]; return <Icon className="h-3 w-3" /> })()}
+                            {statusLabel}
+                          </Badge>
+                        </td>
+                        <td className="py-2 min-w-[80px]">
+                          <Progress
+                            value={pct}
+                            indicatorClassName={
+                              goal.status === 'realistic' ? 'bg-primary' :
+                              goal.status === 'tight' ? 'bg-[hsl(var(--chart-3))]' : 'bg-destructive'
+                            }
+                            aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
+                          />
+                          <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t">
+                    <td colSpan={3} className="py-2 text-muted-foreground">
+                      {t('Total allocated:', 'סה"כ מוקצה:', lang)}
+                    </td>
+                    <td colSpan={3} className="py-2">
+                      <span className={`font-semibold ${isOverBudget ? 'text-destructive' : 'text-primary'}`}>
+                        {formatCurrency(totalAllocated, data.currency, data.locale)}
+                      </span>
+                      <span className="text-muted-foreground ms-1 me-1">/</span>
+                      <span className="text-muted-foreground">
+                        {t('FCF:', 'תזרים:', lang)} {formatCurrency(Math.max(0, freeCashFlow), data.currency, data.locale)}
+                      </span>
+                      {isOverBudget && (
+                        <span className="text-destructive ms-2 text-xs">
+                          {t('⚠ Over budget', '⚠ חריגה מתקציב', lang)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            {/* AI Explanation card */}
+            {showAiCard && (
+              <div className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-primary" />
+                      <CardTitle className="text-sm">{t('AI Plan Assessment', 'הערכת תוכנית AI', lang)}</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 max-h-[40vh] overflow-y-auto">
+                    {aiLoading && (
+                      <p className="text-sm text-muted-foreground">{t('Analyzing your plan…', 'מנתח את התוכנית שלך…', lang)}</p>
+                    )}
+                    {aiError && (
+                      <p className="text-sm text-destructive">{aiError}</p>
+                    )}
+                    {aiExplanation && !aiLoading && (
+                      <p className="text-sm whitespace-pre-wrap">{aiExplanation}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {data.goals.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
           <Target className="h-10 w-10" />
           <p>{t('Set a financial goal to get started', 'הגדר יעד פיננסי כדי להתחיל', lang)}</p>
         </div>
       ) : (
-        allocations.map((goal, idx) => {
+        displayAllocations.map((goal, idx) => {
           const pct = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100)
           const StatusIcon = STATUS_ICONS[goal.status]
           const statusLabel = {
@@ -246,6 +455,12 @@ export function Goals() {
                     <p className="text-muted-foreground">{t('Deadline', 'מועד יעד', lang)}</p>
                     <p className="font-semibold">{goal.deadline ? new Date(goal.deadline).toLocaleDateString(data.locale) : '—'}</p>
                   </div>
+                  {goal.monthlyAllocated !== undefined && goal.monthlyAllocated !== goal.monthlyRecommended && (
+                    <div className="bg-muted/50 rounded p-2">
+                      <p className="text-muted-foreground">{t('Allocated/mo', 'מוקצה/חודש', lang)}</p>
+                      <p className="font-semibold">{formatCurrency(goal.monthlyAllocated, data.currency, data.locale)}</p>
+                    </div>
+                  )}
                   {goal.gap > 0 && (
                     <div className="bg-destructive/10 rounded p-2 col-span-2">
                       <p className="text-destructive text-xs">{t('Monthly gap:', 'פער חודשי:', lang)} {formatCurrency(goal.gap, data.currency, data.locale)}</p>
@@ -261,7 +476,7 @@ export function Goals() {
                       <ChevronUp className="h-3.5 w-3.5" />
                     </Button>
                     <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
-                      disabled={idx === allocations.length - 1} onClick={() => moveGoal(goal.id, 'down')}
+                      disabled={idx === displayAllocations.length - 1} onClick={() => moveGoal(goal.id, 'down')}
                       title={t('Move down', 'הזז למטה', lang)} aria-label={t('Move down', 'הזז למטה', lang)}>
                       <ChevronDown className="h-3.5 w-3.5" />
                     </Button>
