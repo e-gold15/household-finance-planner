@@ -117,6 +117,13 @@ export interface HistoricalExpense {
   note?: string            // optional free-text annotation
 }
 
+export interface HistoricalIncome {
+  id: string
+  memberName: string   // who received this income (net amount — no tax calc needed)
+  amount: number       // net amount received that month (always positive)
+  note?: string        // optional: "Monthly salary", "Bonus", "Freelance project"
+}
+
 export interface MonthSnapshot {
   id: string
   label: string
@@ -137,6 +144,7 @@ export interface MonthSnapshot {
    * Absence of this field (undefined or []) means no items have been added.
    */
   historicalExpenses?: HistoricalExpense[]
+  historicalIncomes?: HistoricalIncome[]
 }
 
 export interface FinanceData {

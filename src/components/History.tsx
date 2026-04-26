@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt } from 'lucide-react'
+import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
-import type { ExpenseCategory, MonthSnapshot, HistoricalExpense } from '@/types'
+import type { ExpenseCategory, MonthSnapshot, HistoricalExpense, HistoricalIncome } from '@/types'
 
 // ── ActualsDialog ─────────────────────────────────────────────────────────────
 // Lets the user record or edit what they actually spent per category in a past month.
@@ -269,10 +269,153 @@ function HistoricalExpenseDialog({
   )
 }
 
+// ── HistoricalIncomeDialog ────────────────────────────────────────────────────
+// Lets the user add or edit a net income entry on a past month snapshot.
+
+function HistoricalIncomeDialog({
+  snapshotId,
+  snapLabel,
+  existing,
+  lang,
+  memberNames,
+}: {
+  snapshotId: string
+  snapLabel: string
+  existing?: HistoricalIncome
+  lang: 'en' | 'he'
+  memberNames: string[]
+}) {
+  const { addHistoricalIncome, updateHistoricalIncome } = useFinance()
+  const [open, setOpen] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+
+  const handleOpen = (o: boolean) => {
+    if (o) {
+      setMemberName(existing?.memberName ?? (memberNames[0] ?? ''))
+      setAmount(existing?.amount.toString() ?? '')
+      setNote(existing?.note ?? '')
+    }
+    setOpen(o)
+  }
+
+  const isValid = memberName.trim().length > 0 && parseFloat(amount) > 0
+
+  const handleSave = () => {
+    const amt = parseFloat(amount)
+    if (!isValid) return
+    if (existing) {
+      updateHistoricalIncome(snapshotId, {
+        ...existing,
+        memberName: memberName.trim(),
+        amount: amt,
+        note: note.trim() || undefined,
+      })
+    } else {
+      addHistoricalIncome(snapshotId, {
+        memberName: memberName.trim(),
+        amount: amt,
+        note: note.trim() || undefined,
+      })
+    }
+    setOpen(false)
+  }
+
+  const dialogTitle = existing
+    ? t(`Edit Income — ${snapLabel}`, `ערוך הכנסה — ${snapLabel}`, lang)
+    : t(`Add Income — ${snapLabel}`, `הוסף הכנסה — ${snapLabel}`, lang)
+
+  const listId = `members-${snapshotId}`
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        {existing ? (
+          <Button
+            variant="ghost" size="icon"
+            className="min-h-[44px] min-w-[44px]"
+            title={t('Edit recorded income', 'ערוך הכנסה שנרשמה', lang)}
+            aria-label={t('Edit recorded income', 'ערוך הכנסה שנרשמה', lang)}
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 min-h-[44px]">
+            <Plus className="h-3.5 w-3.5" />
+            {t('Add Income', 'הוסף הכנסה', lang)}
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            {dialogTitle}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          {/* Member name — datalist for autocomplete from existing members */}
+          <datalist id={listId}>
+            {memberNames.map((n) => <option key={n} value={n} />)}
+          </datalist>
+          <div>
+            <Label htmlFor={`${snapshotId}-member`}>{t('Person', 'אדם', lang)}</Label>
+            <Input
+              id={`${snapshotId}-member`}
+              list={listId}
+              value={memberName}
+              onChange={(e) => setMemberName(e.target.value)}
+              placeholder={memberNames[0] ?? t('Name', 'שם', lang)}
+              aria-label={t('Person', 'אדם', lang)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor={`${snapshotId}-income-amount`}>{t('Net amount received', 'סכום נטו שהתקבל', lang)}</Label>
+            <Input
+              id={`${snapshotId}-income-amount`}
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              aria-label={t('Net amount received', 'סכום נטו שהתקבל', lang)}
+            />
+            {amount.length > 0 && !(parseFloat(amount) > 0) && (
+              <p className="text-xs text-destructive mt-1">{t('Amount must be greater than 0', 'הסכום חייב להיות גדול מ-0', lang)}</p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor={`${snapshotId}-income-note`}>{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
+            <Input
+              id={`${snapshotId}-income-note`}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={t('e.g. Monthly salary, Bonus…', 'למשל: משכורת חודשית, בונוס…', lang)}
+              aria-label={t('Note', 'הערה', lang)}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={handleSave} disabled={!isValid}>
+              {t('Save Income', 'שמור הכנסה', lang)}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+              {t('Cancel', 'ביטול', lang)}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Main History component ────────────────────────────────────────────────────
 
 export function History() {
-  const { data, snapshotMonth, setData, deleteHistoricalExpense } = useFinance()
+  const { data, snapshotMonth, setData, deleteHistoricalExpense, deleteHistoricalIncome } = useFinance()
   const lang = data.language
 
   const deleteSnapshot = (id: string) =>
@@ -377,6 +520,62 @@ export function History() {
                         <p className="text-muted-foreground">{t('Savings', 'חיסכון', lang)}</p>
                         <p className="font-semibold">{formatCurrency(snap.totalSavings, data.currency, data.locale)}</p>
                       </div>
+                    </div>
+
+                    {/* Recorded historical incomes — above actuals and expenses */}
+                    <div className="mt-3 border-t pt-3">
+                      <div className="flex items-center justify-between mb-2">
+                        {(snap.historicalIncomes ?? []).length > 0 && (
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {t(
+                              `Recorded income (${snap.historicalIncomes!.length})`,
+                              `הכנסות שנרשמו (${snap.historicalIncomes!.length})`,
+                              lang
+                            )}
+                          </p>
+                        )}
+                        <HistoricalIncomeDialog
+                          snapshotId={snap.id}
+                          snapLabel={snap.label}
+                          lang={lang}
+                          memberNames={data.members.map((m) => m.name)}
+                        />
+                      </div>
+                      {(snap.historicalIncomes ?? []).length > 0 && (
+                        <div className="space-y-1">
+                          {snap.historicalIncomes!.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between text-xs gap-2">
+                              <div className="min-w-0 flex-1">
+                                <span className="font-medium">{item.memberName}</span>
+                                {item.note && (
+                                  <span className="text-muted-foreground ms-2 truncate">{item.note}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="font-semibold tabular-nums text-primary">
+                                  {formatCurrency(item.amount, data.currency, data.locale)}
+                                </span>
+                                <HistoricalIncomeDialog
+                                  snapshotId={snap.id}
+                                  snapLabel={snap.label}
+                                  existing={item}
+                                  lang={lang}
+                                  memberNames={data.members.map((m) => m.name)}
+                                />
+                                <Button
+                                  variant="ghost" size="icon"
+                                  className="min-h-[44px] min-w-[44px] text-destructive"
+                                  onClick={() => deleteHistoricalIncome(snap.id, item.id)}
+                                  title={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
+                                  aria-label={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Category actuals breakdown — shown when logged */}
