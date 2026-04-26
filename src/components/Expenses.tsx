@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -54,7 +54,7 @@ function ExpenseDialog({
   onSave: (e: Expense) => void
   lang: 'en' | 'he'
 }) {
-  const { addExpenseToMonth } = useFinance()
+  const { addExpenseToMonth, data } = useFinance()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<Expense>(
     existing ?? {
@@ -285,7 +285,18 @@ function ExpenseDialog({
           {/* Category */}
           <div>
             <Label>{t('Category', 'קטגוריה', lang)}</Label>
-            <Select value={form.category} onValueChange={(v) => set('category', v as ExpenseCategory)}>
+            <Select
+              value={form.category}
+              onValueChange={(v) => {
+                const newCat = v as ExpenseCategory
+                setForm((f) => ({
+                  ...f,
+                  category: newCat,
+                  // Clear the linked account when the category is no longer 'savings'
+                  linkedAccountId: newCat === 'savings' ? f.linkedAccountId : undefined,
+                }))
+              }}
+            >
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => (
@@ -294,6 +305,41 @@ function ExpenseDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* When category is savings but no accounts have been created yet, show a hint */}
+          {form.category === 'savings' && data.accounts.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'Add a savings account in the Accounts tab to link it here.',
+                'הוסף חשבון חיסכון בלשונית חשבונות כדי לקשר אותו כאן.',
+                lang
+              )}
+            </p>
+          )}
+
+          {/* Link to savings account — only visible when category is 'savings' and accounts exist */}
+          {form.category === 'savings' && data.accounts.length > 0 && (
+            <div>
+              <Label htmlFor="linked-account">
+                {t('Link to savings account', 'קשר לחשבון חיסכון', lang)}{' '}
+                <span className="text-muted-foreground text-xs">({t('optional', 'אופציונלי', lang)})</span>
+              </Label>
+              <Select
+                value={form.linkedAccountId ?? '__none__'}
+                onValueChange={(v) => set('linkedAccountId', v === '__none__' ? undefined : v)}
+              >
+                <SelectTrigger id="linked-account" aria-label={t('Link to savings account', 'קשר לחשבון חיסכון', lang)} className="min-h-[44px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">{t("None / Don't link", 'ללא קישור', lang)}</SelectItem>
+                  {data.accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Fixed vs Variable — segmented toggle */}
           {mode === 'budget' && (
@@ -627,6 +673,19 @@ export function Expenses() {
                             }
                           </Badge>
                         </div>
+
+                        {/* Linked savings account badge */}
+                        {expense.linkedAccountId && (() => {
+                          const linkedAccount = data.accounts.find((a) => a.id === expense.linkedAccountId)
+                          return linkedAccount ? (
+                            <div className="mt-0.5">
+                              <Badge variant="secondary" className="text-xs max-w-[160px] truncate inline-flex items-center gap-0.5">
+                                <Link2 className="h-2.5 w-2.5 shrink-0" />
+                                {linkedAccount.name}
+                              </Badge>
+                            </div>
+                          ) : null
+                        })()}
 
                         {/* Annual smoothing row */}
                         {expense.period === 'yearly' && (
