@@ -2192,3 +2192,321 @@ A user on the Income tab can record a past-month income payment in under 30 seco
 3. Confirm `historicalIncomes: []` default is already covered by existing `FINANCE_DEFAULTS` (added in v2.5)
 
 ---
+
+## 26. Feature Spec: Savings Expense → Account Linkage (v2.7)
+
+### 26.1 Problem
+
+**User pain:** When a user adds a "Savings" expense (e.g. a monthly transfer to an emergency fund or a dedicated savings account), the expense appears in the budget but has no connection to the accounts listed in the Savings tab. The user must manually update `monthlyContribution` on the matching account separately — two steps when one would do. This disconnect means the Overview KPIs and goal-progress bars can fall out of sync with the actual budget plan.
+
+**Who is affected:** All personas — but especially the Israeli dual-income couple who run multiple named savings accounts (emergency fund, vacation, car replacement) and want the budget to stay consistent with their savings plan automatically.
+
+---
+
+### 26.2 Solution Overview
+
+When the user selects **"Savings"** as the expense category in the Add/Edit Expense dialog, an **account selector** appears listing all accounts from `data.accounts` (the Savings tab). Selecting one links the expense to that account. On save, `account.monthlyContribution` is updated to reflect the expense's monthly-equivalent amount.
+
+Key principles:
+- **Optional linkage** — the selector is not required; the user can leave it blank and the expense behaves exactly as before.
+- **One-way sync on save** — linking sets `monthlyContribution` on the account at the moment of save. Subsequent manual edits to the account are not overwritten.
+- **No auto-revert on delete or unlink** — deleting a linked expense or changing its category does not reset `monthlyContribution`. The user controls the account directly after the initial link.
+- **No schema change** — `linkedAccountId` is a new optional field on the `Expense` JSON blob; `cloudFinance.ts` syncs it automatically as part of `household_finance.data`.
+
+---
+
+### 26.3 Key Design Decisions
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Where the selector appears | Only when `category === 'savings'` | Linking makes no semantic sense for non-savings categories |
+| Field cleared on category change | `linkedAccountId` set to `undefined` when category changes away from 'savings' | Prevents stale links to accounts for non-savings expenses |
+| Sync direction | Expense → Account (`monthlyContribution`) on save only | Keeps data flow simple and predictable; avoids circular updates |
+| Yearly expense normalisation | `monthlyContribution = amount / 12` when `period === 'yearly'` | Account contributions are always expressed monthly |
+| On delete of linked expense | Do NOT revert `monthlyContribution` | User may have manually adjusted the account; auto-revert would be destructive |
+| On unlink (category change or clearing selector) | Do NOT revert `monthlyContribution` | Same reason — user controls the account after the first sync |
+| Dangling `linkedAccountId` (account deleted) | Expense retains `amount`; badge omitted or shows "(deleted account)" | Graceful degradation — no hard crash, no data loss |
+| Schema change | None | `linkedAccountId` lives inside the expense JSON blob, synced via `cloudFinance.ts` |
+
+---
+
+### 26.4 Data Model Changes
+
+#### Updated type: `Expense`
+
+```typescript
+export interface Expense {
+  // ... existing fields unchanged ...
+  linkedAccountId?: string   // ← NEW: ID of a SavingsAccount from data.accounts
+}
+```
+
+- Present only when `category === 'savings'` and the user has selected an account.
+- Always `undefined` (or absent) when `category !== 'savings'`.
+- Cleared to `undefined` automatically when the user changes the category away from `'savings'` in the dialog.
+
+#### No changes to `SavingsAccount`, `MonthSnapshot`, or any other type.
+
+#### `monthlyContribution` sync rule (on save)
+
+```
+if (linkedAccountId && category === 'savings') {
+  const monthly = period === 'yearly' ? amount / 12 : amount
+  account.monthlyContribution = monthly
+}
+```
+
+This update is applied atomically inside `setData` — the expense is saved and the account is updated in a single state mutation.
+
+---
+
+### 26.5 UI Design
+
+#### 26.5.1 Add / Edit Expense dialog — account selector
+
+When `category === 'savings'`, a new optional field appears immediately below the Category select:
+
+```
+┌──────────────────────────────────────────┐
+│  Add Expense                             │
+│                                          │
+│  Name                                    │
+│  [________________________]              │
+│                                          │
+│  Amount          Category                │
+│  [________]      [Savings          ▼]    │
+│                                          │
+│  ┌─ shown only when category = Savings ─┐│
+│  │  Link to savings account (optional)  ││
+│  │  [Emergency Fund              ▼]     ││
+│  │  Sets monthly contribution on save   ││
+│  └──────────────────────────────────────┘│
+│                                          │
+│  Period         Recurring                │
+│  [Monthly ▼]    [●]                      │
+│                                          │
+│  [    Save Expense    ]                  │
+│  [       Cancel       ]                  │
+└──────────────────────────────────────────┘
+```
+
+- **Selector label:** `Link to savings account (optional)` / `קישור לחשבון חיסכון (אופציונלי)`
+- **Helper text:** `Sets monthly contribution on save` / `מעדכן תרומה חודשית בשמירה` — shown in `text-xs text-muted-foreground` directly below the selector
+- **Options:** one `<SelectItem>` per entry in `data.accounts`, displaying `account.name`. First option is a blank "—" (no linkage).
+- **Default:** blank ("—") for new expenses; pre-selected with `expense.linkedAccountId` when editing an existing linked expense.
+- **Accounts list empty:** if `data.accounts` is empty, the selector is not rendered (the field is silently omitted — no error message needed).
+- **Clearing the link:** the user can re-select "—" to remove the link before saving. This sets `linkedAccountId = undefined` and does NOT update the account.
+
+#### 26.5.2 Expense list — account badge on linked rows
+
+In the Expenses tab list, linked savings expenses show a small account badge after the category badge:
+
+```
+[Rent]     [Housing]                     ₪4,500 / mo     [✏] [🗑]
+[Savings]  [Savings] [🏦 Emergency Fund]  ₪1,500 / mo     [✏] [🗑]
+```
+
+- Badge: `Badge variant="outline"` with a `PiggyBank` (or `Landmark`) lucide icon + account name
+- If `linkedAccountId` references a deleted account: badge is silently omitted (no "(deleted account)" text in the list — just no badge)
+- RTL: badge appears after the category badge in logical order (`ms-1`)
+
+#### 26.5.3 Savings tab — visual indicator on linked accounts
+
+No structural change to the Savings tab. When an account has a `monthlyContribution` that was set via a linked expense, it displays normally — the Savings tab is unaware of the link source. The contribution value is simply accurate.
+
+---
+
+### 26.6 Interaction Flows
+
+#### Flow A — Link a new savings expense to an account
+
+```
+1. User is on the Expenses tab
+2. Clicks "Add Expense"
+3. Fills: Name="Emergency fund", Amount=1500, Category=Savings
+   → Account selector appears below Category
+4. User selects "Emergency Fund" from the selector
+5. Helper text: "Sets monthly contribution on save"
+6. Clicks "Save Expense"
+7. setData fires atomically:
+   a. New Expense saved with linkedAccountId = 'acct-123'
+   b. data.accounts: account 'acct-123'.monthlyContribution = 1500
+8. Expenses tab: new row shows [Savings] [🏦 Emergency Fund] ₪1,500/mo
+9. Savings tab: Emergency Fund card now shows monthlyContribution = ₪1,500
+```
+
+#### Flow B — Edit a linked expense (change amount)
+
+```
+1. User clicks ✏ on the "Emergency fund ₪1,500/mo" row
+2. Edit dialog opens; Category = Savings, account selector pre-selects "Emergency Fund"
+3. User changes Amount from 1500 → 2000
+4. Clicks "Save Expense"
+5. setData fires:
+   a. Expense amount updated to 2000, linkedAccountId unchanged
+   b. account.monthlyContribution updated to 2000
+6. Savings tab: Emergency Fund shows monthlyContribution = ₪2,000
+```
+
+#### Flow C — Unlink (change category away from Savings)
+
+```
+1. User clicks ✏ on "Emergency fund ₪1,500/mo"
+2. Changes Category from "Savings" → "Housing"
+   → Account selector disappears
+   → linkedAccountId cleared to undefined
+3. Clicks "Save Expense"
+4. Expense saved with category = 'housing', no linkedAccountId
+5. Emergency Fund account: monthlyContribution remains at ₪1,500 (not reverted)
+```
+
+#### Flow D — Delete a linked expense
+
+```
+1. User clicks 🗑 on "Emergency fund ₪1,500/mo"
+2. Expense is removed from data.expenses
+3. Emergency Fund account: monthlyContribution remains at ₪1,500 (not reverted)
+4. Expenses tab: row disappears
+5. Savings tab: Emergency Fund still shows ₪1,500/mo (user adjusts manually if needed)
+```
+
+#### Flow E — Account deleted after expense was linked
+
+```
+1. User deletes "Emergency Fund" account from Savings tab
+2. Expense remains in data.expenses with linkedAccountId = 'acct-123' (dangling ref)
+3. Expenses tab: expense row shows [Savings] with no account badge (badge silently omitted)
+4. If user opens Edit dialog: account selector shows "—" (deleted account not in list)
+5. No error thrown; data consistent
+```
+
+---
+
+### 26.7 Edge Cases & Rules
+
+| Scenario | Behaviour |
+|----------|-----------|
+| `data.accounts` is empty when Savings selected | Account selector not rendered; expense saves without `linkedAccountId` |
+| `period === 'yearly'` on a linked expense | `monthlyContribution = amount / 12` (normalised to monthly) |
+| User clears the selector (selects "—") before saving | `linkedAccountId = undefined`; account's `monthlyContribution` not touched |
+| Two expenses linked to the same account | Second save overwrites `monthlyContribution` with its own amount; only the last-saved amount wins |
+| Linked account is deleted | Expense retains `linkedAccountId`; badge silently omitted in list; account selector shows "—" in edit dialog |
+| `addExpenseToMonth` (past-month flow, v2.4) with category = Savings | `linkedAccountId` can be set the same way; `monthlyContribution` sync applies on save |
+| `cloudFinance.ts` merging | `linkedAccountId` is part of the expense JSON blob; no special merge logic needed |
+| `migrateIfNeeded()` on old data | Old expenses without `linkedAccountId` are treated as unlinked (`?? undefined`); no migration needed |
+
+---
+
+### 26.8 i18n — New Strings
+
+| English | Hebrew |
+|---------|--------|
+| `Link to savings account (optional)` | `קישור לחשבון חיסכון (אופציונלי)` |
+| `Sets monthly contribution on save` | `מעדכן תרומה חודשית בשמירה` |
+| `No account` | `ללא חשבון` |
+
+---
+
+### 26.9 Acceptance Criteria
+
+**Data**
+- [ ] `linkedAccountId?: string` field added to `Expense` interface in `src/types/index.ts`
+- [ ] `linkedAccountId` is `undefined` when `category !== 'savings'`
+- [ ] `linkedAccountId` is cleared to `undefined` when the user changes category away from `'savings'` in the dialog
+- [ ] On save with a valid `linkedAccountId`: `account.monthlyContribution` updated atomically in the same `setData` call
+- [ ] Yearly expense normalisation: `monthlyContribution = amount / 12` when `period === 'yearly'`
+- [ ] On delete of a linked expense: `account.monthlyContribution` is NOT reverted
+- [ ] On category change away from Savings: `account.monthlyContribution` is NOT reverted
+- [ ] Old expenses without `linkedAccountId` render without errors
+
+**UI**
+- [ ] Account selector appears in Add/Edit Expense dialog only when `category === 'savings'`
+- [ ] Account selector disappears (and `linkedAccountId` clears) when category changes away from `'savings'`
+- [ ] Selector lists all accounts from `data.accounts` plus a blank "—" option as default
+- [ ] Selector is not rendered when `data.accounts` is empty
+- [ ] Helper text `"Sets monthly contribution on save"` visible below the selector in `text-xs text-muted-foreground`
+- [ ] Edit dialog pre-selects the linked account when editing an existing linked expense
+- [ ] Linked savings expenses show an account badge (icon + account name) in the Expenses tab list
+- [ ] Badge is silently omitted when `linkedAccountId` references a deleted account
+- [ ] Savings tab account card reflects the updated `monthlyContribution` after a linked expense is saved
+
+**i18n**
+- [ ] All new strings use `t(en, he, lang)` — no hardcoded English in JSX
+- [ ] Account selector label and helper text correct in Hebrew RTL
+
+**Accessibility**
+- [ ] Account selector has an associated `<Label>` with `htmlFor`
+- [ ] Selector has `min-h-[44px]` tap target on mobile
+
+**Tests (new, in `src/test/linkedSavingsAccount.test.ts`)**
+- [ ] Saving an expense with `linkedAccountId` updates `account.monthlyContribution`
+- [ ] Yearly expense: `monthlyContribution` set to `amount / 12`
+- [ ] Monthly expense: `monthlyContribution` set to `amount` directly
+- [ ] Category changed away from Savings before save: `linkedAccountId` is `undefined`, account untouched
+- [ ] Saving without selecting an account (selector left at "—"): account untouched
+- [ ] Two expenses linked to same account: second save overwrites `monthlyContribution`
+- [ ] Deleting a linked expense: `account.monthlyContribution` not changed
+- [ ] Old expense without `linkedAccountId`: renders without error, treated as unlinked
+- [ ] Dangling `linkedAccountId` (account deleted): expense data intact, no crash
+
+---
+
+### 26.10 Out of Scope (v2.7)
+
+- Auto-reverting `monthlyContribution` when a linked expense is deleted or unlinked — user controls the account directly after initial sync
+- Two-way sync: changes to `account.monthlyContribution` in the Savings tab do not update the linked expense amount
+- Linking a savings expense to a savings **goal** (as opposed to an account) — a possible future feature
+- Showing the linked expense name on the Savings account card — not needed in this iteration
+- Validation warning when two expenses link to the same account — silently last-write-wins
+- Linking expenses in the past-month flow from the History tab (technically possible via `updateHistoricalExpense`; out of scope for v2.7 UI)
+
+---
+
+### 26.11 Success Metric
+
+A user can link a new savings expense to an account in under 10 seconds. After saving, the account's `monthlyContribution` in the Savings tab immediately reflects the expense amount — without the user needing to open the Savings tab and edit the account manually.
+
+---
+
+### 26.12 Implementation Checklist for Agents
+
+#### 🎨 Frontend Agent
+1. Add `linkedAccountId?: string` to `Expense` interface in `src/types/index.ts`
+2. Update `ExpenseDialog` in `src/components/Expenses.tsx`:
+   - Add local state `linkedAccountId: string | undefined` (default `undefined`)
+   - When `category` changes away from `'savings'`, reset `linkedAccountId = undefined`
+   - Render account `<Select>` only when `category === 'savings'` and `data.accounts.length > 0`
+   - First `<SelectItem>` is blank "—" (`value=""`); remaining items map `data.accounts`
+   - On edit open: pre-populate `linkedAccountId` from `existing.linkedAccountId`
+3. Update `onSave` / save handler:
+   - Include `linkedAccountId` in the expense object passed to `setData`
+   - If `linkedAccountId` is set: within the same `setData` updater, also update `data.accounts` — find account by id and set `monthlyContribution = period === 'yearly' ? amount / 12 : amount`
+4. Update expense row in Expenses tab list: if `expense.linkedAccountId` is set and the account exists in `data.accounts`, render the account name badge after the category badge
+
+#### 🖌 UX Agent
+1. Account selector uses the same `<Select>` / `<SelectTrigger>` / `<SelectContent>` pattern as the Category selector — no new primitive components needed
+2. Helper text `"Sets monthly contribution on save"` uses `text-xs text-muted-foreground` beneath the selector
+3. Account badge in the expense list uses `Badge variant="outline"` with `PiggyBank` lucide icon; `ms-1` margin for RTL safety
+4. Verify selector disappears cleanly (not just hidden) when category changes away from Savings
+5. Verify mobile (375 px): dialog with selector does not overflow; account names truncate gracefully
+6. Verify Hebrew RTL: selector label and badge direction correct
+
+#### 🧪 QA Agent
+1. Write `src/test/linkedSavingsAccount.test.ts` with the 9 tests in §26.9
+2. Run `npm test` — all 235 + 9 = 244 tests must pass (or 245 if v2.6 tests are already merged)
+3. Run `npm run build` — no TypeScript errors
+4. Manual QA: add linked expense → verify Savings tab updates; change category → verify account untouched; delete expense → verify account untouched; delete account → verify no crash in Expenses list
+
+#### 🔍 Code Review Agent
+1. Confirm `linkedAccountId` is cleared on category change — not just in UI state but in the saved expense object
+2. Confirm the account `monthlyContribution` update is inside the same `setData` call as the expense save — single atomic update, no race condition
+3. Confirm yearly normalisation: `period === 'yearly' ? amount / 12 : amount`
+4. Confirm delete path does NOT touch `account.monthlyContribution`
+5. Confirm dangling `linkedAccountId` is handled gracefully — `data.accounts.find(a => a.id === expense.linkedAccountId)` returns `undefined` without throwing
+6. No `any` types; all new strings through `t(en, he, lang)`
+
+#### 🗄 Data Engineer Agent
+1. No Supabase schema change — `linkedAccountId` lives inside the expense object within `household_finance.data.expenses[]`
+2. `cloudFinance.ts` `mergeFinanceData` already merges `expenses` and `accounts` wholesale — no change needed
+3. Confirm `FINANCE_DEFAULTS` does not need updating — new field is optional and absent from defaults by design
+4. Update `.claude/docs/database.md` to note that `Expense` now carries an optional `linkedAccountId` field in the JSONB blob
