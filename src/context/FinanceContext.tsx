@@ -26,7 +26,22 @@ function storageKey(householdId: string) { return `hf-data-${householdId}` }
 function load(householdId: string): FinanceData {
   try {
     const raw = localStorage.getItem(storageKey(householdId))
-    if (raw) return { ...defaultData, ...JSON.parse(raw) }
+    if (raw) {
+      const parsed: FinanceData = { ...defaultData, ...JSON.parse(raw) }
+      // Recompute totalExpenses + freeCashFlow for any snapshot whose categoryActuals
+      // were recorded before the fix that kept them in sync (v2.3–v2.5 stale-data repair).
+      parsed.history = parsed.history.map((snap) => {
+        if (!snap.categoryActuals) return snap
+        const derived = Object.values(snap.categoryActuals).reduce((s, v) => s + v, 0)
+        if (derived === snap.totalExpenses) return snap          // already correct — no-op
+        return {
+          ...snap,
+          totalExpenses: derived,
+          freeCashFlow: snap.totalIncome - derived - snap.totalSavings,
+        }
+      })
+      return parsed
+    }
   } catch {}
   return defaultData
 }
