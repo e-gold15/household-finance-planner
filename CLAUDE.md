@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 300 tests green)
+- [ ] `npm test` passes (all 331 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -241,7 +241,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `addIncomeToMonth.test.ts` | 26 | existing snapshot, stub creation, fixed pre-pop, FCF computed (not 0), immutability, year boundary |
 | `savingsLinkage.test.ts` | 20 | add/update/delete account sync, yearly÷12, account switch, ghost IDs, multi-account isolation |
 | `autoAllocateSavings.test.ts` | 19 | full funding, pro-rating, tier blocking, status transitions, order preservation, negative FCF, no mutation |
-| **Total** | **300** | |
+| `overviewUtils.test.ts` | 31 | upcoming bills, budget health, savings projection, MoM trend |
+| **Total** | **331** | |
 
 ### Rules
 - All 261 existing tests must pass before any commit
@@ -406,7 +407,16 @@ How will we know this feature is working?
 - ✅ Bug fix: stub snapshots excluded from FCF source (were causing all goals to show blocked)
 - ✅ 19 new unit tests (300 total)
 
-**Next (v2.9)**
+**v2.9 — shipped**
+- ✅ Overview tab — 5 enhancements to `src/components/Overview.tsx`
+- ✅ 28.5: Month-over-Month trend arrows on KPI cards (income + expenses Δ% vs last history snapshot)
+- ✅ 28.1: Budget Health Gauge — donut chart (under/warning/over/none) + legend + worst offender footer
+- ✅ 28.2: Upcoming Annual Bills timeline — next 6 months of yearly expenses with countdown badges
+- ✅ 28.3: Goal Status Donut — 2-col grid (donut+legend left, top-priority progress bars right)
+- ✅ 28.4: 12-Month Savings Growth Projection — AreaChart + 3-col summary + weighted avg return note
+- ✅ 31 new unit tests for pure utility functions (331 total) in `src/test/overviewUtils.test.ts`
+
+**Next (v3.0)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
