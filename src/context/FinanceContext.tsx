@@ -23,24 +23,27 @@ const defaultData: FinanceData = {
 
 function storageKey(householdId: string) { return `hf-data-${householdId}` }
 
+/** Repair snapshots whose totalExpenses diverged from categoryActuals (v2.3–v2.5 bug). Idempotent. */
+function repairSnapshotTotals(data: FinanceData): FinanceData {
+  const repairedHistory = data.history.map((snap) => {
+    if (!snap.categoryActuals) return snap
+    const derived = Object.values(snap.categoryActuals).reduce((s, v) => s + v, 0)
+    if (derived === snap.totalExpenses) return snap   // already correct — no-op
+    return {
+      ...snap,
+      totalExpenses: derived,
+      freeCashFlow: snap.totalIncome - derived - snap.totalSavings,
+    }
+  })
+  return { ...data, history: repairedHistory }
+}
+
 function load(householdId: string): FinanceData {
   try {
     const raw = localStorage.getItem(storageKey(householdId))
     if (raw) {
       const parsed: FinanceData = { ...defaultData, ...JSON.parse(raw) }
-      // Recompute totalExpenses + freeCashFlow for any snapshot whose categoryActuals
-      // were recorded before the fix that kept them in sync (v2.3–v2.5 stale-data repair).
-      parsed.history = parsed.history.map((snap) => {
-        if (!snap.categoryActuals) return snap
-        const derived = Object.values(snap.categoryActuals).reduce((s, v) => s + v, 0)
-        if (derived === snap.totalExpenses) return snap          // already correct — no-op
-        return {
-          ...snap,
-          totalExpenses: derived,
-          freeCashFlow: snap.totalIncome - derived - snap.totalSavings,
-        }
-      })
-      return parsed
+      return repairSnapshotTotals(parsed)
     }
   } catch {}
   return defaultData
@@ -147,7 +150,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         // hasn't already started editing (race-condition guard).
         if (!hasLocalEditRef.current) {
           const current = load(householdId)
-          const merged  = mergeFinanceData(cloudData, current)
+          const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
           save(householdId, merged)
           setDataState(merged)
         }
