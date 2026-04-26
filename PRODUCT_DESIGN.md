@@ -30,6 +30,7 @@
 20. [Accessibility](#20-accessibility)
 21. [Responsiveness](#21-responsiveness)
 22. [Feature Spec: Historical Expense Entry (v2.3)](#22-feature-spec-historical-expense-entry-v23)
+24. [Feature Spec: Historical Income Entry (v2.5)](#24-feature-spec-historical-income-entry-v25)
 
 ---
 
@@ -685,8 +686,350 @@ On invite accept:
 
 ---
 
-*Document version: 2.4-draft — reflects app state as of April 2026*
-*Previous version: 2.3 (Historical Expense Entry on snapshots in History tab)*
+*Document version: 2.5-draft — reflects app state as of April 2026*
+*Previous version: 2.4.1 (Past-month expense entry from Expenses tab + fixed expense pre-population)*
+
+---
+
+## 24. Feature Spec: Historical Income Entry (v2.5)
+
+### 24.1 Problem
+
+**User pain:** A user can now log past-month expenses (v2.3 / v2.4), but past-month snapshots still show `totalIncome: ₪0` and a "—" free-cash-flow badge. There is no way to record what was actually earned in a past month. Without income, the History tab can't show a meaningful FCF or trend — the "Free Cash" line on the chart is flat at 0 for all stub months.
+
+**Who is affected:** All personas — anyone who takes retroactive snapshots or uses `addExpenseToMonth` to log a past month.
+
+---
+
+### 24.2 Solution Overview
+
+Add the ability to log individual income line items against any past-month snapshot in the History tab — symmetric to the `HistoricalExpense` feature (v2.3).
+
+Key principles:
+- **Simple entry** — no gross/net tax calculation. Past income is always entered as the **net amount received** (what actually hit the bank account).
+- **Per-person** — member name is a free-text field or a select from existing household members.
+- **FCF recomputes live** — adding or removing income recalculates `totalIncome` and `freeCashFlow` on the snapshot atomically.
+- **Symmetric UI** — "Recorded income (N)" section on History snapshot cards, parallel to "Recorded expenses (N)".
+
+---
+
+### 24.3 Data Model Changes
+
+#### New type: `HistoricalIncome`
+
+```typescript
+export interface HistoricalIncome {
+  id: string
+  memberName: string   // who received this income (free text or from member list)
+  amount: number       // net amount received that month (positive)
+  note?: string        // optional: "bonus", "freelance project", etc.
+}
+```
+
+#### Updated `MonthSnapshot`
+
+```typescript
+export interface MonthSnapshot {
+  // ... existing fields unchanged ...
+  categoryActuals?:    Partial<Record<ExpenseCategory, number>>
+  historicalExpenses?: HistoricalExpense[]
+  historicalIncomes?:  HistoricalIncome[]   // ← NEW
+}
+```
+
+#### `totalIncome` and `freeCashFlow` update rules
+
+**Add income item:**
+```
+totalIncome    += item.amount
+freeCashFlow    = totalIncome - totalExpenses - totalSavings
+```
+
+**Delete income item:**
+```
+totalIncome    -= item.amount  (clamped to 0)
+freeCashFlow    = totalIncome - totalExpenses - totalSavings
+```
+
+**Edit income item (amount changed):**
+```
+totalIncome    -= old.amount (clamped to 0)
+totalIncome    += new.amount
+freeCashFlow    = totalIncome - totalExpenses - totalSavings
+```
+
+`freeCashFlow` recomputes fully each time so it is always consistent with `totalIncome - totalExpenses - totalSavings`. Once income is recorded, the stub's "—" badge is replaced by the real FCF (green if positive, red if negative).
+
+---
+
+### 24.4 New Context Methods
+
+```typescript
+addHistoricalIncome:    (snapshotId: string, item: Omit<HistoricalIncome, 'id'>) => void
+deleteHistoricalIncome: (snapshotId: string, itemId: string) => void
+updateHistoricalIncome: (snapshotId: string, item: HistoricalIncome) => void
+```
+
+**Implementation of `addHistoricalIncome`:**
+```typescript
+const addHistoricalIncome = (snapshotId: string, item: Omit<HistoricalIncome, 'id'>) =>
+  setData((d) => ({
+    ...d,
+    history: d.history.map((h) => {
+      if (h.id !== snapshotId) return h
+      const newItem: HistoricalIncome = { ...item, id: generateId() }
+      const newTotalIncome = h.totalIncome + item.amount
+      return {
+        ...h,
+        historicalIncomes: [...(h.historicalIncomes ?? []), newItem],
+        totalIncome:  newTotalIncome,
+        freeCashFlow: newTotalIncome - h.totalExpenses - h.totalSavings,
+      }
+    }),
+  }))
+```
+
+**Implementation of `deleteHistoricalIncome`:**
+```typescript
+const deleteHistoricalIncome = (snapshotId: string, itemId: string) =>
+  setData((d) => ({
+    ...d,
+    history: d.history.map((h) => {
+      if (h.id !== snapshotId) return h
+      const toDelete = (h.historicalIncomes ?? []).find((i) => i.id === itemId)
+      if (!toDelete) return h
+      const newTotalIncome = Math.max(0, h.totalIncome - toDelete.amount)
+      return {
+        ...h,
+        historicalIncomes: (h.historicalIncomes ?? []).filter((i) => i.id !== itemId),
+        totalIncome:  newTotalIncome,
+        freeCashFlow: newTotalIncome - h.totalExpenses - h.totalSavings,
+      }
+    }),
+  }))
+```
+
+**Implementation of `updateHistoricalIncome`:**
+```typescript
+const updateHistoricalIncome = (snapshotId: string, item: HistoricalIncome) =>
+  setData((d) => ({
+    ...d,
+    history: d.history.map((h) => {
+      if (h.id !== snapshotId) return h
+      const old = (h.historicalIncomes ?? []).find((i) => i.id === item.id)
+      if (!old) return h
+      const newTotalIncome = Math.max(0, h.totalIncome - old.amount) + item.amount
+      return {
+        ...h,
+        historicalIncomes: (h.historicalIncomes ?? []).map((i) => i.id === item.id ? item : i),
+        totalIncome:  newTotalIncome,
+        freeCashFlow: newTotalIncome - h.totalExpenses - h.totalSavings,
+      }
+    }),
+  }))
+```
+
+---
+
+### 24.5 UI Design
+
+#### 24.5.1 Snapshot card — updated layout
+
+```
+┌─────────────────────────────────────────────────────┐
+│  March 2026   01/03/2026                            │
+│               [+₪12,300]  [📋 Actuals logged]       │
+│               [📋 Edit Actuals] [🗑]                │
+│                                                     │
+│  Income        Expenses        Savings              │
+│  ₪18,000       ₪14,200         ₪0                   │
+│                                                     │
+│  ── Recorded income (2) ──────────────────────────  │
+│  Eilon   Main salary   ₪15,000   [✏] [🗑]           │
+│  Sara    Freelance     ₪3,000    [✏] [🗑]           │
+│  [+ Add Income]                                     │  ← inline in section header
+│                                                     │
+│  ── Actual spending by category ────────────────── │
+│  ...                                                │
+│                                                     │
+│  ── Recorded expenses (1) ────────────────────────  │
+│  Dentist   Health   ₪2,800   [✏] [🗑]               │
+│  [+ Add Expense to March 2026]                      │
+└─────────────────────────────────────────────────────┘
+```
+
+#### 24.5.2 Add / Edit Historical Income dialog
+
+```
+┌──────────────────────────────────────┐
+│  💰 Add Income — March 2026          │
+│                                      │
+│  Person                              │
+│  [Eilon               ▼]  ← select from members, or type free text │
+│                                      │
+│  Net amount received                 │
+│  [___________]                       │
+│                                      │
+│  Note (optional)                     │
+│  [e.g. Monthly salary, Bonus…]       │
+│                                      │
+│  [    Save Income    ]               │
+│  [       Cancel      ]               │
+└──────────────────────────────────────┘
+```
+
+- **Person** — `<Select>` populated from `data.members` (existing household members). If the user wants to enter someone not in the member list, they can type freely (combo-box pattern: Select with an "Other / type name" option that reveals a text input). For simplicity in v2.5: use a plain `<Input>` with `list` datalist from member names (native browser combo-box). This avoids a custom combobox component.
+- **Net amount received** — number input, required, > 0
+- **Note** — optional free text
+
+#### 24.5.3 Row layout in "Recorded income" section
+
+```
+[memberName]    [note if present]    ₪amount    [✏] [🗑]
+```
+
+- Member name: `font-medium`
+- Note: `text-xs text-muted-foreground` (inline, truncated)
+- Amount: `font-semibold tabular-nums text-primary` (green, positive income)
+- Edit/Delete icons: same style as expense rows
+
+#### 24.5.4 "Recorded income" section placement
+
+Placed **above** the "Actual spending by category" section and above "Recorded expenses" — income comes first, then expenses.
+
+---
+
+### 24.6 Interaction Flows
+
+#### Flow A — Add income to a past snapshot
+
+1. User opens History tab
+2. Finds March 2026 snapshot card
+3. Clicks **"+ Add Income"** button
+4. Dialog opens: Person select pre-filled with first member, amount empty
+5. User selects "Eilon", enters 15000, note "Main salary"
+6. Clicks "Save Income"
+7. `addHistoricalIncome('snap-march', { memberName: 'Eilon', amount: 15000, note: 'Main salary' })`
+8. `totalIncome` updates: `0 → 15000`
+9. `freeCashFlow` updates: `0 → 15000 - 14200 - 0 = +800`
+10. Snapshot card updates:
+    - Income cell: ₪15,000
+    - FCF badge changes from "—" to "+₪800" (green)
+    - "Recorded income (1)" section appears
+
+#### Flow B — Income changes FCF badge from stub "—" to real value
+
+Once the first income item is added to a stub, `totalIncome > 0` and `freeCashFlow` is recomputed. The History tab's stub visual logic (stub detected when `totalIncome === 0 && totalExpenses > 0`) no longer triggers — the "—" badge is replaced by the real FCF badge (green/red).
+
+---
+
+### 24.7 Stub detection update
+
+The stub detection condition in History.tsx currently is:
+```
+snap.totalIncome === 0 && snap.totalExpenses > 0
+```
+
+This correctly shows "—" when income hasn't been logged yet. Once `addHistoricalIncome` sets `totalIncome > 0`, the condition becomes false and the normal FCF badge renders. No code change needed for this — it's automatic.
+
+---
+
+### 24.8 i18n — New Strings
+
+| English | Hebrew |
+|---------|--------|
+| `Recorded income ({n})` | `הכנסות שנרשמו ({n})` |
+| `Add Income — {month}` | `הוסף הכנסה — {month}` |
+| `Edit Income — {month}` | `ערוך הכנסה — {month}` |
+| `Net amount received` | `סכום נטו שהתקבל` |
+| `Save Income` | `שמור הכנסה` |
+| `Person` | `אדם` |
+| `e.g. Monthly salary, Bonus…` | `למשל: משכורת חודשית, בונוס…` |
+| `Delete recorded income` | `מחק הכנסה שנרשמה` |
+| `Edit recorded income` | `ערוך הכנסה שנרשמה` |
+
+---
+
+### 24.9 Acceptance Criteria
+
+**Data**
+- [ ] `HistoricalIncome` type in `src/types/index.ts`
+- [ ] `historicalIncomes?: HistoricalIncome[]` on `MonthSnapshot`
+- [ ] Three methods in `FinanceContext` and `FinanceContextType`
+- [ ] `addHistoricalIncome` increments `totalIncome` and recomputes `freeCashFlow`
+- [ ] `deleteHistoricalIncome` decrements `totalIncome` (clamped to 0) and recomputes `freeCashFlow`
+- [ ] `updateHistoricalIncome` reverses old, applies new, recomputes `freeCashFlow`
+- [ ] Old snapshots without `historicalIncomes` render correctly (`?? []`)
+
+**UI**
+- [ ] "Recorded income (N)" section visible on snapshot cards that have income items
+- [ ] "Recorded income" section hidden when empty/missing
+- [ ] "Recorded income" section placed above "Actual spending" and "Recorded expenses"
+- [ ] "+ Add Income" button visible at bottom of "Recorded income" section header
+- [ ] Inline "Add Income" button also appears when section is empty (always-visible)
+- [ ] Dialog: Person (datalist from members), Amount, Note fields
+- [ ] Save disabled until memberName non-empty and amount > 0
+- [ ] Amount shown in `text-primary` (green) in the row
+- [ ] FCF badge transitions from "—" to real value once income is recorded
+
+**i18n** — all new strings through `t(en, he, lang)`
+
+**Accessibility**
+- [ ] All inputs have `<Label>` + `id`/`htmlFor`
+- [ ] Icon-only buttons have `aria-label` + `title`
+- [ ] All interactive elements ≥ 44px
+
+**Tests (`src/test/historicalIncome.test.ts`)**
+- [ ] `addHistoricalIncome` — increments totalIncome correctly
+- [ ] `addHistoricalIncome` — recomputes freeCashFlow
+- [ ] `deleteHistoricalIncome` — decrements totalIncome (clamped to 0)
+- [ ] `deleteHistoricalIncome` — recomputes freeCashFlow after delete
+- [ ] `updateHistoricalIncome` — handles amount change
+- [ ] `updateHistoricalIncome` — does not mutate original
+- [ ] Old snapshot without historicalIncomes field — backward compatible
+- [ ] Multiple items accumulate correctly in totalIncome
+- [ ] Sibling snapshots unchanged after mutation
+
+---
+
+### 24.10 Out of Scope (v2.5)
+
+- Adding income via the Income tab "Past month" toggle (future v2.6)
+- Gross-to-net tax calculation for past income entries (net-only in v2.5)
+- Auto-populating income in stubs from current member sources (income varies month to month)
+- Editing `totalSavings` for past months
+
+---
+
+### 24.11 Implementation Checklist for Agents
+
+#### 🎨 Frontend Agent
+1. Add `HistoricalIncome` interface to `src/types/index.ts` (after `HistoricalExpense`)
+2. Add `historicalIncomes?: HistoricalIncome[]` to `MonthSnapshot`
+3. Add three method signatures to `FinanceContextType`, implement all three in `FinanceContext.tsx`
+4. Import `HistoricalIncome` alongside other types
+5. Update `History.tsx`:
+   - Add `HistoricalIncomeDialog` component (add/edit, with member datalist)
+   - Add "Recorded income" section to each snapshot card (above actuals and expenses)
+   - Add always-visible "+ Add Income" button
+   - Wire edit/delete per row
+   - Destructure `deleteHistoricalIncome` from `useFinance()`
+
+#### 🧪 QA Agent
+1. Write `src/test/historicalIncome.test.ts` — 9 tests from §24.9
+2. `npm test` — all 222 + 9 = 231 tests must pass
+
+#### 🖌 UX Agent
+1. Income amount in rows uses `text-primary` (green) to distinguish from expenses (red)
+2. Dialog uses `DollarSign` or `TrendingUp` lucide icon in the title
+3. Verify `datalist` approach for member names works in Hebrew RTL
+4. Verify FCF badge color transition (—→green/red) is correct after income added
+
+#### 🔍 Code Review Agent
+1. `freeCashFlow` recomputation: confirm `totalIncome - totalExpenses - totalSavings` each time
+2. `deleteHistoricalIncome` clamps `totalIncome` to 0 before subtracting
+3. `updateHistoricalIncome` reverses old item before applying new (handles any amount change)
+4. No `any` types; all strings through `t()`
 
 ---
 
