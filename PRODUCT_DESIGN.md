@@ -2510,3 +2510,439 @@ A user can link a new savings expense to an account in under 10 seconds. After s
 2. `cloudFinance.ts` `mergeFinanceData` already merges `expenses` and `accounts` wholesale — no change needed
 3. Confirm `FINANCE_DEFAULTS` does not need updating — new field is optional and absent from defaults by design
 4. Update `.claude/docs/database.md` to note that `Expense` now carries an optional `linkedAccountId` field in the JSONB blob
+
+---
+
+## 27. Feature Spec: AI-Powered Savings Allocation Calculator (v2.8)
+
+### 27.1 Problem
+
+**User pain:** A household with multiple savings goals (emergency fund, vacation, car, home down-payment) has no guidance on how to split its monthly free cash flow across those goals. The current Goals tab shows a projected completion date per goal but leaves the user to decide manually how much to put toward each goal each month. Users frequently either over-commit to ambitious goals and feel like they're failing, or under-commit and make no real progress.
+
+**Who is affected:** All personas — but especially the Israeli dual-income couple with 3–6 simultaneous goals spanning different time horizons and priorities, and the freelancer with variable monthly FCF who needs a realistic starting allocation they can adjust.
+
+---
+
+### 27.2 Solution Overview
+
+Two complementary parts are shipped together:
+
+**Part 1 — Smart Allocation Engine (deterministic, no AI)**
+A new pure function `autoAllocateSavings(goals, freeCashFlow, liquidSavings)` in `src/lib/savingsEngine.ts` distributes available FCF across goals using a priority-tiered, proportional algorithm. The result is displayed in a new **"Allocation Plan"** card on the Goals tab, showing a table of per-goal monthly amounts and progress bars comparing the total allocation to the available FCF.
+
+**Part 2 — AI Explanation (optional, Claude-powered)**
+An **"Explain my plan 🤖"** button in the Allocation Plan card calls the Anthropic Claude API to generate a plain-English assessment of the allocation — flagging at-risk goals, assessing overall realism, and suggesting 1–2 actionable changes. The button is only visible when `VITE_ANTHROPIC_API_KEY` is set in the environment. The AI response is shown in a collapsible card and cached for the session.
+
+---
+
+### 27.3 Key Design Decisions
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Algorithm location | New function in `src/lib/savingsEngine.ts` | Keeps all goal/savings logic in one file; pure function is easy to test |
+| Priority tiers | high → medium → low; within each tier pro-rate proportionally if FCF is insufficient | Simple mental model the user can verify; mirrors real-world "pay essentials first" logic |
+| AI integration point | New `src/lib/aiAdvisor.ts` owns the `fetch` call to the Claude API | Isolates the external call; easy to mock in tests; keeps components thin |
+| Client-side API call | Acceptable for a self-hosted single-user app where the user controls their own Vercel env var | Security tradeoff: the key is never in source, but it is visible to the browser. Documented explicitly in §27.3 Security Note. Acceptable because the app is single-household and the user is the key owner |
+| API key handling | `VITE_ANTHROPIC_API_KEY` — set only in Vercel dashboard, never committed to source | Standard Vite env var pattern; `.gitignore` already excludes `.env.local` |
+| Feature visibility | "Explain my plan 🤖" button rendered only when `import.meta.env.VITE_ANTHROPIC_API_KEY` is a non-empty string | Graceful degradation — users without the key see the deterministic plan only |
+| AI response language | Always English (Claude output language is not controlled) | Noted in UI with a tooltip; `t()` wraps all surrounding UI strings |
+| Response caching | Cached in component state (per session, not persisted) | Avoids duplicate API calls on re-renders; cache is intentionally discarded on page reload so stale data is never shown |
+| Streaming | No — plain text, single response | Simpler implementation; response is short enough that streaming adds no perceptible UX value |
+| Re-calculate button | Reruns `autoAllocateSavings` without calling the AI | Lets the user update allocations after editing goals, without incurring an AI call |
+| New type field | `GoalAllocation.monthlyAllocated?: number` added to `src/types/index.ts` | Carries the computed allocation alongside the existing goal fields; optional so existing data is backward-compatible |
+| Data sent to Claude | Goal names, target amounts, deadlines, priorities, `monthlyAllocated`, `freeCashFlow`, currency — NO account numbers, balances, or personally identifiable financial details | Minimises data exposure; sufficient for Claude to assess goal realism |
+| No backend proxy | Direct `fetch` to `api.anthropic.com` from the browser | Acceptable for self-hosted single-user app; avoids adding a serverless function dependency |
+
+**§27.3 Security Note — Client-Side API Key**
+`VITE_ANTHROPIC_API_KEY` is a browser-visible environment variable. This is an accepted tradeoff for a self-hosted, single-household app: the user who sets the key in Vercel is the same person using the app. The key is never committed to the repository. Users who share their deployment URL with other household members implicitly share key access; this is documented in the README and in the in-app tooltip. A backend proxy would eliminate this exposure and is listed as a future improvement.
+
+---
+
+### 27.4 Data Model Changes
+
+#### Updated type: `GoalAllocation` (new optional field)
+
+```typescript
+// src/types/index.ts
+export interface GoalAllocation {
+  // ... existing fields unchanged ...
+  monthlyAllocated?: number   // ← NEW: amount assigned by autoAllocateSavings(), in the household currency
+}
+```
+
+- `monthlyAllocated` is `undefined` until the user runs the allocation.
+- It is NOT persisted to `household_finance.data` — it is computed on demand and held in component state.
+- It is NOT part of the cloud sync payload.
+
+#### New function signature in `src/lib/savingsEngine.ts`
+
+```typescript
+/**
+ * Distributes freeCashFlow across goals by priority tier.
+ * Within each tier, allocates proportionally if FCF is insufficient.
+ * Goals with status 'completed' or 'blocked' receive 0.
+ *
+ * @param goals        Array of SavingsGoal objects (from FinanceData.goals)
+ * @param freeCashFlow Available monthly free cash flow (may be negative — all goals receive 0)
+ * @param liquidSavings Total liquid savings available (passed through; used only for status recomputation)
+ * @returns            A new array of GoalAllocation objects with monthlyAllocated set
+ */
+export function autoAllocateSavings(
+  goals: SavingsGoal[],
+  freeCashFlow: number,
+  liquidSavings: number
+): GoalAllocation[]
+```
+
+#### New module: `src/lib/aiAdvisor.ts`
+
+```typescript
+/**
+ * Calls the Anthropic Claude API with an allocation summary.
+ * Returns plain-text advice.
+ * Throws if VITE_ANTHROPIC_API_KEY is not set or if the API returns an error.
+ */
+export async function explainAllocationPlan(
+  goals: GoalAllocation[],
+  freeCashFlow: number,
+  currency: string
+): Promise<string>
+```
+
+- Uses `fetch` directly to `https://api.anthropic.com/v1/messages`.
+- Model: `claude-haiku-4-5` (fast, low cost — sufficient for a short advisory response).
+- `max_tokens`: 400 — keeps responses concise and costs predictable.
+- Prompt instructs Claude to respond in English only and to structure the reply as: (1) overall assessment, (2) at-risk goals (if any), (3) 1–2 actionable suggestions.
+- No streaming; awaits the full response before returning.
+
+---
+
+### 27.5 Algorithm: `autoAllocateSavings`
+
+```
+Input: goals[], freeCashFlow, liquidSavings
+
+1. If freeCashFlow ≤ 0: return goals with monthlyAllocated = 0 for all
+
+2. Filter out goals where status = 'completed' or status = 'blocked'
+   → these receive monthlyAllocated = 0
+
+3. Sort remaining goals by priority: 'high' → 'medium' → 'low'
+
+4. For each priority tier (high, medium, low):
+   a. remaining = freeCashFlow − sum(monthlyAllocated already assigned to prior tiers)
+   b. If remaining ≤ 0: all goals in this tier get monthlyAllocated = 0; continue
+   c. Compute each goal's "ideal monthly" = (targetAmount − currentAmount) / max(1, monthsUntilDeadline)
+      — if deadline is null, use a default of 60 months
+   d. Sum the ideals for this tier → tierIdealTotal
+   e. If remaining ≥ tierIdealTotal: each goal gets its full ideal monthly (capped at 0 if currentAmount ≥ targetAmount)
+   f. Else: each goal gets (goalIdeal / tierIdealTotal) × remaining  (proportional share of the shortfall)
+
+5. Return a new GoalAllocation[] with monthlyAllocated set on each entry
+   (other fields copied from the input SavingsGoal as-is)
+```
+
+---
+
+### 27.6 UI Design
+
+#### 27.6.1 Goals tab — Allocation Plan card
+
+A new card appears below the existing goal list on the Goals tab:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Allocation Plan                    [Re-calculate]  │
+│                                                     │
+│  Based on free cash flow: ₪4,200 / mo              │
+│                                                     │
+│  Goal              Priority  Allocated / mo         │
+│  ─────────────────────────────────────────────────  │
+│  Emergency Fund    High      ₪1,800   ████████░░░  │
+│  Home Down-Payment High      ₪1,400   ██████░░░░░  │
+│  Vacation Fund     Medium    ₪600     ████░░░░░░░  │
+│  New Car           Low       ₪400     ███░░░░░░░░  │
+│  ─────────────────────────────────────────────────  │
+│  Total allocated:  ₪4,200 / ₪4,200 FCF  ✓          │
+│                                                     │
+│  [Explain my plan 🤖]  ← only if API key is set    │
+└─────────────────────────────────────────────────────┘
+```
+
+- **Card header:** "Allocation Plan" (left) + "Re-calculate" button (right, `variant="outline"`, `size="sm"`)
+- **Sub-header:** "Based on free cash flow: {formatted FCF} / mo" in `text-sm text-muted-foreground`
+- **Table columns:** Goal name | Priority badge | Allocated amount | Progress bar
+- **Priority badge:** `Badge variant` maps — high → `destructive`, medium → `warning`, low → `secondary`
+- **Progress bar:** width = `(monthlyAllocated / freeCashFlow) × 100%`, capped at 100%; colour = `bg-primary`
+- **Total row:** sums all `monthlyAllocated`. If total = FCF: "✓" in `text-primary`; if total < FCF: remaining shown in `text-muted-foreground`; if total > FCF (rounding): shown with `text-destructive`
+- **"Explain my plan 🤖" button:** `variant="outline"` with a `Sparkles` lucide icon; visible only when `!!import.meta.env.VITE_ANTHROPIC_API_KEY`; disabled and shows spinner while the API call is in flight
+
+#### 27.6.2 AI Response card
+
+Shown below the Allocation Plan card after the user clicks "Explain my plan 🤖":
+
+```
+┌─────────────────────────────────────────────────────┐
+│  AI Assessment  [▲ Collapse]                        │
+│  ─────────────────────────────────────────────────  │
+│  ⚠ Note: AI response is always in English           │
+│                                                     │
+│  Your allocation looks realistic overall. The       │
+│  Emergency Fund and Home Down-Payment goals are     │
+│  on track for their deadlines. However, your        │
+│  New Car goal may be delayed — at ₪400/mo it        │
+│  would take 28 months, but your deadline is         │
+│  18 months away. Consider temporarily increasing    │
+│  the Car allocation to ₪650/mo by reducing the      │
+│  Vacation Fund contribution.                        │
+└─────────────────────────────────────────────────────┘
+```
+
+- Collapsible via a "▲ Collapse" / "▼ Expand" toggle button (`variant="ghost"`, `size="sm"`)
+- Default state: expanded after the API call completes
+- Warning note: `text-xs text-muted-foreground` with an `Info` icon — "AI response is always in English"
+- Response text: `text-sm` in a `<p>` with `whitespace-pre-wrap` to preserve Claude's paragraph breaks
+- Error state: if the API call fails, the card shows "Could not load AI assessment. Check your API key and try again." in `text-destructive`
+- Loading state: spinner replaces the card content while the call is in flight
+
+---
+
+### 27.7 Interaction Flows
+
+#### Flow A — First visit to Goals tab (no allocation yet)
+
+```
+1. User opens Goals tab
+2. Allocation Plan card is visible with empty rows and monthlyAllocated = 0 for all goals
+3. Sub-header: "Run allocation to see suggested amounts"
+4. User clicks "Re-calculate"
+5. autoAllocateSavings() runs synchronously (no network)
+6. Table updates immediately with per-goal amounts
+7. Sub-header updates: "Based on free cash flow: ₪4,200 / mo"
+8. "Explain my plan 🤖" button appears (if API key is set)
+```
+
+#### Flow B — User clicks "Explain my plan 🤖"
+
+```
+1. Button shows spinner, is disabled
+2. explainAllocationPlan() called with current GoalAllocation[] + freeCashFlow + currency
+3. fetch() POSTs to Anthropic API; awaits response
+4. On success: AI Response card appears expanded below Allocation Plan card
+5. Response cached in component state
+6. Button re-enables; label returns to "Explain my plan 🤖"
+7. On subsequent renders (re-renders, tab switches): cached response shown, no re-call
+```
+
+#### Flow C — User edits a goal, then re-runs allocation
+
+```
+1. User changes a goal's target amount or deadline in the Goals tab
+2. Allocation Plan card shows stale amounts (monthlyAllocated from previous run)
+3. Sub-header adds note: "(recalculate to update)" — in text-muted-foreground
+4. Cached AI response card is dismissed (cache invalidated on any goal edit)
+5. User clicks "Re-calculate"
+6. autoAllocateSavings() reruns; table updates
+7. "Explain my plan 🤖" button re-enables (previous AI response gone)
+```
+
+#### Flow D — FCF is negative
+
+```
+1. autoAllocateSavings() receives freeCashFlow ≤ 0
+2. All goals receive monthlyAllocated = 0
+3. Table renders with ₪0 for all rows
+4. Total row: "Total allocated: ₪0 / ₪0 FCF"
+5. Sub-header: "Free cash flow is ₪0 or negative — no funds to allocate"
+6. "Explain my plan 🤖" still callable; Claude will flag this situation in its response
+```
+
+#### Flow E — API key not set
+
+```
+1. VITE_ANTHROPIC_API_KEY is undefined or empty string
+2. Allocation Plan card renders normally (Part 1 fully functional)
+3. "Explain my plan 🤖" button is NOT rendered
+4. No error shown — feature simply does not exist for this user
+```
+
+---
+
+### 27.8 Edge Cases & Rules
+
+| Scenario | Behaviour |
+|----------|-----------|
+| No goals defined | Allocation Plan card shows empty state: "Add goals to see an allocation plan" |
+| All goals are 'completed' | All receive `monthlyAllocated = 0`; total = ₪0; sub-header notes this |
+| All goals are 'blocked' | Same as above |
+| Goal with no deadline | Default lookback of 60 months used for "ideal monthly" calculation |
+| Goal where `currentAmount ≥ targetAmount` | Ideal monthly = 0; goal receives ₪0 allocation; shown as 'completed' |
+| FCF ≤ 0 | All goals receive 0; sub-header warns |
+| One priority tier fully funded, others starved | Each tier computed independently; high-priority goals get their full ideal before any medium or low goal receives anything |
+| Rounding causes total > FCF by ≤ ₪1 | Truncate the last goal's allocation to close the gap; never exceed FCF |
+| API call fails (network error, 401, 429) | Error message shown in AI Response card; button re-enables; no crash |
+| `VITE_ANTHROPIC_API_KEY` is set to an invalid key | API returns 401; error message shown: "Could not load AI assessment. Check your API key and try again." |
+| User switches household | Component unmounts (due to `key={household.id}`); allocation state + AI cache discarded |
+| User has `lang = 'he'` | All UI strings use `t(en, he, lang)`; AI response renders in English with the "always in English" note |
+| `explainAllocationPlan` called with 0 goals | Returns a short advisory note; no crash |
+
+---
+
+### 27.9 i18n — New Strings
+
+| Key (concept) | English | Hebrew |
+|---------------|---------|--------|
+| Card title | `Allocation Plan` | `תוכנית הקצאה` |
+| Sub-header (with FCF) | `Based on free cash flow: {amount} / mo` | `מבוסס על תזרים חופשי: {amount} לחודש` |
+| Sub-header (initial state) | `Run allocation to see suggested amounts` | `הפעל הקצאה לראות סכומים מוצעים` |
+| Sub-header (stale) | `(recalculate to update)` | `(חשב מחדש לעדכון)` |
+| Sub-header (FCF ≤ 0) | `Free cash flow is ₪0 or negative — no funds to allocate` | `תזרים חופשי הוא ₪0 או שלילי — אין כספים להקצות` |
+| Re-calculate button | `Re-calculate` | `חשב מחדש` |
+| Table header — Goal | `Goal` | `יעד` |
+| Table header — Priority | `Priority` | `עדיפות` |
+| Table header — Allocated | `Allocated / mo` | `מוקצה / חודש` |
+| Total row label | `Total allocated:` | `סך מוקצה:` |
+| No goals empty state | `Add goals to see an allocation plan` | `הוסף יעדים כדי לראות תוכנית הקצאה` |
+| AI button label | `Explain my plan` | `הסבר את התוכנית שלי` |
+| AI response card title | `AI Assessment` | `הערכת בינה מלאכותית` |
+| AI language note | `AI response is always in English` | `תשובת הבינה המלאכותית תמיד באנגלית` |
+| Collapse toggle | `Collapse` | `כווץ` |
+| Expand toggle | `Expand` | `הרחב` |
+| AI error message | `Could not load AI assessment. Check your API key and try again.` | `לא ניתן לטעון הערכת בינה מלאכותית. בדוק את מפתח ה-API ונסה שוב.` |
+| Loading state | `Thinking…` | `חושב…` |
+
+---
+
+### 27.10 Acceptance Criteria
+
+**Algorithm (Part 1)**
+- [ ] `autoAllocateSavings` is a pure function in `src/lib/savingsEngine.ts`
+- [ ] Returns `GoalAllocation[]` with `monthlyAllocated` set on every goal
+- [ ] High-priority goals are fully funded before medium goals receive any allocation
+- [ ] Medium-priority goals are fully funded before low goals receive any allocation
+- [ ] Within a tier, allocation is proportional to each goal's ideal monthly amount when FCF is insufficient
+- [ ] Goals with status `'completed'` or `'blocked'` receive `monthlyAllocated = 0`
+- [ ] Goal with no deadline defaults to a 60-month horizon
+- [ ] Total `monthlyAllocated` across all goals does not exceed `freeCashFlow` (within ₪1 rounding tolerance)
+- [ ] When `freeCashFlow ≤ 0`, all goals receive `monthlyAllocated = 0`
+- [ ] Function is deterministic — same inputs always produce the same output
+
+**UI — Allocation Plan card (Part 1)**
+- [ ] Card is visible on the Goals tab
+- [ ] Table renders one row per goal with name, priority badge, allocated amount, and progress bar
+- [ ] Priority badges: high = `destructive`, medium = `warning`, low = `secondary`
+- [ ] Progress bar width = `(monthlyAllocated / freeCashFlow) × 100%`, capped at 100%
+- [ ] Total row shows sum of `monthlyAllocated` vs `freeCashFlow` with correct indicator (✓ / remaining / over)
+- [ ] "Re-calculate" button reruns `autoAllocateSavings` and updates the table synchronously
+- [ ] Sub-header shows formatted FCF after calculation
+- [ ] Empty state shown when `data.goals` is empty
+- [ ] All strings use `t(en, he, lang)` — no hardcoded English in JSX
+- [ ] Card works in Hebrew RTL (priority badges, amounts, progress bars)
+- [ ] Card works in dark mode
+- [ ] Card works at 375 px width (mobile)
+
+**UI — AI Assessment card (Part 2)**
+- [ ] "Explain my plan 🤖" button only rendered when `!!import.meta.env.VITE_ANTHROPIC_API_KEY`
+- [ ] Button is disabled and shows spinner while API call is in flight
+- [ ] On success: AI Response card appears expanded below the Allocation Plan card
+- [ ] Response text rendered with `whitespace-pre-wrap`
+- [ ] "Always in English" note visible with an `Info` icon
+- [ ] Collapsible toggle works (▲ Collapse / ▼ Expand)
+- [ ] On API error: error message shown in `text-destructive`, button re-enables
+- [ ] Response is cached in component state — navigating away and back shows the cached response without a re-call
+- [ ] Cache is invalidated when the user edits any goal
+- [ ] AI card not rendered when API key is absent
+
+**Security**
+- [ ] `VITE_ANTHROPIC_API_KEY` is not committed to any source file or `.env` file in the repository
+- [ ] Only goal names, target amounts, deadlines, priorities, `monthlyAllocated`, `freeCashFlow`, and currency are sent to the API — no account numbers, user emails, or other PII
+- [ ] `aiAdvisor.ts` reads the key from `import.meta.env.VITE_ANTHROPIC_API_KEY` — not from localStorage or any other runtime storage
+
+**Tests**
+- [ ] `npm test` passes — all existing tests green
+- [ ] `npm run build` passes — no TypeScript errors
+- [ ] `autoAllocateSavings` has unit tests covering: all tiers funded, tier partially funded (proportional), FCF = 0, negative FCF, completed/blocked goals, no-deadline goal, single goal, empty goals array
+- [ ] `explainAllocationPlan` has a unit test with the API mocked — verifies the correct payload shape is sent and the returned string is passed through
+
+---
+
+### 27.11 Out of Scope (v2.8)
+
+- Persisting `monthlyAllocated` values to `household_finance.data` — allocation is always recomputed on demand
+- Applying the allocation automatically to goal `monthlyContribution` fields — user reviews and applies changes manually
+- Streaming the AI response — single blocking `fetch`, full response displayed at once
+- Letting the user edit per-goal allocations inline in the table (drag-to-redistribute, manual override) — a possible v3 feature
+- A backend proxy to hide the Anthropic API key from the browser — listed as a future improvement
+- Controlling the AI response language (Claude output language cannot be guaranteed by prompt alone)
+- AI explanations for individual goals — the feature covers the holistic allocation only
+- Rate-limiting or cost-capping the API calls — the user manages this via their own Anthropic account
+
+---
+
+### 27.12 Success Metric
+
+A user with 3 or more active goals can open the Goals tab, click "Re-calculate", and immediately see a concrete per-goal monthly allocation that sums to their available FCF — without needing to do any mental arithmetic. If the API key is configured, clicking "Explain my plan" returns an actionable assessment in under 5 seconds that identifies at least one concrete change the user could make.
+
+---
+
+### 27.13 Implementation Checklist for Agents
+
+#### 🏗 Backend Agent
+1. Add `autoAllocateSavings(goals, freeCashFlow, liquidSavings): GoalAllocation[]` to `src/lib/savingsEngine.ts`
+2. Implement the priority-tier proportional algorithm as specified in §27.5
+3. Ensure the function is pure and deterministic — no side effects, no `Date.now()` without injection
+4. Export the function; add it to the barrel export if one exists
+
+#### 🎨 Frontend Agent
+1. Add `monthlyAllocated?: number` to the `GoalAllocation` interface in `src/types/index.ts`
+2. Create `src/lib/aiAdvisor.ts` with `explainAllocationPlan(goals, freeCashFlow, currency): Promise<string>`
+   - `fetch` to `https://api.anthropic.com/v1/messages`
+   - Model: `claude-haiku-4-5`, `max_tokens: 400`
+   - Reads key from `import.meta.env.VITE_ANTHROPIC_API_KEY`
+   - Prompt: ask Claude to assess realism, flag at-risk goals, suggest 1–2 actionable changes — in English
+   - Throws on non-2xx response
+3. Add Allocation Plan card to the Goals tab component:
+   - Local state: `allocations: GoalAllocation[]`, `aiResponse: string | null`, `aiError: string | null`, `aiLoading: boolean`, `aiCollapsed: boolean`
+   - "Re-calculate" button calls `autoAllocateSavings` and updates `allocations`; clears `aiResponse`
+   - "Explain my plan 🤖" button calls `explainAllocationPlan`; sets `aiResponse` or `aiError`; guards on `!!import.meta.env.VITE_ANTHROPIC_API_KEY`
+4. Do NOT expose any raw financial account numbers in the payload to `explainAllocationPlan`
+
+#### 🖌 UX Agent
+1. Priority badge colours: high → `variant="destructive"`, medium → `variant="warning"`, low → `variant="secondary"`
+2. Progress bar: `<div className="h-2 rounded-full bg-primary"` style `width: X%`
+3. "Explain my plan 🤖" button: `variant="outline"` + `Sparkles` lucide icon; spinner via `Loader2 animate-spin` while loading
+4. AI Response card: collapsible with `ChevronUp` / `ChevronDown` toggle; `whitespace-pre-wrap` on response text
+5. Verify dark mode, Hebrew RTL (logical margins), and mobile 375 px for both new cards
+6. All interactive elements `min-h-[44px]`
+
+#### 🧪 QA Agent
+1. Create `src/test/aiSavingsAllocator.test.ts`:
+   - `autoAllocateSavings()` — 8 unit tests (see §27.10)
+   - `explainAllocationPlan()` — 1 test with `fetch` mocked
+2. Run `npm test` — confirm all existing tests still pass; new file adds ≥ 9 tests
+3. Run `npm run build` — no TypeScript errors
+4. Manual QA:
+   - Goals tab with no goals: empty state visible
+   - Goals tab with mixed priorities: allocation amounts are in high → medium → low order
+   - FCF = 0: all rows show ₪0
+   - Toggle language to Hebrew: all strings localised except AI response
+   - Toggle dark mode: both cards readable
+   - Mobile 375 px: table scrolls horizontally if needed; buttons reachable
+   - With API key set: AI button visible; click → spinner → response; navigate away and back → cached response shown
+   - Without API key: AI button absent; no error
+
+#### 🔍 Code Review Agent
+1. Confirm `autoAllocateSavings` is a pure function — no mutation of input arrays, no side effects
+2. Confirm total `monthlyAllocated` never exceeds `freeCashFlow` — check rounding guard
+3. Confirm `VITE_ANTHROPIC_API_KEY` appears only in `src/lib/aiAdvisor.ts` — not in components
+4. Confirm data sent to Claude API contains no account numbers, emails, or PII — review the prompt construction in `aiAdvisor.ts`
+5. Confirm `monthlyAllocated` is NOT written to `setData` — it must remain in component state only
+6. Confirm `GoalAllocation.monthlyAllocated` is typed as `number | undefined` (not `any`)
+7. Confirm all new strings use `t(en, he, lang)` — no hardcoded English in JSX
+8. Confirm AI Response card is conditionally rendered, not just hidden — no key leak via hidden DOM elements
+
+#### 🗄 Data Engineer Agent
+1. No Supabase schema change — `monthlyAllocated` is never persisted; `household_finance.data` is unchanged
+2. `cloudFinance.ts` `mergeFinanceData` requires no change — `GoalAllocation` is a computed view, not stored
+3. Confirm `FINANCE_DEFAULTS` does not reference `monthlyAllocated` — it is absent from defaults by design
+4. Update `.claude/docs/database.md` to note that `GoalAllocation.monthlyAllocated` is a computed field, never written to the cloud
