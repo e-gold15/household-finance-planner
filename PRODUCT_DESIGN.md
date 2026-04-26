@@ -954,6 +954,62 @@ No change — `existing` budget items always open in "Current budget" mode. The 
 
 ---
 
+---
+
+### 23.9b Enhancement: Auto-populate Fixed Monthly Expenses in Stub Snapshots (v2.4.1)
+
+**Problem:** When `addExpenseToMonth` creates a stub snapshot for a past month that has no snapshot, the stub has zero totals and empty `categoryActuals`. But the user's fixed monthly recurring expenses (rent, insurance, subscriptions, etc.) definitely occurred that month too. The stub should reflect them automatically — the user shouldn't have to re-enter rent every time they log a one-off past expense.
+
+**Solution:** When building a stub snapshot, pre-populate `categoryActuals` and `totalExpenses` from all **fixed recurring** expenses in the current budget (same logic as `snapshotMonth`, but filtered to `expenseType === 'fixed'` or undefined, and `recurring === true`).
+
+**Why only fixed, not variable?**
+Variable expenses (food, dining, entertainment) change month to month — we cannot assume last month's budget equals actuals. Fixed expenses (rent, mortgage, phone bill, insurance) are the same every month by definition. Pre-populating only fixed ones gives an accurate baseline without guessing.
+
+**What changes in `addExpenseToMonth` (stub branch only):**
+
+```typescript
+// Build categoryActuals from fixed recurring expenses
+const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+let fixedTotal = 0
+d.expenses
+  .filter((e) => e.recurring && (e.expenseType ?? 'fixed') === 'fixed')
+  .forEach((e) => {
+    const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+    categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+    fixedTotal += monthly
+  })
+
+// Stack the new one-off item on top
+categoryActuals[item.category] = (categoryActuals[item.category] ?? 0) + item.amount
+
+const stub: MonthSnapshot = {
+  id: generateId(),
+  label,
+  date: targetDate,
+  totalIncome: 0,           // unknown for past months
+  totalExpenses: fixedTotal + item.amount,
+  totalSavings: 0,          // unknown
+  freeCashFlow: 0,          // unknown — not computed to avoid misleading -X display
+  categoryActuals,
+  historicalExpenses: [newItem],
+}
+```
+
+**`totalExpenses`** is set to `fixedTotal + item.amount` so the History card summary row shows a meaningful expenses figure instead of ₪0. `totalIncome`, `totalSavings`, and `freeCashFlow` stay at 0 (honest — we cannot know past income or savings for a stub month).
+
+**No change to existing snapshots or the "existing snapshot" branch** of `addExpenseToMonth` — only the stub creation path is affected.
+
+**Acceptance criteria for v2.4.1:**
+- [ ] Stub `categoryActuals` includes all fixed recurring expenses (monthly-normalized)
+- [ ] Stub `totalExpenses` = sum of fixed recurring expenses + new item amount
+- [ ] Variable expenses (`expenseType === 'variable'`) are NOT included
+- [ ] Non-recurring expenses (`recurring === false`) are NOT included
+- [ ] Adding to an existing snapshot is unchanged
+- [ ] If there are no fixed expenses, stub still works (empty `categoryActuals` beyond new item)
+- [ ] New unit tests cover: stub with fixed expenses, stub with mixed fixed/variable (only fixed included), stub with no fixed expenses
+
+---
+
 ### 23.10 Out of Scope (v2.4)
 
 - Editing past-month items from the Expenses tab (use History tab for that)
