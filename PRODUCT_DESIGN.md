@@ -31,6 +31,7 @@
 21. [Responsiveness](#21-responsiveness)
 22. [Feature Spec: Historical Expense Entry (v2.3)](#22-feature-spec-historical-expense-entry-v23)
 24. [Feature Spec: Historical Income Entry (v2.5)](#24-feature-spec-historical-income-entry-v25)
+25. [Feature Spec: Add Income to Past Month from Income Tab (v2.6)](#25-feature-spec-add-income-to-past-month-from-income-tab-v26)
 
 ---
 
@@ -1767,3 +1768,427 @@ Below is the ordered task list for the other agent roles. Each role should read 
 2. Add `historicalExpenses: []` to `FINANCE_DEFAULTS` in `src/lib/cloudFinance.ts` to handle old cloud blobs
 3. `mergeFinanceData` already merges `history` wholesale — no change needed
 4. Update `src/test/cloudFinance.test.ts` fixtures if needed
+
+---
+
+## 25. Feature Spec: Add Income to Past Month from Income Tab (v2.6)
+
+### 25.1 Problem
+
+**User pain:** A user is reviewing their income sources on the Income tab and realises they received a freelance payment or bonus last month that was never recorded. The natural action is to log it right there — but today the Income tab only allows adding recurring income sources to the current budget template. Recording past income requires navigating away to the History tab, finding the right snapshot card, and using `HistoricalIncomeDialog`. This is a context-switch that breaks the user's flow.
+
+**Why not just use the History tab flow (v2.5)?** The Income tab is where users think about earnings. Mirroring the v2.4 "When?" pattern — already familiar from the Expenses tab — gives users a consistent mental model: any "Add" dialog can target either the current budget or a specific past month.
+
+**Who is affected:** All personas — especially freelancers and expats with irregular or one-off income payments that they want to log after the fact.
+
+---
+
+### 25.2 Solution Overview
+
+Add a new **"Add Income Entry"** button to the Income tab toolbar (next to the existing "Add Member" button). The button opens a lightweight dialog with a **"When?" toggle** — identical in structure to the v2.4 Expenses tab pattern.
+
+- **Current budget mode** records a new `IncomeSource` with `useManualNet: true` via the existing `handleSaveSource` path — no new data model needed.
+- **Past month mode** records a `HistoricalIncome` item on the target snapshot (or creates a stub snapshot if none exists) via a new context method `addIncomeToMonth(year, month, item)` — parallel to `addExpenseToMonth`.
+
+Stub snapshots created by `addIncomeToMonth` pre-populate fixed recurring expenses (same logic as v2.4.1) so that `totalExpenses` is meaningful rather than ₪0. `totalIncome` is set to the recorded amount and `freeCashFlow` is computed immediately, causing the History tab stub badge to show a real FCF value rather than "—".
+
+---
+
+### 25.3 Key Design Decisions
+
+| Decision | Choice | Reason |
+|----------|--------|--------|
+| Separate "Add Income Entry" button vs. extend existing "Add Source" | Separate button | "Add Source" is a complex recurring-income form; a past-month one-off entry needs a simpler form with different fields |
+| Current budget mode form | Member dropdown + Source Name + Monthly Net Amount → saves as `IncomeSource` with `useManualNet: true` | Reuses existing `handleSaveSource` without duplication; keeps the simpler form consistent |
+| Past month mode form | Month picker + Year picker + Member name (datalist) + Net Amount + optional Note | Matches `HistoricalIncome` shape; symmetric with expense past-month form |
+| Stub pre-population | Fixed recurring expenses pre-populate `categoryActuals` + `totalExpenses` (v2.4.1 logic) | Same as expense stubs — gives an honest baseline without guessing variable costs |
+| FCF computation on stub | `totalIncome = item.amount; freeCashFlow = totalIncome − totalExpenses − totalSavings` | Income is now known, so FCF can be computed; eliminates the "—" badge immediately |
+| Max lookback | Last 3 years (36 months), excluding current and future months | Consistent with v2.4 expense lookback |
+| Feedback after saving past-month income | Inline confirmation message "✓ Added to [Month] [Year] in History" | Same pattern as v2.4; no toast library needed |
+
+---
+
+### 25.4 Data Model Changes
+
+**No new types.** The feature reuses `HistoricalIncome` (from v2.5) and `MonthSnapshot`.
+
+**New context method:**
+
+```typescript
+/**
+ * Add a HistoricalIncome item to a specific past month.
+ * If no snapshot exists for (year, month), a stub snapshot is created first,
+ * pre-populated with fixed recurring expenses (same logic as addExpenseToMonth v2.4.1).
+ * totalIncome and freeCashFlow are set/recomputed immediately on the stub.
+ */
+addIncomeToMonth: (
+  year: number,
+  month: number,       // 1–12
+  item: Omit<HistoricalIncome, 'id'>
+) => void
+```
+
+**Stub snapshot shape** (created when no snapshot exists for the target month):
+
+```typescript
+const label = `${MONTH_NAMES_EN[month - 1]} ${year}`         // e.g. "April 2026"
+const date  = new Date(year, month - 1, 1).toISOString()     // first of the month
+
+// Pre-populate fixed recurring expenses (mirrors addExpenseToMonth v2.4.1)
+const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+let fixedTotal = 0
+d.expenses
+  .filter((e) => e.recurring && (e.expenseType ?? 'fixed') === 'fixed')
+  .forEach((e) => {
+    const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+    categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+    fixedTotal += monthly
+  })
+
+const stub: MonthSnapshot = {
+  id:              generateId(),
+  label,
+  date,
+  totalIncome:     item.amount,
+  totalExpenses:   fixedTotal,
+  totalSavings:    0,
+  freeCashFlow:    item.amount - fixedTotal,
+  categoryActuals,
+  historicalIncomes: [{ ...item, id: generateId() }],
+}
+```
+
+**Implementation of `addIncomeToMonth`:**
+
+```typescript
+const addIncomeToMonth = (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) =>
+  setData((d) => {
+    const newItem: HistoricalIncome = { ...item, id: generateId() }
+    const targetDate = new Date(year, month - 1, 1).toISOString()
+    const label = `${MONTH_NAMES_EN[month - 1]} ${year}`
+
+    const existingIdx = d.history.findIndex((h) => {
+      const hDate = new Date(h.date)
+      return hDate.getFullYear() === year && hDate.getMonth() + 1 === month
+    })
+
+    if (existingIdx !== -1) {
+      // Snapshot exists — add income item to it (same logic as addHistoricalIncome)
+      const updatedHistory = d.history.map((h, i) => {
+        if (i !== existingIdx) return h
+        const newTotalIncome = h.totalIncome + item.amount
+        return {
+          ...h,
+          historicalIncomes: [...(h.historicalIncomes ?? []), newItem],
+          totalIncome:  newTotalIncome,
+          freeCashFlow: newTotalIncome - h.totalExpenses - h.totalSavings,
+        }
+      })
+      return { ...d, history: updatedHistory }
+    } else {
+      // No snapshot — create stub with fixed expenses pre-populated, then add income
+      const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+      let fixedTotal = 0
+      d.expenses
+        .filter((e) => e.recurring && (e.expenseType ?? 'fixed') === 'fixed')
+        .forEach((e) => {
+          const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+          categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+          fixedTotal += monthly
+        })
+
+      const stub: MonthSnapshot = {
+        id:              generateId(),
+        label,
+        date:            targetDate,
+        totalIncome:     item.amount,
+        totalExpenses:   fixedTotal,
+        totalSavings:    0,
+        freeCashFlow:    item.amount - fixedTotal,
+        categoryActuals,
+        historicalIncomes: [newItem],
+      }
+      return { ...d, history: [...d.history, stub] }
+    }
+  })
+```
+
+---
+
+### 25.5 UI Design
+
+#### 25.5.1 Income tab toolbar — new "Add Income Entry" button
+
+The Income tab header area currently has a single "Add Member" button. A second button is added to its right:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Income                                             │
+│                              [+ Add Member]         │
+│                              [+ Add Income Entry]   │
+└─────────────────────────────────────────────────────┘
+```
+
+- Label: `+ Add Income Entry` (EN) / `+ הוסף הכנסה` (HE)
+- Uses the same `Button` variant as "Add Member" (secondary or outline)
+- Minimum tap target: `min-h-[44px]`
+
+#### 25.5.2 "Add Income Entry" dialog — layout
+
+```
+┌──────────────────────────────────────────┐
+│  Add Income Entry                        │
+│                                          │
+│  When?                                   │
+│  [ Current budget ]  [ Past month  ]     │  ← segmented toggle (default: Current)
+│                                          │
+│  ┌─ shown only when "Past month" ──────┐ │
+│  │  Month          Year               │ │
+│  │  [March    ▼]   [2026  ▼]          │ │
+│  └────────────────────────────────────┘ │
+│                                          │
+│  ── Current budget fields ─────────────  │  ← shown when "Current budget"
+│  Member                                  │
+│  [Eilon              ▼]                  │
+│  Source name                             │
+│  [e.g. Main salary]                      │
+│  Monthly net amount                      │
+│  [___________]                           │
+│                                          │
+│  ── Past month fields ─────────────────  │  ← shown when "Past month"
+│  Person                                  │
+│  [Eilon               ] ← datalist       │
+│  Net amount received                     │
+│  [___________]                           │
+│  Note (optional)                         │
+│  [e.g. Freelance project…]               │
+│                                          │
+│  [    Save    ]                          │
+│  [   Cancel   ]                          │
+└──────────────────────────────────────────┘
+```
+
+- **"When?" toggle** — same segmented-button style as the v2.4 Expenses dialog toggle
+- Default selection: **Current budget**
+- The two sets of fields are mutually exclusive — only one set is visible at a time
+- In **Current budget** mode:
+  - Member: `<Select>` from `data.members`
+  - Source name: text input (required)
+  - Monthly net amount: number input (required, > 0)
+  - On Save: calls existing `handleSaveSource` with `useManualNet: true`, `netAmount: value`
+- In **Past month** mode:
+  - Month/Year pickers: past months only, last 3 years, default = previous calendar month (same restrictions as v2.4)
+  - Person: `<Input>` with `<datalist>` from member names (same pattern as `HistoricalIncomeDialog` in v2.5)
+  - Net amount received: number input (required, > 0)
+  - Note: optional text input
+  - On Save: calls `addIncomeToMonth(year, month, { memberName, amount, note })`
+
+#### 25.5.3 Confirmation feedback after saving a past-month income entry
+
+After `addIncomeToMonth()` fires, show a brief inline success message below the Save button:
+
+```
+✓ Added to March 2026 in History
+```
+
+Uses `text-primary text-xs`. Dialog closes automatically after 1 second (or immediately on a second Save click). Same behaviour as v2.4.
+
+#### 25.5.4 Year-change clamping
+
+When the user switches the Year picker to the current year, the Month picker is automatically adjusted to the previous calendar month if the currently selected month is the current month or later — preventing selection of a future or current month. Same guard as v2.4.
+
+---
+
+### 25.6 Interaction Flows
+
+#### Flow A — Log a past-month income from the Income tab
+
+```
+1. User is on the Income tab
+2. Clicks "+ Add Income Entry"
+3. Dialog opens — "When?" defaults to "Current budget"
+4. User clicks "Past month"
+   → Month/Year pickers appear (default: previous month)
+   → Current budget fields (Member select, Source name, Monthly net) hide
+   → Past month fields (Person datalist, Net amount, Note) appear
+5. User fills: Month=March, Year=2026, Person=Eilon, Amount=15000, Note=Freelance
+6. Clicks "Save"
+7. addIncomeToMonth(2026, 3, { memberName: 'Eilon', amount: 15000, note: 'Freelance' }) fires
+   → If March 2026 snapshot exists: adds HistoricalIncome item, increments totalIncome, recomputes freeCashFlow
+   → If not: creates stub with fixed expenses pre-populated, sets totalIncome=15000, freeCashFlow=15000−fixedTotal
+8. Inline "✓ Added to March 2026 in History" message appears
+9. Dialog closes after 1 second
+10. User can verify in History tab → March 2026 card → "Recorded income (1)" section
+```
+
+#### Flow B — Add a recurring income source from the Income tab (unchanged)
+
+```
+1. User is on the Income tab
+2. Clicks "+ Add Income Entry"
+3. Dialog opens — "When?" defaults to "Current budget"
+4. User leaves "Current budget" selected
+5. Fills: Member=Sara, Source name=Part-time job, Monthly net=4500
+6. Clicks "Save"
+7. handleSaveSource fires — saves new IncomeSource with useManualNet: true, netAmount: 4500
+8. Dialog closes immediately
+9. Sara's income card updates with the new source
+```
+
+#### Flow C — Stub FCF badge auto-transitions
+
+When `addIncomeToMonth` creates a stub and sets `totalIncome > 0`, the History tab's stub detection condition (`totalIncome === 0 && totalExpenses > 0`) is no longer true. The "—" FCF badge is replaced by the real FCF value (green if positive, red if negative) — automatically, with no extra code.
+
+---
+
+### 25.7 Edge Cases & Rules
+
+| Scenario | Behaviour |
+|----------|-----------|
+| User selects current or future month in Past month mode | Not possible — current and future months are excluded from pickers |
+| `addIncomeToMonth` called for a month that already has a stub (from `addExpenseToMonth`) | Finds the existing stub; adds income item to it; recalculates `totalIncome` and `freeCashFlow` |
+| `addIncomeToMonth` called twice for the same month without a prior snapshot | Second call finds the stub created by the first; accumulates correctly |
+| No fixed recurring expenses in current budget | Stub `totalExpenses = 0`; `freeCashFlow = item.amount` |
+| Amount field left blank or zero | Inline validation error; Save button remains disabled |
+| Person/Member name left blank in past month mode | Inline validation error; Save button remains disabled |
+| Source name left blank in current budget mode | Inline validation error; Save button remains disabled |
+| Very long person name | Truncated with ellipsis in the row display; full name in the edit dialog |
+
+---
+
+### 25.8 i18n — New Strings
+
+| English | Hebrew |
+|---------|--------|
+| `Add Income Entry` | `הוסף הכנסה` |
+| `When?` | `מתי?` |
+| `Current budget` | `תקציב שוטף` |
+| `Past month` | `חודש קודם` |
+| `Month` | `חודש` |
+| `Year` | `שנה` |
+| `Member` | `חבר` |
+| `Source name` | `שם מקור` |
+| `e.g. Main salary` | `למשל: משכורת ראשית` |
+| `Monthly net amount` | `סכום נטו חודשי` |
+| `Person` | `אדם` |
+| `Net amount received` | `סכום נטו שהתקבל` |
+| `Note (optional)` | `הערה (אופציונלי)` |
+| `e.g. Freelance project…` | `למשל: פרויקט פרילנס…` |
+| `Added to {label} in History` | `נוסף ל{label} בהיסטוריה` |
+| `(fixed expenses only)` | `(הוצאות קבועות בלבד)` |
+
+---
+
+### 25.9 Acceptance Criteria
+
+**Data**
+- [ ] `addIncomeToMonth` method exists in `FinanceContext` and is typed in `FinanceContextType`
+- [ ] When snapshot exists for target month: `HistoricalIncome` item added, `totalIncome` incremented, `freeCashFlow` recomputed
+- [ ] When no snapshot exists: stub created with fixed recurring expenses pre-populated in `categoryActuals` and `totalExpenses`; `totalIncome = item.amount`; `freeCashFlow = totalIncome − totalExpenses`
+- [ ] Stub snapshot appears in History tab alongside real snapshots
+- [ ] Two calls to `addIncomeToMonth` for the same stub month: second call finds the stub, accumulates `totalIncome` correctly
+- [ ] Adding income to an existing stub (created by `addExpenseToMonth`) correctly increments `totalIncome` and recomputes `freeCashFlow`
+- [ ] Variable and non-recurring expenses are NOT included in stub `totalExpenses`
+
+**UI**
+- [ ] "+ Add Income Entry" button visible in the Income tab toolbar, next to "Add Member"
+- [ ] Button has `min-h-[44px]` tap target
+- [ ] Dialog has "When?" segmented toggle; default is "Current budget"
+- [ ] "Current budget" mode shows: Member select, Source name input, Monthly net amount input
+- [ ] "Past month" mode shows: Month select, Year select, Person datalist input, Net amount input, Note input (optional)
+- [ ] "Current budget" and "Past month" field sets are mutually exclusive (not just hidden)
+- [ ] Month select excludes current and future months
+- [ ] Year select shows last 3 years
+- [ ] Default month/year selection is the previous calendar month
+- [ ] Year-change clamping: switching to current year adjusts month to previous month if needed
+- [ ] Saving in "Current budget" mode calls `handleSaveSource` — no regression to existing behaviour
+- [ ] Saving in "Past month" mode calls `addIncomeToMonth` and shows confirmation message
+- [ ] Confirmation message "✓ Added to [label] in History" appears after past-month save
+- [ ] Dialog closes 1 second after confirmation (or immediately on second Save click)
+- [ ] FCF badge on stub transitions from "—" to real value after first income item added
+
+**i18n**
+- [ ] All new strings use `t(en, he, lang)` — no hardcoded English in JSX
+- [ ] Month names in the select use the existing `MONTHS` constant
+- [ ] Confirmation message uses localised month name
+
+**Accessibility**
+- [ ] Month and Year selects have associated `<Label>` with `htmlFor`
+- [ ] "When?" toggle buttons have `aria-pressed` reflecting current state
+- [ ] All inputs have associated `<Label>`
+- [ ] Icon-only buttons have `aria-label` + `title`
+- [ ] All interactive elements have `min-h-[44px]` tap target
+
+**Tests (new, in `src/test/addIncomeToMonth.test.ts`)**
+- [ ] Adds to existing snapshot — `historicalIncomes` updated, `totalIncome` incremented, `freeCashFlow` recomputed
+- [ ] Creates stub when no snapshot exists — correct `label`, `date`, `totalIncome = item.amount`
+- [ ] Stub creation: fixed recurring expenses pre-populate `categoryActuals` and `totalExpenses`
+- [ ] Stub creation: variable expenses excluded from `totalExpenses`
+- [ ] Stub creation: non-recurring expenses excluded from `totalExpenses`
+- [ ] Stub `freeCashFlow = totalIncome − totalExpenses`
+- [ ] Second call to same stub month accumulates `totalIncome` correctly
+- [ ] Existing snapshot (from `addExpenseToMonth`): income added, `freeCashFlow` recomputed
+- [ ] Does not touch other snapshots in history
+- [ ] Stub `label` format is correct ("March 2026")
+
+---
+
+### 25.10 Out of Scope (v2.6)
+
+- Gross-to-net tax calculation for past income entries — net-only (same as v2.5 `HistoricalIncome`)
+- Editing or deleting past-month income items from the Income tab — use the History tab for that (same pattern as expenses)
+- Auto-populating `totalSavings` in stub snapshots — savings vary too much to assume
+- "This month" option in Past month mode — use the regular current-budget path
+- Multi-currency conversion for past income entries
+- Importing past income from bank CSV statements
+
+---
+
+### 25.11 Success Metric
+
+A user on the Income tab can record a past-month income payment in under 30 seconds without leaving the tab. After saving, the correct snapshot in the History tab shows the income item in "Recorded income (N)" and displays a real FCF badge (not "—").
+
+---
+
+### 25.12 Implementation Checklist for Agents
+
+#### 🎨 Frontend Agent
+1. Add `addIncomeToMonth` to `FinanceContextType` interface in `src/context/FinanceContext.tsx`
+2. Implement `addIncomeToMonth` in `FinanceContext.tsx` (reuse `MONTH_NAMES_EN` from `addExpenseToMonth`)
+3. Add "+ Add Income Entry" button to the Income tab toolbar in `src/components/Income.tsx`
+4. Create `AddIncomeEntryDialog` component in `src/components/Income.tsx` (or a separate file):
+   - "When?" segmented toggle (state: `'budget' | 'past'`, default `'budget'`)
+   - Current budget fields: Member `<Select>`, Source name `<Input>`, Monthly net `<Input type="number">`
+   - Past month fields: Month `<Select>`, Year `<Select>`, Person `<Input list="...">` + `<datalist>`, Net amount `<Input type="number">`, Note `<Input>`
+   - Month/Year defaults to previous calendar month; year-change clamping
+   - On Save (budget mode): call `handleSaveSource` or equivalent with `useManualNet: true`
+   - On Save (past mode): call `addIncomeToMonth(year, month, item)`, show confirmation, auto-close after 1 s
+5. Wire open/close state: button → dialog → save → close
+
+#### 🖌 UX Agent
+1. Verify "When?" toggle uses same segmented-button style as the v2.4 Expenses dialog
+2. Verify Month/Year selects are correctly labelled and mobile-friendly (375 px)
+3. Verify field sets switch cleanly — hidden fields truly gone, not just invisible
+4. Verify confirmation message uses `text-primary` and is RTL-safe
+5. Verify "+ Add Income Entry" button does not break Income tab layout on mobile
+
+#### 🧪 QA Agent
+1. Write `src/test/addIncomeToMonth.test.ts` with the 10 tests in §25.9
+2. Run `npm test` — all 235 + 10 = 245 tests must pass
+3. Run `npm run build` — no TypeScript errors
+4. Manual QA: past-month save → verify History tab snapshot updates; current-budget save → verify Income tab source card appears
+
+#### 🔍 Code Review Agent
+1. Confirm `addIncomeToMonth` is a pure `setData` mutation — no side effects
+2. Confirm stub `freeCashFlow` computation: `totalIncome − totalExpenses − totalSavings`
+3. Confirm month/year range excludes current and future months
+4. Confirm "Current budget" Save path is completely unchanged (no regression to `handleSaveSource`)
+5. Confirm fixed-expense pre-population guard: `e.recurring && (e.expenseType ?? 'fixed') === 'fixed'`
+6. No `any` types; all strings through `t(en, he, lang)`
+
+#### 🗄 Data Engineer Agent
+1. No Supabase schema change — stub snapshots are stored inside `household_finance.data.history[]`
+2. Verify `FINANCE_DEFAULTS` and `mergeFinanceData` handle stubs with `historicalIncomes` (same structure as real snapshots)
+3. Confirm `historicalIncomes: []` default is already covered by existing `FINANCE_DEFAULTS` (added in v2.5)
+
+---
