@@ -16,7 +16,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (235 tests, must stay green)
+- **Tests:** Vitest — `npm test` (261 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -43,7 +43,7 @@ At the start of each session, declare which role you are acting as.
 - New localStorage keys must be documented in README.md
 - Never use Supabase Auth — auth is always local
 - All new exports must have a corresponding test in `src/test/localAuth.test.ts`
-- Run `npm test` before every commit — all 235 tests must pass
+- Run `npm test` before every commit — all 261 tests must pass
 - Run `npm run build` before every commit — catches TypeScript errors `tsc --noEmit` misses
 
 ### Supabase tables
@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 235 tests green)
+- [ ] `npm test` passes (all 261 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -238,10 +238,11 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `historicalExpenses.test.ts` | 11 | add/delete/update items, category change, clamp to 0, backward compat |
 | `addExpenseToMonth.test.ts` | 20 | stub creation, fixed pre-pop, variable excluded, existing snapshot, year boundary |
 | `historicalIncome.test.ts` | 13 | add/delete/update income items, FCF recompute, clamp-to-zero, backward compat, stub transition |
-| **Total** | **235** | |
+| `addIncomeToMonth.test.ts` | 26 | existing snapshot, stub creation, fixed pre-pop, FCF computed (not 0), immutability, year boundary |
+| **Total** | **261** | |
 
 ### Rules
-- All 235 existing tests must pass before any commit
+- All 261 existing tests must pass before any commit
 - Run `npm run build` before committing — not just `npm test`
 - New business logic functions require tests before merging
 - Test file mirrors lib file: `src/lib/foo.ts` → `src/test/foo.test.ts`
@@ -376,7 +377,17 @@ How will we know this feature is working?
 - ✅ UX: a11y attrs on Add Income button, mobile note overflow fixed, section header alignment
 - ✅ 13 new unit tests (235 total)
 
-**Next (v2.6)**
+**v2.6 — shipped**
+- ✅ Add Past Income from Income tab — "Add Income Entry" toolbar button with "When?" toggle
+- ✅ Current budget mode: member dropdown + source name + net amount → saves as IncomeSource
+- ✅ Past month mode: month/year pickers + member datalist + net amount + note → `addIncomeToMonth`
+- ✅ `addIncomeToMonth` in FinanceContext — find-or-create stub, FCF computed immediately (not 0)
+- ✅ Stub pre-populates fixed recurring expenses (v2.4.1 pattern)
+- ✅ `--warning` HSL token system + badge variant fix (no more hardcoded amber classes)
+- ✅ UX audit: a11y attrs on all icon buttons, /mo net i18n, label/input associations
+- ✅ 26 new unit tests (261 total)
+
+**Next (v2.7)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
