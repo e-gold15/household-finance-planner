@@ -144,8 +144,8 @@ function ExpenseDialog({
       const result = await scanReceipt(base64, file.type || 'image/jpeg', lang)
       setForm((f) => ({
         ...f,
-        name:     result.name     || f.name,
-        amount:   result.amount   || f.amount,
+        name:     result.name                          || f.name,
+        amount:   result.amount > 0 ? result.amount    : f.amount,
         category: (result.category as ExpenseCategory) || f.category,
       }))
     } catch {
@@ -198,12 +198,11 @@ function ExpenseDialog({
             </DialogTitle>
             {aiEnabled && (
               <>
-                {/* Hidden file input — camera on mobile, file picker on desktop */}
+                {/* Hidden file input — on mobile shows camera/gallery/files sheet; on desktop opens file picker */}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
-                  capture="environment"
+                  accept="image/*,application/pdf"
                   className="hidden"
                   aria-hidden="true"
                   onChange={handleReceiptFile}

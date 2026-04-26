@@ -67,23 +67,23 @@ const VALID_CATEGORIES = [
 ] as const
 
 /**
- * Send a receipt image to Claude Vision and extract expense fields.
+ * Send a receipt image or PDF to Claude and extract expense fields.
  * Returns { name, amount, category } — all fields are best-effort; callers
  * should validate and let the user review before saving.
  *
- * @param imageBase64 - Raw base64 string (no data-URL prefix)
- * @param mimeType    - e.g. "image/jpeg", "image/png", "image/webp"
- * @param lang        - Response hint language
+ * @param fileBase64 - Raw base64 string (no data-URL prefix)
+ * @param mimeType   - e.g. "image/jpeg", "image/png", "image/webp", "application/pdf"
+ * @param lang       - Response hint language
  */
 export async function scanReceipt(
-  imageBase64: string,
+  fileBase64: string,
   mimeType: string,
   lang: 'en' | 'he',
 ): Promise<ReceiptScanResult> {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) throw new Error('No API key configured')
 
-  const prompt = `You are a receipt parser. Look at this receipt image and extract the following fields.
+  const prompt = `You are a receipt parser. Look at this receipt and extract the following fields.
 Return ONLY a JSON object with exactly these keys — no markdown, no explanation:
 {
   "name": "<merchant or store name, max 40 chars>",
@@ -97,16 +97,41 @@ Rules:
 - If the merchant is a supermarket/restaurant → "food". Gas station → "transport". Pharmacy/clinic → "health". Clothing store → "clothing". Utility bill → "utilities". Rent/mortgage → "housing". School/course → "education". Cinema/entertainment → "leisure". Insurance → "insurance". Bank transfer/savings → "savings". Anything else → "other".
 - If you cannot read the amount, use 0.
 - If you cannot read the merchant name, use "Receipt".
-${lang === 'he' ? '- The app is in Hebrew. Transliterate or translate the merchant name to Hebrew if it is clearly in Hebrew on the receipt.' : ''}`
+${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original language (Hebrew or English as printed on the receipt).' : '- Keep merchant names in their original language as printed on the receipt.'}`
+
+  // Build the file content block — images use "image" type, PDFs use "document" type
+  const isPdf = mimeType === 'application/pdf'
+  type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  const fileContentBlock = isPdf
+    ? {
+        type: 'document' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: 'application/pdf' as const,
+          data: fileBase64,
+        },
+      }
+    : {
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: (mimeType || 'image/jpeg') as ImageMediaType,
+          data: fileBase64,
+        },
+      }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  }
+  // PDF processing requires the pdfs beta header
+  if (isPdf) headers['anthropic-beta'] = 'pdfs-2024-09-25'
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers,
     body: JSON.stringify({
       model: 'claude-haiku-4-5',
       max_tokens: 200,
@@ -114,14 +139,7 @@ ${lang === 'he' ? '- The app is in Hebrew. Transliterate or translate the mercha
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mimeType,
-                data: imageBase64,
-              },
-            },
+            fileContentBlock,
             { type: 'text', text: prompt },
           ],
         },
