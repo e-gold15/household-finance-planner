@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Plus, Trash2, ChevronDown, ChevronUp, UserPlus, Users,
-  ArrowRight, BadgeCheck, Pencil,
+  ArrowRight, BadgeCheck, Pencil, CalendarCheck, History,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -36,6 +36,26 @@ const COUNTRIES: { value: Country; label: string }[] = [
   { value: 'FR', label: 'France 🇫🇷' },
   { value: 'CA', label: 'Canada 🇨🇦' },
 ]
+
+const MONTHS: { value: number; en: string; he: string }[] = [
+  { value: 1,  en: 'January',   he: 'ינואר' },
+  { value: 2,  en: 'February',  he: 'פברואר' },
+  { value: 3,  en: 'March',     he: 'מרץ' },
+  { value: 4,  en: 'April',     he: 'אפריל' },
+  { value: 5,  en: 'May',       he: 'מאי' },
+  { value: 6,  en: 'June',      he: 'יוני' },
+  { value: 7,  en: 'July',      he: 'יולי' },
+  { value: 8,  en: 'August',    he: 'אוגוסט' },
+  { value: 9,  en: 'September', he: 'ספטמבר' },
+  { value: 10, en: 'October',   he: 'אוקטובר' },
+  { value: 11, en: 'November',  he: 'נובמבר' },
+  { value: 12, en: 'December',  he: 'דצמבר' },
+]
+
+function monthName(m: number, lang: 'en' | 'he'): string {
+  const found = MONTHS.find((x) => x.value === m)
+  return found ? (lang === 'he' ? found.he : found.en) : ''
+}
 
 const DEFAULT_SOURCE: Omit<IncomeSource, 'id'> = {
   name: '',
@@ -168,7 +188,13 @@ function SourceDialog({
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
         {existing ? (
-          <Button variant="ghost" size="icon" className="h-7 w-7">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            title={t('Edit income source', 'ערוך מקור הכנסה', lang)}
+            aria-label={t('Edit income source', 'ערוך מקור הכנסה', lang)}
+          >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
         ) : (
@@ -380,8 +406,9 @@ function TaxBreakdownExpander({
   return (
     <div>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
       >
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         {t('Tax breakdown', 'פירוט ניכויים', lang)}
@@ -412,13 +439,13 @@ function TaxBreakdownExpander({
             </div>
           )}
           {bd.pensionEmployee > 0 && (
-            <div className="flex justify-between text-amber-600 dark:text-amber-400">
+            <div className="flex justify-between text-warning-foreground">
               <span>{t('Pension (employee)', 'פנסיה (עובד)', lang)}</span>
               <span>−{fmt(bd.pensionEmployee)}</span>
             </div>
           )}
           {bd.educationFundEmployee > 0 && (
-            <div className="flex justify-between text-amber-600 dark:text-amber-400">
+            <div className="flex justify-between text-warning-foreground">
               <span>{t('Edu. Fund (employee)', 'קרן השתלמות (עובד)', lang)}</span>
               <span>−{fmt(bd.educationFundEmployee)}</span>
             </div>
@@ -495,7 +522,7 @@ function SourceCard({
             <p className="text-xs text-muted-foreground line-through">{fmt(bd.grossMonthly)}</p>
           )}
           <p className="font-semibold text-primary tabular-nums">{fmt(bd.netMonthly)}</p>
-          <p className="text-xs text-muted-foreground">/mo net</p>
+          <p className="text-xs text-muted-foreground">{t('/mo net', '/חודש נטו', lang)}</p>
         </div>
       </div>
 
@@ -512,11 +539,312 @@ function SourceCard({
           currency={currency}
           locale={locale}
         />
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={onDelete}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-destructive"
+          title={t('Delete income source', 'מחק מקור הכנסה', lang)}
+          aria-label={t('Delete income source', 'מחק מקור הכנסה', lang)}
+          onClick={onDelete}
+        >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
+  )
+}
+
+// ── AddIncomeDialog ───────────────────────────────────────────────────────────
+
+function AddIncomeDialog({
+  lang,
+  currency,
+  locale,
+  members,
+  onSaveBudget,
+}: {
+  lang: 'en' | 'he'
+  currency: string
+  locale: string
+  members: HouseholdMember[]
+  onSaveBudget: (memberId: string, src: IncomeSource) => void
+}) {
+  const { addIncomeToMonth } = useFinance()
+  const [open, setOpen] = useState(false)
+
+  const now = new Date()
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+
+  const [mode, setMode]               = useState<'budget' | 'past'>('budget')
+  const [pastMonth, setPastMonth]     = useState(prevMonth)
+  const [pastYear, setPastYear]       = useState(prevYear)
+  const [pastMemberName, setPastMemberName] = useState('')
+  const [pastAmount, setPastAmount]   = useState(0)
+  const [pastNote, setPastNote]       = useState('')
+
+  // Budget mode fields
+  const [budgetMemberId, setBudgetMemberId]     = useState('')
+  const [budgetSourceName, setBudgetSourceName] = useState('')
+  const [budgetAmount, setBudgetAmount]         = useState(0)
+
+  const [savedLabel, setSavedLabel] = useState<string | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    }
+  }, [])
+
+  const handlePastYearChange = (y: number) => {
+    setPastYear(y)
+    const cur = new Date()
+    const curY = cur.getFullYear()
+    const curM = cur.getMonth() + 1
+    if (y === curY && pastMonth >= curM) {
+      setPastMonth(curM > 1 ? curM - 1 : 12)
+    }
+  }
+
+  const handleOpen = (o: boolean) => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null }
+    if (o) {
+      setMode('budget')
+      setSavedLabel(null)
+      setPastMemberName('')
+      setPastAmount(0)
+      setPastNote('')
+      setBudgetMemberId(members[0]?.id ?? '')
+      setBudgetSourceName('')
+      setBudgetAmount(0)
+      const n = new Date()
+      if (n.getMonth() === 0) {
+        setPastMonth(12); setPastYear(n.getFullYear() - 1)
+      } else {
+        setPastMonth(n.getMonth()); setPastYear(n.getFullYear())
+      }
+    }
+    setOpen(o)
+  }
+
+  const canSavePast   = pastMemberName.trim().length > 0 && pastAmount > 0
+  const canSaveBudget = budgetMemberId.length > 0 && budgetSourceName.trim().length > 0 && budgetAmount > 0
+
+  const handleSave = () => {
+    if (mode === 'past') {
+      if (!canSavePast) return
+      addIncomeToMonth(pastYear, pastMonth, {
+        memberName: pastMemberName.trim(),
+        amount: pastAmount,
+        note: pastNote.trim() || undefined,
+      })
+      const label = `${monthName(pastMonth, lang)} ${pastYear}`
+      setSavedLabel(label)
+      closeTimerRef.current = setTimeout(() => {
+        closeTimerRef.current = null
+        setOpen(false)
+        setSavedLabel(null)
+      }, 1200)
+    } else {
+      if (!canSaveBudget) return
+      const src: IncomeSource = {
+        ...DEFAULT_SOURCE,
+        id: generateId(),
+        name: budgetSourceName.trim(),
+        amount: budgetAmount,
+        useManualNet: true,
+        manualNetOverride: budgetAmount,
+      }
+      onSaveBudget(budgetMemberId, src)
+      setOpen(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <Plus className="h-4 w-4 me-1" />
+          {t('Add Income Entry', 'הוסף רשומת הכנסה', lang)}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('Add Income Entry', 'הוסף רשומת הכנסה', lang)}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+
+          {/* When? toggle */}
+          <div>
+            <Label className="mb-2 block">{t('When?', 'מתי?', lang)}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('budget')}
+                aria-pressed={mode === 'budget'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  mode === 'budget'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                {t('Current budget', 'תקציב שוטף', lang)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('past')}
+                aria-pressed={mode === 'past'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  mode === 'past'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <History className="h-3.5 w-3.5" />
+                {t('Past month', 'חודש קודם', lang)}
+              </button>
+            </div>
+
+            {/* Month + Year pickers — past mode only */}
+            {mode === 'past' && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <Label htmlFor="income-past-month">{t('Month', 'חודש', lang)}</Label>
+                  <Select value={pastMonth.toString()} onValueChange={(v) => setPastMonth(+v)}>
+                    <SelectTrigger id="income-past-month" aria-label={t('Month', 'חודש', lang)}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.filter((m) => {
+                        const curM = now.getMonth() + 1
+                        const curY = now.getFullYear()
+                        if (pastYear === curY) return m.value < curM
+                        if (pastYear > curY)   return false
+                        return true
+                      }).map((m) => (
+                        <SelectItem key={m.value} value={m.value.toString()}>
+                          {lang === 'he' ? m.he : m.en}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="income-past-year">{t('Year', 'שנה', lang)}</Label>
+                  <Select value={pastYear.toString()} onValueChange={(v) => handlePastYearChange(+v)}>
+                    <SelectTrigger id="income-past-year" aria-label={t('Year', 'שנה', lang)}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 3 }, (_, i) => now.getFullYear() - i).map((y) => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Budget mode fields ── */}
+          {mode === 'budget' && (
+            <>
+              {members.length > 0 && (
+                <div>
+                  <Label htmlFor="income-budget-member">{t('Member', 'חבר', lang)}</Label>
+                  <Select value={budgetMemberId} onValueChange={setBudgetMemberId}>
+                    <SelectTrigger id="income-budget-member">
+                      <SelectValue placeholder={t('Select member', 'בחר חבר', lang)} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {members.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="income-budget-name">{t('Source Name', 'שם המקור', lang)}</Label>
+                <Input
+                  id="income-budget-name"
+                  value={budgetSourceName}
+                  onChange={(e) => setBudgetSourceName(e.target.value)}
+                  placeholder={t('e.g. Main Salary', 'למשל: משכורת ראשית', lang)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="income-budget-amount">{t('Monthly Net Amount', 'סכום נטו חודשי', lang)}</Label>
+                <Input
+                  id="income-budget-amount"
+                  type="number"
+                  min={0}
+                  value={budgetAmount || ''}
+                  onChange={(e) => setBudgetAmount(+e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </>
+          )}
+
+          {/* ── Past mode fields ── */}
+          {mode === 'past' && (
+            <>
+              <datalist id="income-dialog-members-list">
+                {members.map((m) => <option key={m.id} value={m.name} />)}
+              </datalist>
+              <div>
+                <Label htmlFor="income-past-member">{t('Member Name', 'שם החבר', lang)}</Label>
+                <Input
+                  id="income-past-member"
+                  list="income-dialog-members-list"
+                  value={pastMemberName}
+                  onChange={(e) => setPastMemberName(e.target.value)}
+                  placeholder={t('e.g. Alex', 'למשל: אלכס', lang)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="income-past-amount">{t('Net Amount', 'סכום נטו', lang)}</Label>
+                <Input
+                  id="income-past-amount"
+                  type="number"
+                  min={0}
+                  value={pastAmount || ''}
+                  onChange={(e) => setPastAmount(+e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <Label htmlFor="income-past-note">{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
+                <Input
+                  id="income-past-note"
+                  value={pastNote}
+                  onChange={(e) => setPastNote(e.target.value)}
+                  placeholder={t('e.g. Bonus payment', 'למשל: בונוס', lang)}
+                />
+              </div>
+            </>
+          )}
+
+          <Button
+            className="w-full"
+            disabled={mode === 'past' ? !canSavePast : !canSaveBudget}
+            onClick={handleSave}
+          >
+            {t('Save', 'שמור', lang)}
+          </Button>
+
+          {savedLabel && (
+            <p className="text-xs text-primary text-center flex items-center justify-center gap-1">
+              <span>✓</span>
+              {t(`Added to ${savedLabel} in History`, `נוסף ל${savedLabel} בהיסטוריה`, lang)}
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -547,7 +875,7 @@ export function Income() {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-sm text-muted-foreground">
           {t('Total net monthly:', 'סה"כ נטו חודשי:', lang)}{' '}
           <span className="font-semibold text-primary">
@@ -555,40 +883,54 @@ export function Income() {
           </span>
         </p>
 
-        <Dialog open={memberOpen} onOpenChange={setMemberOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <UserPlus className="h-4 w-4 me-1" />
-              {t('Add Member', 'הוסף חבר', lang)}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('Add Household Member', 'הוסף חבר משק בית', lang)}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 mt-2">
-              <FieldRow label={t('Name', 'שם', lang)}>
-                <Input
-                  value={addMemberName}
-                  onChange={(e) => setAddMemberName(e.target.value)}
-                  placeholder={t('e.g. Alex', 'למשל: אלכס', lang)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && addMemberName.trim()) {
-                      addMember(addMemberName.trim()); setAddMemberName(''); setMemberOpen(false)
-                    }
-                  }}
-                />
-              </FieldRow>
-              <Button
-                className="w-full"
-                disabled={!addMemberName.trim()}
-                onClick={() => { addMember(addMemberName.trim()); setAddMemberName(''); setMemberOpen(false) }}
-              >
-                {t('Add', 'הוסף', lang)}
+        <div className="flex items-center gap-2">
+          <AddIncomeDialog
+            lang={lang}
+            currency={data.currency}
+            locale={data.locale}
+            members={data.members}
+            onSaveBudget={handleSaveSource}
+          />
+
+          <Dialog open={memberOpen} onOpenChange={setMemberOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <UserPlus className="h-4 w-4 me-1" />
+                {t('Add Member', 'הוסף חבר', lang)}
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{t('Add Household Member', 'הוסף חבר משק בית', lang)}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 mt-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="add-member-name" className="text-sm text-muted-foreground">
+                    {t('Name', 'שם', lang)}
+                  </Label>
+                  <Input
+                    id="add-member-name"
+                    value={addMemberName}
+                    onChange={(e) => setAddMemberName(e.target.value)}
+                    placeholder={t('e.g. Alex', 'למשל: אלכס', lang)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && addMemberName.trim()) {
+                        addMember(addMemberName.trim()); setAddMemberName(''); setMemberOpen(false)
+                      }
+                    }}
+                  />
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={!addMemberName.trim()}
+                  onClick={() => { addMember(addMemberName.trim()); setAddMemberName(''); setMemberOpen(false) }}
+                >
+                  {t('Add', 'הוסף', lang)}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -607,10 +949,14 @@ export function Income() {
                   <CardTitle className="text-base">{member.name}</CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">
-                      {formatCurrency(memberNet, data.currency, data.locale)}/mo
+                      {formatCurrency(memberNet, data.currency, data.locale)}{t('/mo', '/חודש', lang)}
                     </Badge>
                     <Button
-                      variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      title={t('Remove member', 'הסר חבר', lang)}
+                      aria-label={t('Remove member', 'הסר חבר', lang)}
                       onClick={() => deleteMember(member.id)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
