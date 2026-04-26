@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 331 tests green)
+- [ ] `npm test` passes (all 355 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -242,7 +242,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `savingsLinkage.test.ts` | 20 | add/update/delete account sync, yearly÷12, account switch, ghost IDs, multi-account isolation |
 | `autoAllocateSavings.test.ts` | 19 | full funding, pro-rating, tier blocking, status transitions, order preservation, negative FCF, no mutation |
 | `overviewUtils.test.ts` | 31 | upcoming bills, budget health, savings projection, MoM trend |
-| **Total** | **331** | |
+| `surplusAction.test.ts` | 24 | snapshot detection, markSurplusActioned, goal top-up, savings deposit |
+| **Total** | **355** | |
 
 ### Rules
 - All 261 existing tests must pass before any commit
@@ -416,7 +417,19 @@ How will we know this feature is working?
 - ✅ 28.4: 12-Month Savings Growth Projection — AreaChart + 3-col summary + weighted avg return note
 - ✅ 31 new unit tests for pure utility functions (331 total) in `src/test/overviewUtils.test.ts`
 
-**Next (v3.0)**
+**v3.0 — shipped**
+- ✅ End-of-month Surplus Action Prompt — `SurplusBanner` on Overview tab
+- ✅ Detects most-recent past-month snapshot with positive FCF, not yet actioned
+- ✅ "Add to Goal" dialog — dropdown of goals (name + %), amount input, increments `currentAmount`
+- ✅ "Add to Savings" dialog — dropdown of accounts (name + balance), amount input, increments `balance`
+- ✅ "Don't ask again" → `surplusActioned: true` on snapshot (persists + syncs to cloud)
+- ✅ Session-only dismiss (X button) — no persistent change
+- ✅ Sonner toast on confirm: "[amount] added to [destination] ✓"
+- ✅ `surplusActioned?: boolean` added to `MonthSnapshot` type (backward-compatible)
+- ✅ `markSurplusActioned(snapshotId)` added to `FinanceContext`
+- ✅ 24 new unit tests (355 total) in `src/test/surplusAction.test.ts`
+
+**Next (v3.1)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 

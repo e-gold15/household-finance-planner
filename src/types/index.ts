@@ -153,6 +153,12 @@ export interface MonthSnapshot {
    */
   historicalExpenses?: HistoricalExpense[]
   historicalIncomes?: HistoricalIncome[]
+  /**
+   * Set to true after the user actions the end-of-month surplus
+   * (allocates it to a goal or savings account).
+   * Hides the SurplusBanner for this snapshot permanently.
+   */
+  surplusActioned?: boolean
 }
 
 export interface FinanceData {

@@ -101,6 +101,8 @@ interface FinanceContextType {
   deleteHistoricalIncome: (snapshotId: string, itemId: string) => void
   updateHistoricalIncome: (snapshotId: string, item: HistoricalIncome) => void
   addIncomeToMonth: (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) => void
+  /** Mark the end-of-month surplus for a snapshot as actioned — hides the banner permanently. */
+  markSurplusActioned: (snapshotId: string) => void
 }
 
 const FinanceContext = createContext<FinanceContextType | null>(null)
@@ -566,6 +568,14 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }
     })
 
+  const markSurplusActioned = (snapshotId: string) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) =>
+        h.id === snapshotId ? { ...h, surplusActioned: true } : h
+      ),
+    }))
+
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
@@ -613,6 +623,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addExpenseToMonth,
       addHistoricalIncome, deleteHistoricalIncome, updateHistoricalIncome,
       addIncomeToMonth,
+      markSurplusActioned,
     }}>
       {children}
     </FinanceContext.Provider>

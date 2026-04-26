@@ -10,6 +10,7 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { SurplusBanner } from './SurplusBanner'
 import { useFinance } from '@/context/FinanceContext'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { allocateGoals } from '@/lib/savingsEngine'
@@ -375,7 +376,10 @@ export function Overview() {
         />
       </div>
 
-      {/* ── 2. Deficit warning banner ── */}
+      {/* ── 2. End-of-month surplus action banner (v3.0) ── */}
+      <SurplusBanner />
+
+      {/* ── 3. Deficit warning banner ── */}
       {freeCashFlow < 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
