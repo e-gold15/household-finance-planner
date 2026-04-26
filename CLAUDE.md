@@ -16,7 +16,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (261 tests, must stay green)
+- **Tests:** Vitest — `npm test` (281 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
@@ -43,7 +43,7 @@ At the start of each session, declare which role you are acting as.
 - New localStorage keys must be documented in README.md
 - Never use Supabase Auth — auth is always local
 - All new exports must have a corresponding test in `src/test/localAuth.test.ts`
-- Run `npm test` before every commit — all 261 tests must pass
+- Run `npm test` before every commit — all 281 tests must pass
 - Run `npm run build` before every commit — catches TypeScript errors `tsc --noEmit` misses
 
 ### Supabase tables
@@ -191,7 +191,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 261 tests green)
+- [ ] `npm test` passes (all 281 tests green)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
@@ -239,7 +239,8 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `addExpenseToMonth.test.ts` | 20 | stub creation, fixed pre-pop, variable excluded, existing snapshot, year boundary |
 | `historicalIncome.test.ts` | 13 | add/delete/update income items, FCF recompute, clamp-to-zero, backward compat, stub transition |
 | `addIncomeToMonth.test.ts` | 26 | existing snapshot, stub creation, fixed pre-pop, FCF computed (not 0), immutability, year boundary |
-| **Total** | **261** | |
+| `savingsLinkage.test.ts` | 20 | add/update/delete account sync, yearly÷12, account switch, ghost IDs, multi-account isolation |
+| **Total** | **281** | |
 
 ### Rules
 - All 261 existing tests must pass before any commit
@@ -387,7 +388,16 @@ How will we know this feature is working?
 - ✅ UX audit: a11y attrs on all icon buttons, /mo net i18n, label/input associations
 - ✅ 26 new unit tests (261 total)
 
-**Next (v2.7)**
+**v2.7 — shipped**
+- ✅ Savings expense → account linkage — `linkedAccountId?: string` on `Expense`
+- ✅ Account selector in ExpenseDialog when category = 'savings' (optional, datalist from Savings tab)
+- ✅ Atomic sync: addExpense/updateExpense/deleteExpense update `monthlyContribution` on linked account
+- ✅ Expense list badge: linked account name shown with Link2 icon (a11y-safe)
+- ✅ Hint shown when no savings accounts exist yet
+- ✅ `--warning` HSL token system (shipped with v2.6)
+- ✅ 20 new unit tests (281 total)
+
+**Next (v2.8)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
