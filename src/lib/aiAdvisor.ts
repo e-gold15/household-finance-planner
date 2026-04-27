@@ -145,29 +145,45 @@ Rules:
 - If you cannot read the merchant name, use "Receipt".
 ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original language (Hebrew or English as printed on the receipt).' : '- Keep merchant names in their original language as printed on the receipt.'}`
 
-  // Step 1: upload file to Files API → get file_id
-  const fileId = await uploadFileToFilesApi(fileBase64, mimeType, apiKey)
-
-  // Step 2: build content block — images use "image" type, PDFs use "document" type
   const isPdf = mimeType === 'application/pdf'
-  const fileContentBlock = isPdf
-    ? {
-        type: 'document' as const,
-        source: { type: 'file' as const, file_id: fileId },
-      }
-    : {
-        type: 'image' as const,
-        source: { type: 'file' as const, file_id: fileId },
-      }
 
-  // Step 3: send messages request
+  // Images: inline base64 in a single request — no Files API needed.
+  // PDFs: two-step Files API (upload → file_id → message) with beta header.
+  const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
+  type ContentBlock =
+    | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
+    | { type: 'document'; source: { type: 'file'; file_id: string } }
+
+  let fileContentBlock: ContentBlock
+
   const msgHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01',
     'anthropic-dangerous-direct-browser-access': 'true',
   }
-  if (isPdf) msgHeaders['anthropic-beta'] = 'files-api-2025-04-14'
+
+  if (isPdf) {
+    // Step 1: upload PDF to Files API → get file_id
+    const fileId = await uploadFileToFilesApi(fileBase64, mimeType, apiKey)
+    // Step 2: reference file by ID in the document block
+    fileContentBlock = {
+      type: 'document',
+      source: { type: 'file', file_id: fileId },
+    }
+    msgHeaders['anthropic-beta'] = 'files-api-2025-04-14'
+  } else {
+    // Images go inline — Files API doesn't support the image content block source type
+    const normalizedMime = SUPPORTED_IMAGE_TYPES.includes(mimeType)
+      ? (mimeType as ImageMediaType)
+      : 'image/jpeg'
+    fileContentBlock = {
+      type: 'image',
+      source: { type: 'base64', media_type: normalizedMime, data: fileBase64 },
+    }
+  }
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

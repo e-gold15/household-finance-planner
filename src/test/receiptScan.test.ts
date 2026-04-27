@@ -153,9 +153,20 @@ describe('parseReceiptResponse()', () => {
   })
 })
 
-// ─── scanReceipt() — Files API integration ────────────────────────────────────
+// ─── scanReceipt() — integration tests ───────────────────────────────────────
+//
+// Architecture:
+//   Images → single fetch to /v1/messages with inline base64
+//   PDFs   → two fetches: POST /v1/files (upload) then POST /v1/messages (with file_id)
 
-function setupSuccessfulFetch(mockFetch: ReturnType<typeof vi.fn>, claudeJson: string) {
+function mockImageFetch(mockFetch: ReturnType<typeof vi.fn>, claudeJson: string) {
+  mockFetch.mockResolvedValueOnce({   // only call = messages API
+    ok: true,
+    json: async () => ({ content: [{ text: claudeJson }] }),
+  })
+}
+
+function mockPdfFetch(mockFetch: ReturnType<typeof vi.fn>, claudeJson: string) {
   mockFetch
     .mockResolvedValueOnce({          // 1st call = Files API upload
       ok: true,
@@ -163,140 +174,149 @@ function setupSuccessfulFetch(mockFetch: ReturnType<typeof vi.fn>, claudeJson: s
     })
     .mockResolvedValueOnce({          // 2nd call = messages API
       ok: true,
-      json: async () => ({
-        content: [{ text: claudeJson }],
-      }),
+      json: async () => ({ content: [{ text: claudeJson }] }),
     })
 }
 
-describe('scanReceipt() — Files API flow', () => {
+describe('scanReceipt() — image path (inline base64, single fetch)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
     vi.stubEnv('VITE_ANTHROPIC_API_KEY', 'test-key')
   })
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    vi.unstubAllEnvs()
+  it('makes exactly one fetch call for images', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockImageFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    await scanReceipt('base64data', 'image/jpeg', 'en')
+    expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
-  it('uploads file before sending message (two fetch calls)', async () => {
+  it('sends image request directly to /v1/messages', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
+    mockImageFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     await scanReceipt('base64data', 'image/jpeg', 'en')
+    expect(mockFetch.mock.calls[0][0]).toBe('https://api.anthropic.com/v1/messages')
+  })
 
+  it('image message does NOT include beta header', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockImageFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    await scanReceipt('base64data', 'image/jpeg', 'en')
+    const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
+    expect(headers['anthropic-beta']).toBeUndefined()
+  })
+
+  it('image content block uses inline base64 source', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockImageFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    await scanReceipt('base64data', 'image/jpeg', 'en')
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
+    const block = body.messages[0].content[0]
+    expect(block.type).toBe('image')
+    expect(block.source.type).toBe('base64')
+    expect(block.source.media_type).toBe('image/jpeg')
+    expect(block.source.data).toBe('base64data')
+  })
+
+  it('normalises unsupported mime types (e.g. heic) to image/jpeg', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockImageFetch(mockFetch, '{"name":"Photo","amount":50,"category":"food"}')
+    await scanReceipt('base64data', 'image/heic', 'en')
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
+    expect(body.messages[0].content[0].source.media_type).toBe('image/jpeg')
+  })
+
+  it('returns parsed name, amount, category for image', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockImageFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    const result = await scanReceipt('base64data', 'image/jpeg', 'en')
+    expect(result).toEqual({ name: 'Shufersal', amount: 153.5, category: 'food' })
+  })
+
+  it('throws if messages request fails', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockFetch.mockResolvedValueOnce({
+      ok: false, status: 400,
+      json: async () => ({ error: { message: 'Bad Request' } }),
+    })
+    await expect(scanReceipt('base64data', 'image/jpeg', 'en')).rejects.toThrow('400')
+  })
+})
+
+describe('scanReceipt() — PDF path (Files API, two fetches)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn())
+    vi.stubEnv('VITE_ANTHROPIC_API_KEY', 'test-key')
+  })
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+  it('makes exactly two fetch calls for PDFs', async () => {
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockPdfFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
+    await scanReceipt('base64data', 'application/pdf', 'en')
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
 
-  it('first call is to the Files API upload endpoint', async () => {
+  it('first call uploads to Files API', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
-    await scanReceipt('base64data', 'image/jpeg', 'en')
-
+    mockPdfFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
+    await scanReceipt('base64data', 'application/pdf', 'en')
     expect(mockFetch.mock.calls[0][0]).toBe('https://api.anthropic.com/v1/files')
     expect(mockFetch.mock.calls[0][1].method).toBe('POST')
   })
 
-  it('second call is to the messages endpoint', async () => {
-    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
-    await scanReceipt('base64data', 'image/jpeg', 'en')
-
-    expect(mockFetch.mock.calls[1][0]).toBe('https://api.anthropic.com/v1/messages')
-  })
-
-  it('image upload does NOT include beta header', async () => {
-    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
-    await scanReceipt('base64data', 'image/jpeg', 'en')
-
-    const uploadHeaders = mockFetch.mock.calls[0][1].headers as Record<string, string>
-    expect(uploadHeaders['anthropic-beta']).toBeUndefined()
-  })
-
   it('PDF upload includes files-api beta header', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
-
+    mockPdfFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
     await scanReceipt('base64data', 'application/pdf', 'en')
-
-    const uploadHeaders = mockFetch.mock.calls[0][1].headers as Record<string, string>
-    expect(uploadHeaders['anthropic-beta']).toBe('files-api-2025-04-14')
+    const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
+    expect(headers['anthropic-beta']).toBe('files-api-2025-04-14')
   })
 
   it('PDF messages request includes files-api beta header', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
-
+    mockPdfFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
     await scanReceipt('base64data', 'application/pdf', 'en')
-
-    const msgHeaders = mockFetch.mock.calls[1][1].headers as Record<string, string>
-    expect(msgHeaders['anthropic-beta']).toBe('files-api-2025-04-14')
+    const headers = mockFetch.mock.calls[1][1].headers as Record<string, string>
+    expect(headers['anthropic-beta']).toBe('files-api-2025-04-14')
   })
 
-  it('image message uses "image" content block type', async () => {
+  it('PDF content block uses "document" type with file_id source', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
-    await scanReceipt('base64data', 'image/jpeg', 'en')
-
-    const msgBody = JSON.parse(mockFetch.mock.calls[1][1].body as string)
-    const contentBlock = msgBody.messages[0].content[0]
-    expect(contentBlock.type).toBe('image')
-    expect(contentBlock.source.type).toBe('file')
-    expect(contentBlock.source.file_id).toBe('file_test123')
-  })
-
-  it('PDF message uses "document" content block type', async () => {
-    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
-
+    mockPdfFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
     await scanReceipt('base64data', 'application/pdf', 'en')
-
-    const msgBody = JSON.parse(mockFetch.mock.calls[1][1].body as string)
-    const contentBlock = msgBody.messages[0].content[0]
-    expect(contentBlock.type).toBe('document')
-    expect(contentBlock.source.type).toBe('file')
-    expect(contentBlock.source.file_id).toBe('file_test123')
+    const body = JSON.parse(mockFetch.mock.calls[1][1].body as string)
+    const block = body.messages[0].content[0]
+    expect(block.type).toBe('document')
+    expect(block.source.type).toBe('file')
+    expect(block.source.file_id).toBe('file_test123')
   })
 
-  it('returns parsed name, amount, category on success', async () => {
+  it('returns parsed name, amount, category for PDF', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    setupSuccessfulFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
-
-    const result = await scanReceipt('base64data', 'image/jpeg', 'en')
-
-    expect(result).toEqual({ name: 'Shufersal', amount: 153.5, category: 'food' })
+    mockPdfFetch(mockFetch, '{"name":"Carrefour City","amount":57.57,"category":"food"}')
+    const result = await scanReceipt('base64data', 'application/pdf', 'en')
+    expect(result).toEqual({ name: 'Carrefour City', amount: 57.57, category: 'food' })
   })
 
-  it('throws if upload step fails', async () => {
+  it('throws if PDF upload step fails', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 401,
+      ok: false, status: 401,
       json: async () => ({ error: { message: 'Unauthorized' } }),
     })
-
-    await expect(scanReceipt('base64data', 'image/jpeg', 'en')).rejects.toThrow('401')
+    await expect(scanReceipt('base64data', 'application/pdf', 'en')).rejects.toThrow('401')
   })
 
-  it('throws if messages step fails', async () => {
+  it('throws if PDF messages step fails', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'file_test123' }) })
       .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'file_test123' }),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 400,
+        ok: false, status: 400,
         json: async () => ({ error: { message: 'Bad Request' } }),
       })
-
-    await expect(scanReceipt('base64data', 'image/jpeg', 'en')).rejects.toThrow('400')
+    await expect(scanReceipt('base64data', 'application/pdf', 'en')).rejects.toThrow('400')
   })
 })
