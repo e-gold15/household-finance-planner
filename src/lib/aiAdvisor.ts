@@ -55,6 +55,52 @@ export const aiEnabled = !!import.meta.env.VITE_ANTHROPIC_API_KEY
 
 // ─── Receipt scan ─────────────────────────────────────────────────────────────
 
+/**
+ * Upload a file (image or PDF) to the Anthropic Files API.
+ * Returns the file_id to reference in a subsequent messages request.
+ * Files are ephemeral — not stored permanently by Anthropic.
+ */
+async function uploadFileToFilesApi(
+  fileBase64: string,
+  mimeType: string,
+  apiKey: string,
+): Promise<string> {
+  // Convert base64 → Blob → FormData
+  let byteChars: string
+  try {
+    byteChars = atob(fileBase64)
+  } catch {
+    throw new Error('Invalid base64 data — ensure the data-URL prefix is stripped before calling scanReceipt')
+  }
+  const byteNums = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
+  const blob = new Blob([byteNums], { type: mimeType })
+  const form = new FormData()
+  form.append('file', blob, mimeType === 'application/pdf' ? 'receipt.pdf' : 'receipt')
+
+  const headers: Record<string, string> = {
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  }
+  if (mimeType === 'application/pdf') headers['anthropic-beta'] = 'files-api-2025-04-14'
+
+  const res = await fetch('https://api.anthropic.com/v1/files', {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }))
+    const errMsg = (errBody as { error?: { message?: string } }).error?.message ?? JSON.stringify(errBody)
+    throw new Error(`Files API upload error ${res.status}: ${errMsg}`)
+  }
+
+  const data = await res.json() as { id: string }
+  return data.id
+}
+
 export interface ReceiptScanResult {
   name: string         // merchant / store name
   amount: number       // total amount paid (positive number)
@@ -99,43 +145,33 @@ Rules:
 - If you cannot read the merchant name, use "Receipt".
 ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original language (Hebrew or English as printed on the receipt).' : '- Keep merchant names in their original language as printed on the receipt.'}`
 
-  // Claude supports these image types; mobile HEIC/HEIF photos are normalized to JPEG
-  type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-  const SUPPORTED_IMAGE_TYPES: string[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+  // Step 1: upload file to Files API → get file_id
+  const fileId = await uploadFileToFilesApi(fileBase64, mimeType, apiKey)
 
+  // Step 2: build content block — images use "image" type, PDFs use "document" type
   const isPdf = mimeType === 'application/pdf'
-  const normalizedMime: ImageMediaType = SUPPORTED_IMAGE_TYPES.includes(mimeType)
-    ? (mimeType as ImageMediaType)
-    : 'image/jpeg'
-
-  // Build the file content block — images use "image" type, PDFs use "document" type
   const fileContentBlock = isPdf
     ? {
         type: 'document' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: 'application/pdf' as const,
-          data: fileBase64,
-        },
+        source: { type: 'file' as const, file_id: fileId },
       }
     : {
         type: 'image' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: normalizedMime,
-          data: fileBase64,
-        },
+        source: { type: 'file' as const, file_id: fileId },
       }
 
-  // Use claude-sonnet-4-5 for multimodal (vision + PDF) — haiku-4-5 does not support images/docs
+  // Step 3: send messages request
+  const msgHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  }
+  if (isPdf) msgHeaders['anthropic-beta'] = 'files-api-2025-04-14'
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: msgHeaders,
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 200,
@@ -156,8 +192,9 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
     const errMsg = (errBody as { error?: { message?: string } }).error?.message ?? JSON.stringify(errBody)
     throw new Error(`API error ${response.status}: ${errMsg}`)
   }
+
   const data = await response.json()
-  const text: string = data.content[0].text.trim()
+  const text: string = (data as { content: Array<{ text: string }> }).content[0].text.trim()
 
   // Strip markdown code fences if model wraps the JSON
   const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
@@ -169,8 +206,8 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
     throw new Error('Could not parse receipt scan response')
   }
 
-  const name     = typeof parsed.name   === 'string' ? parsed.name.slice(0, 60)   : 'Receipt'
-  const amount   = typeof parsed.amount === 'number' ? Math.max(0, parsed.amount)  : 0
+  const name     = typeof parsed.name     === 'string' ? parsed.name.slice(0, 60)   : 'Receipt'
+  const amount   = typeof parsed.amount   === 'number' ? Math.max(0, parsed.amount) : 0
   const catRaw   = typeof parsed.category === 'string' ? parsed.category.toLowerCase().trim() : 'other'
   const category = (VALID_CATEGORIES as readonly string[]).includes(catRaw) ? catRaw : 'other'
 
