@@ -99,9 +99,16 @@ Rules:
 - If you cannot read the merchant name, use "Receipt".
 ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original language (Hebrew or English as printed on the receipt).' : '- Keep merchant names in their original language as printed on the receipt.'}`
 
-  // Build the file content block — images use "image" type, PDFs use "document" type
-  const isPdf = mimeType === 'application/pdf'
+  // Claude supports these image types; mobile HEIC/HEIF photos are normalized to JPEG
   type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  const SUPPORTED_IMAGE_TYPES: string[] = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+  const isPdf = mimeType === 'application/pdf'
+  const normalizedMime: ImageMediaType = SUPPORTED_IMAGE_TYPES.includes(mimeType)
+    ? (mimeType as ImageMediaType)
+    : 'image/jpeg'
+
+  // Build the file content block — images use "image" type, PDFs use "document" type
   const fileContentBlock = isPdf
     ? {
         type: 'document' as const,
@@ -115,25 +122,22 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
         type: 'image' as const,
         source: {
           type: 'base64' as const,
-          media_type: (mimeType || 'image/jpeg') as ImageMediaType,
+          media_type: normalizedMime,
           data: fileBase64,
         },
       }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true',
-  }
-  // PDF processing requires the pdfs beta header
-  if (isPdf) headers['anthropic-beta'] = 'pdfs-2024-09-25'
-
+  // Use claude-sonnet-4-5 for multimodal (vision + PDF) — haiku-4-5 does not support images/docs
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5',
+      model: 'claude-sonnet-4-5',
       max_tokens: 200,
       messages: [
         {
@@ -147,7 +151,11 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
     }),
   })
 
-  if (!response.ok) throw new Error(`API error: ${response.status}`)
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => ({ error: { message: response.statusText } }))
+    const errMsg = (errBody as { error?: { message?: string } }).error?.message ?? JSON.stringify(errBody)
+    throw new Error(`API error ${response.status}: ${errMsg}`)
+  }
   const data = await response.json()
   const text: string = data.content[0].text.trim()
 

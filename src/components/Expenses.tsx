@@ -148,8 +148,12 @@ function ExpenseDialog({
         amount:   result.amount > 0 ? result.amount    : f.amount,
         category: (result.category as ExpenseCategory) || f.category,
       }))
-    } catch {
-      setScanError(t('Could not read receipt. Please fill in manually.', 'לא ניתן לקרוא את הקבלה. אנא מלא ידנית.', lang))
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      setScanError(
+        t('Could not read receipt. Please fill in manually.', 'לא ניתן לקרוא את הקבלה. אנא מלא ידנית.', lang) +
+        (import.meta.env.DEV ? ` — ${detail}` : '')
+      )
     } finally {
       setScanning(false)
     }
