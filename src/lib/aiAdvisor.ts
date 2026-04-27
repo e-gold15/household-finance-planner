@@ -55,52 +55,6 @@ export const aiEnabled = !!import.meta.env.VITE_ANTHROPIC_API_KEY
 
 // ─── Receipt scan ─────────────────────────────────────────────────────────────
 
-/**
- * Upload a file (image or PDF) to the Anthropic Files API.
- * Returns the file_id to reference in a subsequent messages request.
- * Files are ephemeral — not stored permanently by Anthropic.
- */
-async function uploadFileToFilesApi(
-  fileBase64: string,
-  mimeType: string,
-  apiKey: string,
-): Promise<string> {
-  // Convert base64 → Blob → FormData
-  let byteChars: string
-  try {
-    byteChars = atob(fileBase64)
-  } catch {
-    throw new Error('Invalid base64 data — ensure the data-URL prefix is stripped before calling scanReceipt')
-  }
-  const byteNums = new Uint8Array(byteChars.length)
-  for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
-  const blob = new Blob([byteNums], { type: mimeType })
-  const form = new FormData()
-  form.append('file', blob, mimeType === 'application/pdf' ? 'receipt.pdf' : 'receipt')
-
-  const headers: Record<string, string> = {
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true',
-  }
-  if (mimeType === 'application/pdf') headers['anthropic-beta'] = 'files-api-2025-04-14'
-
-  const res = await fetch('https://api.anthropic.com/v1/files', {
-    method: 'POST',
-    headers,
-    body: form,
-  })
-
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({ error: { message: res.statusText } }))
-    const errMsg = (errBody as { error?: { message?: string } }).error?.message ?? JSON.stringify(errBody)
-    throw new Error(`Files API upload error ${res.status}: ${errMsg}`)
-  }
-
-  const data = await res.json() as { id: string }
-  return data.id
-}
-
 export interface ReceiptScanResult {
   name: string         // merchant / store name
   amount: number       // total amount paid (positive number)
@@ -112,10 +66,15 @@ const VALID_CATEGORIES = [
   'health', 'utilities', 'clothing', 'insurance', 'savings', 'other',
 ] as const
 
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+
 /**
  * Send a receipt image or PDF to Claude and extract expense fields.
- * Returns { name, amount, category } — all fields are best-effort; callers
- * should validate and let the user review before saving.
+ *
+ * Both images and PDFs are sent as inline base64 in a single POST to
+ * /v1/messages — no Files API upload step, which avoids CORS preflight
+ * issues when calling from the browser.
  *
  * @param fileBase64 - Raw base64 string (no data-URL prefix)
  * @param mimeType   - e.g. "image/jpeg", "image/png", "image/webp", "application/pdf"
@@ -147,36 +106,21 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
 
   const isPdf = mimeType === 'application/pdf'
 
-  // Images: inline base64 in a single request — no Files API needed.
-  // PDFs: two-step Files API (upload → file_id → message) with beta header.
-  const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-  type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-
+  // Build content block — images use "image" type, PDFs use "document" type.
+  // Both use inline base64 so only one fetch to /v1/messages is needed.
   type ContentBlock =
-    | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
-    | { type: 'document'; source: { type: 'file'; file_id: string } }
+    | { type: 'image';    source: { type: 'base64'; media_type: ImageMediaType;     data: string } }
+    | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
 
   let fileContentBlock: ContentBlock
 
-  const msgHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true',
-  }
-
   if (isPdf) {
-    // Step 1: upload PDF to Files API → get file_id
-    const fileId = await uploadFileToFilesApi(fileBase64, mimeType, apiKey)
-    // Step 2: reference file by ID in the document block
     fileContentBlock = {
       type: 'document',
-      source: { type: 'file', file_id: fileId },
+      source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 },
     }
-    msgHeaders['anthropic-beta'] = 'files-api-2025-04-14'
   } else {
-    // Images go inline — Files API doesn't support the image content block source type
-    const normalizedMime = SUPPORTED_IMAGE_TYPES.includes(mimeType)
+    const normalizedMime: ImageMediaType = (SUPPORTED_IMAGE_TYPES as readonly string[]).includes(mimeType)
       ? (mimeType as ImageMediaType)
       : 'image/jpeg'
     fileContentBlock = {
@@ -187,7 +131,12 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: msgHeaders,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
     body: JSON.stringify({
       model: 'claude-opus-4-7',
       max_tokens: 200,
