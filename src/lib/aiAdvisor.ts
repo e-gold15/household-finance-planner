@@ -189,7 +189,7 @@ ${lang === 'he' ? '- The app is in Hebrew. Keep merchant names in their original
     method: 'POST',
     headers: msgHeaders,
     body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-opus-4-7',
       max_tokens: 200,
       messages: [
         {
