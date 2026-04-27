@@ -150,9 +150,9 @@ function ExpenseDialog({
       }))
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
+      console.error('[scanReceipt]', detail)
       setScanError(
-        t('Could not read receipt. Please fill in manually.', 'לא ניתן לקרוא את הקבלה. אנא מלא ידנית.', lang) +
-        (import.meta.env.DEV ? ` — ${detail}` : '')
+        t('Could not read receipt.', 'לא ניתן לקרוא את הקבלה.', lang) + ` — ${detail}`
       )
     } finally {
       setScanning(false)
