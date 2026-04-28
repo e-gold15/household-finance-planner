@@ -73,9 +73,10 @@ function MemberRow({
         }
         {canRemove && (
           <Button
-            variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+            variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
             onClick={() => onRemove(member.id)}
             title={t('Remove member', 'הסר חבר', lang)}
+            aria-label={t('Remove member', 'הסר חבר', lang)}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -114,9 +115,10 @@ function EmailInviteRow({
       <div className="flex items-center gap-1 shrink-0">
         <Badge variant="warning" className="text-xs">{t('Pending', 'ממתין', lang)}</Badge>
         <Button
-          variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
           onClick={() => onRevoke(invite.id)}
           title={t('Revoke invite', 'בטל הזמנה', lang)}
+          aria-label={t('Revoke invite', 'בטל הזמנה', lang)}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -606,7 +608,7 @@ export function HouseholdSettings() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{household.name}</span>
               {isOwner && (
-                <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground"
+                <Button variant="ghost" size="sm" className="min-h-[44px] text-xs text-muted-foreground"
                   onClick={() => { setHouseholdName(household.name); setEditingName(true) }}>
                   {t('Rename', 'שנה שם', lang)}
                 </Button>
@@ -626,8 +628,10 @@ export function HouseholdSettings() {
           </div>
           {isOwner && (
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh}
-                title={t('Refresh', 'רענן', lang)} disabled={refreshing}>
+              <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={handleRefresh}
+                title={t('Refresh', 'רענן', lang)}
+                aria-label={t('Refresh', 'רענן', lang)}
+                disabled={refreshing}>
                 <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs min-h-[44px]"

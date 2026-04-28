@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Overview Tab — 5 Mockups</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f4f5; color: #09090b; padding: 24px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #71717a; font-size: 14px; margin-bottom: 32px; }
+
+  .section { margin-bottom: 48px; }
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #71717a; margin-bottom: 10px; border-bottom: 1px solid #e4e4e7; padding-bottom: 6px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+
+  /* Card */
+  .card { background: #fff; border: 1px solid #e4e4e7; border-radius: 12px; padding: 20px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-title { font-size: 14px; font-weight: 600; }
+  .card-content { }
+
+  /* KPI row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 16px; }
+  .kpi-label { font-size: 12px; color: #71717a; margin-bottom: 4px; }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #16a34a; }
+  .kpi-sub { font-size: 11px; color: #71717a; margin-top: 2px; }
+  .kpi-trend { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 999px; margin-top: 4px; }
+  .trend-up { background: #fef2f2; color: #dc2626; }
+  .trend-down { background: #f0fdf4; color: #16a34a; }
+  .trend-neutral { background: #f4f4f5; color: #71717a; }
+
+  /* Badge */
+  .badge { display: inline-flex; align-items: center; gap-3px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+  .badge-green { background: #dcfce7; color: #15803d; }
+  .badge-amber { background: #fef9c3; color: #a16207; }
+  .badge-red { background: #fee2e2; color: #b91c1c; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-gray { background: #f4f4f5; color: #52525b; }
+
+  /* Progress bar */
+  .progress { height: 6px; background: #e4e4e7; border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 999px; }
+  .fill-green { background: #16a34a; }
+  .fill-amber { background: #ca8a04; }
+  .fill-red { background: #dc2626; }
+  .fill-teal { background: #0d9488; }
+
+  /* Gauge row */
+  .gauge-row { display: flex; align-items: center; gap: 24px; }
+  .gauge-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .legend-item { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+
+  /* Timeline */
+  .timeline-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f4f4f5; }
+  .timeline-item:last-child { border-bottom: none; }
+  .timeline-month { font-size: 12px; color: #71717a; width: 40px; }
+  .timeline-name { font-size: 13px; font-weight: 500; flex: 1; padding: 0 12px; }
+  .timeline-amount { font-size: 13px; font-weight: 600; color: #dc2626; }
+  .timeline-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+
+  /* Projection */
+  .proj-row { display: flex; align-items: center; justify-content: space-between; }
+  .proj-arrow { color: #71717a; font-size: 20px; margin: 0 8px; }
+  .proj-box { text-align: center; }
+  .proj-label { font-size: 11px; color: #71717a; }
+  .proj-value { font-size: 18px; font-weight: 700; }
+
+  /* Donut container */
+  .donut-wrap { width: 140px; height: 140px; flex-shrink: 0; }
+
+  /* Two col */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .text-teal { color: #0d9488; }
+  .text-red { color: #dc2626; }
+  .text-amber { color: #ca8a04; }
+  .text-gray { color: #71717a; }
+  .text-sm { font-size: 13px; }
+  .font-bold { font-weight: 700; }
+  .mt-1 { margin-top: 4px; }
+  .mt-2 { margin-top: 8px; }
+  .mt-3 { margin-top: 12px; }
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .gap-2 { gap: 8px; }
+  .justify-between { justify-content: space-between; }
+  .w-full { width: 100%; }
+
+  /* Chevron arrows */
+  .arrow-up::before { content: "▲"; }
+  .arrow-down::before { content: "▼"; }
+  .arrow-same::before { content: "—"; }
+
+  /* Overview wrapper */
+  .overview-wrapper { max-width: 860px; margin: 0 auto; }
+
+  /* Section chip */
+  .chip { display: inline-block; background: #0d9488; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="overview-wrapper">
+  <h1>Overview Tab — 5 Proposed Enhancements</h1>
+  <p class="subtitle">Visual mockups for v2.9 · Household Finance Planner</p>
+
+  <!-- ─── EXISTING KPI ROW (reference) ───────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">Current state (reference)</div>
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-label">Monthly Income</div>
+        <div class="kpi-value text-teal">₪38,082</div>
+        <div class="kpi-sub">net after tax</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Monthly Expenses</div>
+        <div class="kpi-value text-red">₪26,555</div>
+        <div class="kpi-sub">planned budget</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Monthly Savings</div>
+        <div class="kpi-value text-teal">₪3,600</div>
+        <div class="kpi-sub">contributions</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Free Cash Flow</div>
+        <div class="kpi-value text-teal">₪7,927</div>
+        <div class="kpi-sub">surplus this month</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 28.5 — MoM TREND ARROW (S) ────────────────────────────────────── -->
+  <div class="section">
+    <div class="chip">28.5 · Size: S (smallest)</div>
+    <div class="section-title">Month-over-Month Spending Trend</div>
+    <p class="text-sm text-gray" style="margin-bottom:14px">Trend arrow + delta % added directly to the existing KPI cards. No new component needed.</p>
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-label">Monthly Income</div>
+        <div class="kpi-value text-teal">₪38,082</div>
+        <div class="kpi-trend trend-down"><span class="arrow-down"></span> 2.1% vs last month</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Monthly Expenses</div>
+        <div class="kpi-value text-red">₪26,555</div>
+        <div class="kpi-trend trend-up"><span class="arrow-up"></span> 8.4% vs last month</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Monthly Savings</div>
+        <div class="kpi-value text-teal">₪3,600</div>
+        <div class="kpi-trend trend-neutral"><span class="arrow-same"></span> No change</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Free Cash Flow</div>
+        <div class="kpi-value text-teal">₪7,927</div>
+        <div class="kpi-trend trend-down"><span class="arrow-down"></span> 14.3% vs last month</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 28.1 — BUDGET CATEGORY GAUGE (M) ──────────────────────────────── -->
+  <div class="section">
+    <div class="chip">28.1 · Size: M</div>
+    <div class="section-title">Budget Category Status Gauge</div>
+    <p class="text-sm text-gray" style="margin-bottom:14px">Donut chart showing how many budget categories are on-track, warning, or over-budget. At-a-glance budget health without opening the Expenses tab.</p>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Budget Health</span>
+        <span class="badge badge-amber">⚠ 2 categories over budget</span>
+      </div>
+      <div class="gauge-row">
+        <div class="donut-wrap">
+          <canvas id="budgetGauge"></canvas>
+        </div>
+        <div class="gauge-legend">
+          <div class="legend-item">
+            <div class="flex items-center"><div class="legend-dot" style="background:#16a34a"></div><span>On track</span></div>
+            <div class="flex items-center gap-2"><span class="font-bold">5</span><span class="text-gray text-sm">categories</span></div>
+          </div>
+          <div class="legend-item">
+            <div class="flex items-center"><div class="legend-dot" style="background:#ca8a04"></div><span>Warning (>80%)</span></div>
+            <div class="flex items-center gap-2"><span class="font-bold">2</span><span class="text-gray text-sm">categories</span></div>
+          </div>
+          <div class="legend-item">
+            <div class="flex items-center"><div class="legend-dot" style="background:#dc2626"></div><span>Over budget</span></div>
+            <div class="flex items-center gap-2"><span class="font-bold">2</span><span class="text-gray text-sm">categories</span></div>
+          </div>
+          <div class="legend-item">
+            <div class="flex items-center"><div class="legend-dot" style="background:#e4e4e7"></div><span>No budget set</span></div>
+            <div class="flex items-center gap-2"><span class="font-bold">2</span><span class="text-gray text-sm">categories</span></div>
+          </div>
+          <div style="border-top:1px solid #f4f4f5;margin-top:6px;padding-top:6px">
+            <div class="legend-item">
+              <span class="text-gray text-sm">Worst offender</span>
+              <span class="badge badge-red">Food · 124%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 28.2 — UPCOMING ANNUAL EXPENSES (M) ───────────────────────────── -->
+  <div class="section">
+    <div class="chip">28.2 · Size: M</div>
+    <div class="section-title">Upcoming Annual Expense Timeline</div>
+    <p class="text-sm text-gray" style="margin-bottom:14px">Lists the next 6 months of sinking-fund bills so users never get surprised by large annual payments.</p>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Upcoming Bills</span>
+        <span class="badge badge-blue">Next 6 months</span>
+      </div>
+      <div>
+        <div class="timeline-item">
+          <div class="timeline-month">May</div>
+          <div class="timeline-name">🚗 Car insurance</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge badge-amber">In 12 days</span>
+            <span class="timeline-amount">₪4,200</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-month">Jun</div>
+          <div class="timeline-name">🏠 Property tax</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge badge-gray">6 weeks</span>
+            <span class="timeline-amount">₪6,800</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-month">Aug</div>
+          <div class="timeline-name">📚 School fees</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge badge-gray">4 months</span>
+            <span class="timeline-amount">₪3,500</span>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-month">Sep</div>
+          <div class="timeline-name">🏥 Health insurance</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge badge-gray">5 months</span>
+            <span class="timeline-amount">₪2,100</span>
+          </div>
+        </div>
+        <div class="mt-2" style="font-size:12px;color:#71717a;text-align:right">
+          Total in next 6 months: <strong style="color:#09090b">₪16,600</strong> · You're saving ₪1,383/mo
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 28.3 — GOAL STATUS DONUT (M) ──────────────────────────────────── -->
+  <div class="section">
+    <div class="chip">28.3 · Size: M</div>
+    <div class="section-title">Goal Status Distribution Donut</div>
+    <p class="text-sm text-gray" style="margin-bottom:14px">See goal health at a glance — how many are on track vs at risk vs blocked.</p>
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Goals Overview</span>
+          <span class="badge badge-green">3 on track</span>
+        </div>
+        <div class="gauge-row">
+          <div class="donut-wrap">
+            <canvas id="goalGauge"></canvas>
+          </div>
+          <div class="gauge-legend">
+            <div class="legend-item">
+              <div class="flex items-center"><div class="legend-dot" style="background:#16a34a"></div><span>Realistic</span></div>
+              <span class="font-bold">3</span>
+            </div>
+            <div class="legend-item">
+              <div class="flex items-center"><div class="legend-dot" style="background:#ca8a04"></div><span>Tight</span></div>
+              <span class="font-bold">2</span>
+            </div>
+            <div class="legend-item">
+              <div class="flex items-center"><div class="legend-dot" style="background:#dc2626"></div><span>Unrealistic</span></div>
+              <span class="font-bold">1</span>
+            </div>
+            <div class="legend-item">
+              <div class="flex items-center"><div class="legend-dot" style="background:#e4e4e7"></div><span>Blocked</span></div>
+              <span class="font-bold">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="mt-2" style="border-top:1px solid #f4f4f5;padding-top:10px;font-size:12px;color:#71717a">
+          Nearest deadline: <strong style="color:#09090b">קנדה · Aug 2026</strong> <span class="badge badge-red" style="margin-left:4px">Unrealistic</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Top Priority Goals</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div class="flex justify-between text-sm" style="margin-bottom:4px">
+              <span>קנדה</span><span class="badge badge-red">Unrealistic</span>
+            </div>
+            <div class="progress"><div class="progress-fill fill-red" style="width:42%"></div></div>
+            <div style="font-size:11px;color:#71717a;margin-top:2px">42% · ₪25k / ₪60k</div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm" style="margin-bottom:4px">
+              <span>Emergency Fund</span><span class="badge badge-green">Realistic</span>
+            </div>
+            <div class="progress"><div class="progress-fill fill-green" style="width:78%"></div></div>
+            <div style="font-size:11px;color:#71717a;margin-top:2px">78% · ₪39k / ₪50k</div>
+          </div>
+          <div>
+            <div class="flex justify-between text-sm" style="margin-bottom:4px">
+              <span>New Car</span><span class="badge badge-amber">Tight</span>
+            </div>
+            <div class="progress"><div class="progress-fill fill-amber" style="width:30%"></div></div>
+            <div style="font-size:11px;color:#71717a;margin-top:2px">30% · ₪30k / ₪100k</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 28.4 — SAVINGS GROWTH PROJECTION (M) ──────────────────────────── -->
+  <div class="section">
+    <div class="chip">28.4 · Size: M</div>
+    <div class="section-title">Savings Account Growth Projection</div>
+    <p class="text-sm text-gray" style="margin-bottom:14px">Shows current total balance → 12-month projected balance based on contributions + annual return %. Helps users see compounding in action.</p>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">12-Month Savings Forecast</span>
+        <span class="badge badge-green">+₪58,421 projected</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-bottom:16px">
+        <div style="text-align:center;padding:12px;border-right:1px solid #f4f4f5">
+          <div class="kpi-label">Today</div>
+          <div style="font-size:20px;font-weight:700;color:#09090b">₪284,500</div>
+          <div class="kpi-sub">total balance</div>
+        </div>
+        <div style="text-align:center;padding:12px;border-right:1px solid #f4f4f5">
+          <div class="kpi-label">Monthly adding</div>
+          <div style="font-size:20px;font-weight:700;color:#0d9488">+₪3,600</div>
+          <div class="kpi-sub">contributions</div>
+        </div>
+        <div style="text-align:center;padding:12px">
+          <div class="kpi-label">In 12 months</div>
+          <div style="font-size:20px;font-weight:700;color:#16a34a">₪342,921</div>
+          <div class="kpi-sub badge badge-green" style="margin-top:4px">+20.5% growth</div>
+        </div>
+      </div>
+      <canvas id="growthChart" height="80"></canvas>
+      <div class="mt-2" style="font-size:11px;color:#71717a;text-align:center">
+        Assumes avg. 5.2% annual return across all accounts · Contributions included
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Budget Gauge
+new Chart(document.getElementById('budgetGauge'), {
+  type: 'doughnut',
+  data: {
+    datasets: [{
+      data: [5, 2, 2, 2],
+      backgroundColor: ['#16a34a', '#ca8a04', '#dc2626', '#e4e4e7'],
+      borderWidth: 0,
+      hoverOffset: 4
+    }]
+  },
+  options: {
+    cutout: '72%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 600 }
+  }
+})
+
+// Goal Gauge
+new Chart(document.getElementById('goalGauge'), {
+  type: 'doughnut',
+  data: {
+    datasets: [{
+      data: [3, 2, 1, 0.3],
+      backgroundColor: ['#16a34a', '#ca8a04', '#dc2626', '#e4e4e7'],
+      borderWidth: 0,
+      hoverOffset: 4
+    }]
+  },
+  options: {
+    cutout: '72%',
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    animation: { duration: 600 }
+  }
+})
+
+// Growth chart
+const months = ['Now','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May']
+const base = 284500
+const monthly = 3600
+const rate = 0.052 / 12
+const values = months.map((_, i) => Math.round(base * Math.pow(1 + rate, i) + monthly * i))
+
+new Chart(document.getElementById('growthChart'), {
+  type: 'line',
+  data: {
+    labels: months,
+    datasets: [{
+      data: values,
+      borderColor: '#0d9488',
+      backgroundColor: 'rgba(13,148,136,0.08)',
+      borderWidth: 2,
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3,
+      pointBackgroundColor: '#0d9488'
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false }, tooltip: {
+      callbacks: { label: ctx => '₪' + ctx.parsed.y.toLocaleString() }
+    }},
+    scales: {
+      y: { ticks: { callback: v => '₪' + (v/1000).toFixed(0) + 'k', font: { size: 10 } }, grid: { color: '#f4f4f5' } },
+      x: { ticks: { font: { size: 10 } }, grid: { display: false } }
+    }
+  }
+})
+</script>
+</body>
+</html>

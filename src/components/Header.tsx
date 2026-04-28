@@ -82,12 +82,14 @@ export function Header() {
 
         <div className="flex items-center gap-2">
           {/* Language toggle */}
-          <Button variant="ghost" size="sm" onClick={toggleLang} className="text-xs font-medium">
+          <Button variant="ghost" size="sm" onClick={toggleLang} className="text-xs font-medium min-h-[44px]"
+            aria-label={t('Switch language', 'החלף שפה', lang)}>
             {lang === 'en' ? 'עב' : 'EN'}
           </Button>
 
           {/* Dark mode toggle */}
           <Button variant="ghost" size="icon" onClick={toggleDark}
+            className="min-h-[44px] min-w-[44px]"
             title={t('Toggle dark mode', 'החלף מצב לילה', lang)}
             aria-label={t('Toggle dark mode', 'החלף מצב לילה', lang)}>
             {data.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -119,8 +121,9 @@ export function Header() {
                 {household && (
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground"
-                        title={t('Household', 'משק הבית', lang)}>
+                      <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground"
+                        title={t('Household settings', 'הגדרות משק הבית', lang)}
+                        aria-label={t('Household settings', 'הגדרות משק הבית', lang)}>
                         <Users className="h-4 w-4" />
                       </Button>
                     </DialogTrigger>
@@ -140,7 +143,7 @@ export function Header() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
                       title={t('Sign out', 'התנתק', lang)}
                       aria-label={t('Sign out', 'התנתק', lang)}
                     >
@@ -178,7 +181,7 @@ export function Header() {
                 <Settings className="h-4 w-4" />
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('Settings', 'הגדרות', lang)}</DialogTitle>
               </DialogHeader>

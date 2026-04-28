@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2, Bot, RefreshCw } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -42,6 +42,12 @@ function GoalDialog({
   )
   const set = <K extends keyof Goal>(k: K, v: Goal[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  useEffect(() => {
+    if (open && !existing) {
+      setForm({ id: generateId(), name: '', targetAmount: 0, currentAmount: 0, deadline: '', priority: 'medium', notes: '', useLiquidSavings: false })
+    }
+  }, [open, existing])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -58,28 +64,28 @@ function GoalDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{existing ? t('Edit Goal', 'ערוך יעד', lang) : t('Add Goal', 'הוסף יעד', lang)}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div>
-            <Label>{t('Goal Name', 'שם היעד', lang)}</Label>
-            <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)} />
+            <Label htmlFor="goal-name">{t('Goal Name', 'שם היעד', lang)}</Label>
+            <Input id="goal-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>{t('Target Amount', 'סכום יעד', lang)}</Label>
-              <Input type="number" value={form.targetAmount} onChange={(e) => set('targetAmount', +e.target.value)} />
+              <Label htmlFor="goal-target">{t('Target Amount', 'סכום יעד', lang)}</Label>
+              <Input id="goal-target" type="number" value={form.targetAmount} onChange={(e) => set('targetAmount', +e.target.value)} />
             </div>
             <div>
-              <Label>{t('Already Saved', 'כבר חסכת', lang)}</Label>
-              <Input type="number" value={form.currentAmount} onChange={(e) => set('currentAmount', +e.target.value)} />
+              <Label htmlFor="goal-saved">{t('Already Saved', 'כבר חסכת', lang)}</Label>
+              <Input id="goal-saved" type="number" value={form.currentAmount} onChange={(e) => set('currentAmount', +e.target.value)} />
             </div>
           </div>
           <div>
-            <Label>{t('Deadline', 'תאריך יעד', lang)}</Label>
-            <Input type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+            <Label htmlFor="goal-deadline">{t('Deadline', 'תאריך יעד', lang)}</Label>
+            <Input id="goal-deadline" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
           </div>
           <div>
             <Label>{t('Priority', 'עדיפות', lang)}</Label>
@@ -93,8 +99,8 @@ function GoalDialog({
             </Select>
           </div>
           <div>
-            <Label>{t('Notes', 'הערות', lang)}</Label>
-            <Input value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('Optional notes…', 'הערות אופציונליות…', lang)} />
+            <Label htmlFor="goal-notes">{t('Notes', 'הערות', lang)}</Label>
+            <Input id="goal-notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('Optional notes…', 'הערות אופציונליות…', lang)} />
           </div>
           <div className="flex items-center gap-3">
             <Switch checked={form.useLiquidSavings} onCheckedChange={(v) => set('useLiquidSavings', v)} />

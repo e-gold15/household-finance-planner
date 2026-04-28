@@ -11,7 +11,20 @@
       "Bash(ssh -T git@github.com)",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
       "Bash(npm test *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(cat vite.config.ts)",
+      "Bash(cat vite.config.js)",
+      "WebSearch",
+      "Bash(gh run *)",
+      "WebFetch(domain:household-finance-planner.com)",
+      "WebFetch(domain:household-finance-planner.vercel.app)",
+      "WebFetch(domain:api.github.com)",
+      "mcp__Claude_Preview__preview_start",
+      "Read(//Users/eilon.goldstein/.claude/**)",
+      "Read(//Users/eilon.goldstein/.claude/skills/**)",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(md5 src/components/HouseholdSettings.tsx)"
     ]
   }
 }

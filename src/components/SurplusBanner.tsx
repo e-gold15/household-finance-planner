@@ -162,7 +162,7 @@ export function SurplusBanner() {
           </Button>
           <button
             onClick={() => setDismissed(true)}
-            className="p-1 rounded text-muted-foreground hover:text-foreground transition-colors"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-muted-foreground hover:text-foreground transition-colors"
             title={t('Maybe later', 'אולי אחר כך', lang)}
             aria-label={t('Dismiss', 'סגור', lang)}
           >
@@ -173,7 +173,7 @@ export function SurplusBanner() {
 
       {/* ── Goal dialog ── */}
       <Dialog open={mode === 'goal'} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t('Add surplus to a Goal', 'הוסף עודף ליעד', lang)}
@@ -232,7 +232,7 @@ export function SurplusBanner() {
 
       {/* ── Savings dialog ── */}
       <Dialog open={mode === 'account'} onOpenChange={(o) => !o && closeDialog()}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {t('Deposit to a Savings Account', 'הפקד לחיסכון', lang)}

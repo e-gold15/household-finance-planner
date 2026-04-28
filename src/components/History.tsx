@@ -452,7 +452,7 @@ export function History() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={data.history}>
+                <LineChart data={[...data.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).filter((snap) => snap.totalIncome > 0 || snap.totalExpenses > 0 || (snap.historicalIncomes && snap.historicalIncomes.length > 0))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
@@ -467,14 +467,14 @@ export function History() {
           </Card>
 
           <div className="space-y-2">
-            {[...data.history].reverse().map((snap) => {
+            {[...data.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).reverse().map((snap) => {
               const hasActuals = snap.categoryActuals && Object.keys(snap.categoryActuals).length > 0
               return (
                 <Card key={snap.id}>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                      <div>
-                        <p className="font-semibold">{snap.label}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold truncate">{snap.label}</p>
                         <p className="text-xs text-muted-foreground">{new Date(snap.date).toLocaleDateString(data.locale)}</p>
                         {snap.totalIncome === 0 && snap.totalExpenses > 0 && (
                           <p className="text-xs text-muted-foreground/70 italic mt-0.5">
@@ -628,9 +628,9 @@ export function History() {
                         <p className="text-xs font-medium text-muted-foreground mb-2">{t('Actual spending by category', 'הוצאות בפועל לפי קטגוריה', lang)}</p>
                         <div className="grid grid-cols-2 gap-1">
                           {CATEGORIES.filter(({ value }) => snap.categoryActuals![value] != null).map(({ value, en, he }) => (
-                            <div key={value} className="flex justify-between text-xs">
-                              <span className="text-muted-foreground">{lang === 'he' ? he : en}</span>
-                              <span className="font-medium">{formatCurrency(snap.categoryActuals![value]!, data.currency, data.locale)}</span>
+                            <div key={value} className="flex justify-between text-xs min-w-0">
+                              <span className="text-muted-foreground truncate me-1">{lang === 'he' ? he : en}</span>
+                              <span className="font-medium shrink-0">{formatCurrency(snap.categoryActuals![value]!, data.currency, data.locale)}</span>
                             </div>
                           ))}
                         </div>

@@ -319,8 +319,9 @@ function ExpenseDialog({
 
           {/* Name */}
           <div>
-            <Label>{t('Name', 'שם', lang)}</Label>
+            <Label htmlFor="exp-name">{t('Name', 'שם', lang)}</Label>
             <Input
+              id="exp-name"
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
               placeholder={t('e.g. Rent', 'למשל: שכ"ד', lang)}
@@ -330,8 +331,8 @@ function ExpenseDialog({
           {/* Amount + Period */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>{t('Amount', 'סכום', lang)}</Label>
-              <Input type="number" value={form.amount} onChange={(e) => set('amount', +e.target.value)} />
+              <Label htmlFor="exp-amount">{t('Amount', 'סכום', lang)}</Label>
+              <Input id="exp-amount" type="number" value={form.amount} onChange={(e) => set('amount', +e.target.value)} />
             </div>
             {mode === 'budget' && (
               <div>

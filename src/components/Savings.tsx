@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, Trash2, PiggyBank, Edit2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -54,6 +54,12 @@ function AccountDialog({
   )
   const set = <K extends keyof SavingsAccount>(k: K, v: SavingsAccount[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  useEffect(() => {
+    if (open && !existing) {
+      setForm({ id: generateId(), name: '', type: 'checking', balance: 0, liquidity: 'immediate', annualReturnPercent: 0, monthlyContribution: 0 })
+    }
+  }, [open, existing])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -70,14 +76,14 @@ function AccountDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{existing ? t('Edit Account', 'ערוך חשבון', lang) : t('Add Account', 'הוסף חשבון', lang)}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 mt-2">
           <div>
-            <Label>{t('Name', 'שם', lang)}</Label>
-            <Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)} />
+            <Label htmlFor="acct-name">{t('Name', 'שם', lang)}</Label>
+            <Input id="acct-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -100,17 +106,17 @@ function AccountDialog({
             </div>
           </div>
           <div>
-            <Label>{t('Current Balance', 'יתרה נוכחית', lang)}</Label>
-            <Input type="number" value={form.balance} onChange={(e) => set('balance', +e.target.value)} />
+            <Label htmlFor="acct-balance">{t('Current Balance', 'יתרה נוכחית', lang)}</Label>
+            <Input id="acct-balance" type="number" value={form.balance} onChange={(e) => set('balance', +e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>{t('Annual Return %', 'תשואה שנתית %', lang)}</Label>
-              <Input type="number" step="0.1" value={form.annualReturnPercent} onChange={(e) => set('annualReturnPercent', +e.target.value)} />
+              <Label htmlFor="acct-return">{t('Annual Return %', 'תשואה שנתית %', lang)}</Label>
+              <Input id="acct-return" type="number" step="0.1" value={form.annualReturnPercent} onChange={(e) => set('annualReturnPercent', +e.target.value)} />
             </div>
             <div>
-              <Label>{t('Monthly Contribution', 'הפקדה חודשית', lang)}</Label>
-              <Input type="number" value={form.monthlyContribution} onChange={(e) => set('monthlyContribution', +e.target.value)} />
+              <Label htmlFor="acct-contrib">{t('Monthly Contribution', 'הפקדה חודשית', lang)}</Label>
+              <Input id="acct-contrib" type="number" value={form.monthlyContribution} onChange={(e) => set('monthlyContribution', +e.target.value)} />
             </div>
           </div>
           <Button className="w-full" onClick={() => { onSave(form); setOpen(false) }}>

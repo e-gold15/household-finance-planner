@@ -192,7 +192,7 @@ function SourceDialog({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="min-h-[44px] min-w-[44px]"
             title={t('Edit income source', 'ערוך מקור הכנסה', lang)}
             aria-label={t('Edit income source', 'ערוך מקור הכנסה', lang)}
           >
@@ -545,7 +545,7 @@ function SourceCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-destructive"
+              className="min-h-[44px] min-w-[44px] text-destructive"
               title={t('Delete income source', 'מחק מקור הכנסה', lang)}
               aria-label={t('Delete income source', 'מחק מקור הכנסה', lang)}
             >
@@ -975,7 +975,7 @@ export function Income() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-destructive"
+                          className="min-h-[44px] min-w-[44px] text-destructive"
                           title={t('Remove member', 'הסר חבר', lang)}
                           aria-label={t('Remove member', 'הסר חבר', lang)}
                         >

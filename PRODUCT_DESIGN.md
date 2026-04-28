@@ -2,7 +2,7 @@
 
 > **Audience:** designers, engineers, and product stakeholders.
 > This document is the single source of truth for every feature, screen, interaction, and design decision in the app.
-> **Version:** 2.3-draft — April 2026
+> **Version:** 3.2-draft — April 2026
 
 ---
 

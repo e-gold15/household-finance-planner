@@ -95,14 +95,14 @@ function AppShell() {
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap min-h-[44px]',
                 tab === id
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">{t(en, he, lang)}</span>
+              <span>{t(en, he, lang)}</span>
             </button>
           ))}
         </nav>

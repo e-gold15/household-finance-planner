@@ -11,7 +11,7 @@ import { isGoogleAvailable, renderGoogleButton } from '@/lib/googleAuth'
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
+    <div role="alert" className="flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5 text-sm text-destructive">
       <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
       <span>{message}</span>
     </div>
@@ -41,9 +41,10 @@ function PasswordInput({ id, value, onChange, placeholder, autoComplete }: {
         type="button"
         tabIndex={-1}
         onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
         className="absolute inset-y-0 end-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors"
       >
-        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        {visible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
       </button>
     </div>
   )
@@ -260,10 +261,10 @@ export function AuthPage() {
           <button
             type="button"
             onClick={() => setEmailOpen((o) => !o)}
-            className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+            className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
           >
             Continue with Email
-            <ChevronDown className={cn('h-4 w-4 transition-transform', emailOpen && 'rotate-180')} />
+            <ChevronDown className={cn('h-4 w-4 transition-transform', emailOpen && 'rotate-180')} aria-hidden="true" />
           </button>
         </div>
 
@@ -277,7 +278,7 @@ export function AuthPage() {
                   key={tab}
                   onClick={() => setEmailTab(tab)}
                   className={cn(
-                    'py-3 text-sm font-medium transition-colors',
+                    'min-h-[44px] text-sm font-medium transition-colors',
                     emailTab === tab
                       ? 'text-primary border-b-2 border-primary bg-primary/5'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
