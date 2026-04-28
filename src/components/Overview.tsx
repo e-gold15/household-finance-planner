@@ -27,14 +27,14 @@ const CHART_COLORS = [
 
 // Status-specific fills (semantic, not chart-N slots)
 const STATUS_FILL = {
-  under:   'hsl(142,71%,45%)',   // green
-  warning: 'hsl(48,96%,53%)',    // amber
-  over:    'hsl(0,84%,60%)',     // red
-  none:    '#e4e4e7',            // muted
-  realistic:   'hsl(142,71%,45%)',
-  tight:       'hsl(48,96%,53%)',
-  unrealistic: 'hsl(0,84%,60%)',
-  blocked:     '#e4e4e7',
+  under:   'hsl(var(--chart-2))',     // green/teal accent
+  warning: 'hsl(var(--warning))',     // amber
+  over:    'hsl(var(--destructive))', // red
+  none:    'hsl(var(--muted))',       // muted grey
+  realistic:   'hsl(var(--chart-2))',
+  tight:       'hsl(var(--warning))',
+  unrealistic: 'hsl(var(--destructive))',
+  blocked:     'hsl(var(--muted))',
 }
 
 const MONTH_SHORT_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -59,7 +59,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, { en: string; he: string }> = {
 interface TrendInfo { pct: number; positiveIsGood: boolean }
 
 function KpiCard({
-  icon: Icon, label, value, sub, positive, trend,
+  icon: Icon, label, value, sub, positive, trend, lang,
 }: {
   icon: React.ElementType
   label: string
@@ -67,6 +67,7 @@ function KpiCard({
   sub?: string
   positive?: boolean
   trend?: TrendInfo
+  lang: 'en' | 'he'
 }) {
   let trendEl: React.ReactNode = null
   if (trend !== undefined) {
@@ -75,14 +76,14 @@ function KpiCard({
       // neutral
       trendEl = (
         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground mt-1">
-          — No change
+          — {t('No change', 'אין שינוי', lang)}
         </span>
       )
     } else {
       const isGood = positiveIsGood ? pct > 0 : pct < 0
       const arrow = pct > 0 ? '▲' : '▼'
       trendEl = (
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full mt-1 ${isGood ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200' : 'bg-destructive/10 text-destructive'}`}>
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full mt-1 ${isGood ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-destructive/10 text-destructive'}`}>
           {arrow} {Math.abs(pct).toFixed(1)}%
         </span>
       )
@@ -355,12 +356,14 @@ export function Overview() {
           label={t('Monthly Income', 'הכנסה חודשית', lang)}
           value={formatCurrency(totalIncome, data.currency, data.locale)}
           trend={momTrend?.incomePct != null ? { pct: momTrend.incomePct, positiveIsGood: true } : undefined}
+          lang={lang}
         />
         <KpiCard
           icon={TrendingDown}
           label={t('Monthly Expenses', 'הוצאות חודשיות', lang)}
           value={formatCurrency(totalExpenses, data.currency, data.locale)}
           trend={momTrend?.expensesPct != null ? { pct: momTrend.expensesPct, positiveIsGood: false } : undefined}
+          lang={lang}
         />
         <KpiCard
           icon={Wallet}
@@ -368,11 +371,13 @@ export function Overview() {
           value={formatCurrency(freeCashFlow, data.currency, data.locale)}
           positive={freeCashFlow >= 0}
           sub={freeCashFlow >= 0 ? t('surplus', 'עודף', lang) : t('deficit', 'גירעון', lang)}
+          lang={lang}
         />
         <KpiCard
           icon={PiggyBank}
           label={t('Total Assets', 'סך נכסים', lang)}
           value={formatCurrency(totalAssets, data.currency, data.locale)}
+          lang={lang}
         />
       </div>
 
@@ -537,7 +542,7 @@ export function Overview() {
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v) => formatCurrency(Number(v), data.currency, data.locale)} />
-                  <Bar dataKey="value" fill="hsl(162,63%,41%)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -671,7 +676,7 @@ export function Overview() {
               </div>
               <div className="px-3 py-2">
                 <p className="text-xs text-muted-foreground mb-1">{t('In 12 months', 'בעוד 12 חודשים', lang)}</p>
-                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                <p className="text-lg font-bold text-primary">
                   {formatCurrency(savingsProjection.projected12, data.currency, data.locale)}
                 </p>
               </div>

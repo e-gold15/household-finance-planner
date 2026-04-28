@@ -7,6 +7,7 @@ import { Badge } from './ui/badge'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, t } from '@/lib/utils'
@@ -499,15 +500,33 @@ export function History() {
                           </Badge>
                         )}
                         <ActualsDialog snap={snap} lang={lang} />
-                        <Button
-                          variant="ghost" size="icon"
-                          className="min-h-[44px] min-w-[44px] text-destructive"
-                          onClick={() => deleteSnapshot(snap.id)}
-                          title={t('Delete snapshot', 'מחק תמונת מצב', lang)}
-                          aria-label={t('Delete snapshot', 'מחק תמונת מצב', lang)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost" size="icon"
+                              className="min-h-[44px] min-w-[44px] text-destructive"
+                              title={t('Delete snapshot', 'מחק תמונת מצב', lang)}
+                              aria-label={t('Delete snapshot', 'מחק תמונת מצב', lang)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                              <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => deleteSnapshot(snap.id)}
+                              >
+                                {t('Delete', 'מחק', lang)}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
 
@@ -569,15 +588,33 @@ export function History() {
                                   lang={lang}
                                   memberNames={data.members.map((m) => m.name)}
                                 />
-                                <Button
-                                  variant="ghost" size="icon"
-                                  className="min-h-[44px] min-w-[44px] text-destructive"
-                                  onClick={() => deleteHistoricalIncome(snap.id, item.id)}
-                                  title={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
-                                  aria-label={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost" size="icon"
+                                      className="min-h-[44px] min-w-[44px] text-destructive"
+                                      title={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
+                                      aria-label={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                                      <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        onClick={() => deleteHistoricalIncome(snap.id, item.id)}
+                                      >
+                                        {t('Delete', 'מחק', lang)}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </div>
                             </div>
                           ))}
@@ -640,15 +677,33 @@ export function History() {
                                     existing={item}
                                     lang={lang}
                                   />
-                                  <Button
-                                    variant="ghost" size="icon"
-                                    className="min-h-[44px] min-w-[44px] text-destructive"
-                                    onClick={() => deleteHistoricalExpense(snap.id, item.id)}
-                                    title={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
-                                    aria-label={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost" size="icon"
+                                        className="min-h-[44px] min-w-[44px] text-destructive"
+                                        title={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
+                                        aria-label={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                                        <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          onClick={() => deleteHistoricalExpense(snap.id, item.id)}
+                                        >
+                                          {t('Delete', 'מחק', lang)}
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
                                 </div>
                               </div>
                             )

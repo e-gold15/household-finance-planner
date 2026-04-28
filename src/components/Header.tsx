@@ -1,14 +1,16 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Label } from './ui/label'
 import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { useAuth } from '@/context/AuthContext'
 import { t } from '@/lib/utils'
-import type { Currency, Locale } from '@/types'
+import type { Currency, Locale, FinanceData } from '@/types'
 import { HouseholdSettings } from './HouseholdSettings'
 
 const CURRENCY_OPTIONS: { value: Currency; label: string; locale: Locale }[] = [
@@ -24,6 +26,7 @@ export function Header() {
   const { user, household, signOut } = useAuth()
   const lang    = data.language
   const fileRef = useRef<HTMLInputElement>(null)
+  const [pendingImport, setPendingImport] = useState<FinanceData | null>(null)
 
   const toggleLang = () => setData((d) => ({ ...d, language: d.language === 'en' ? 'he' : 'en' }))
   const toggleDark = () => setData((d) => ({ ...d, darkMode: !d.darkMode }))
@@ -31,10 +34,34 @@ export function Header() {
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => { try { importData(ev.target?.result as string) } catch {} }
-    reader.readAsText(file)
     e.target.value = ''
+    const reader = new FileReader()
+    reader.onerror = () => {
+      toast.error(t('Failed to read file.', 'שגיאה בקריאת הקובץ.', lang))
+    }
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string) as FinanceData
+        setPendingImport(parsed)
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err)
+        toast.error(t('Invalid JSON file.', 'קובץ JSON לא תקין.', lang) + ' ' + detail)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const handleConfirmImport = () => {
+    if (!pendingImport) return
+    try {
+      importData(JSON.stringify(pendingImport))
+      toast.success(t('Data imported successfully.', 'הנתונים יובאו בהצלחה.', lang))
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      toast.error(t('Import failed.', 'הייבוא נכשל.', lang) + ' ' + detail)
+    } finally {
+      setPendingImport(null)
+    }
   }
 
   const userName = user?.name ?? user?.email ?? ''
@@ -109,15 +136,35 @@ export function Header() {
                   </Dialog>
                 )}
 
-                {/* Sign out */}
-                <Button
-                  variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                  title={t('Sign out', 'התנתק', lang)}
-                  aria-label={t('Sign out', 'התנתק', lang)}
-                  onClick={signOut}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
+                {/* Sign out — with confirmation */}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      title={t('Sign out', 'התנתק', lang)}
+                      aria-label={t('Sign out', 'התנתק', lang)}
+                    >
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t('Sign out?', 'להתנתק?', lang)}</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t('You will need to sign in again to access your data.', 'תצטרך להתחבר שוב כדי לגשת לנתונים שלך.', lang)}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={signOut}
+                      >
+                        {t('Sign out', 'התנתק', lang)}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </>
           )}
@@ -174,6 +221,27 @@ export function Header() {
           </Dialog>
         </div>
       </div>
+
+      {/* Import confirmation dialog — rendered outside the settings dialog to avoid z-index nesting issues */}
+      <AlertDialog open={pendingImport !== null} onOpenChange={(open) => { if (!open) setPendingImport(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Replace all data?', 'להחליף את כל הנתונים?', lang)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('This will replace ALL your current data. This cannot be undone.', 'פעולה זו תחליף את כל הנתונים הנוכחיים שלך. פעולה זו אינה הפיכה.', lang)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmImport}
+            >
+              {t('Import', 'ייבא', lang)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   )
 }

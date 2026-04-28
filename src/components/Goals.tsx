@@ -8,6 +8,7 @@ import { Badge } from './ui/badge'
 import { Progress } from './ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Switch } from './ui/switch'
 import { Slider } from './ui/slider'
 import { useFinance } from '@/context/FinanceContext'
@@ -117,7 +118,7 @@ const STATUS_ICONS: Record<GoalStatus, React.ElementType> = {
 
 const STATUS_COLORS: Record<GoalStatus, string> = {
   realistic: 'text-primary',
-  tight: 'text-[hsl(var(--chart-3))]',
+  tight: 'text-warning',
   unrealistic: 'text-destructive',
   blocked: 'text-destructive',
 }
@@ -274,7 +275,7 @@ export function Goals() {
                     <Bot className="h-4 w-4 me-1" />
                     {aiLoading
                       ? t('Thinking…', 'חושב…', lang)
-                      : t('Explain my plan 🤖', 'הסבר את התוכנית 🤖', lang)}
+                      : t('Explain my plan', 'הסבר את התוכנית', lang)}
                   </Button>
                 )}
                 <Button
@@ -337,7 +338,7 @@ export function Goals() {
                             value={pct}
                             indicatorClassName={
                               goal.status === 'realistic' ? 'bg-primary' :
-                              goal.status === 'tight' ? 'bg-[hsl(var(--chart-3))]' : 'bg-destructive'
+                              goal.status === 'tight' ? 'bg-warning' : 'bg-destructive'
                             }
                             aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
                           />
@@ -441,7 +442,7 @@ export function Goals() {
                     value={pct}
                     indicatorClassName={
                       goal.status === 'realistic' ? 'bg-primary' :
-                      goal.status === 'tight' ? 'bg-[hsl(var(--chart-3))]' : 'bg-destructive'
+                      goal.status === 'tight' ? 'bg-warning' : 'bg-destructive'
                     }
                     aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
                   />
@@ -483,11 +484,29 @@ export function Goals() {
                   </div>
                   <div className="flex gap-1">
                     <GoalDialog existing={goal} onSave={(g) => updateGoal(g)} lang={lang} />
-                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
-                      onClick={() => deleteGoal(goal.id)}
-                      title={t('Delete goal', 'מחק יעד', lang)} aria-label={t('Delete goal', 'מחק יעד', lang)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+                          title={t('Delete goal', 'מחק יעד', lang)} aria-label={t('Delete goal', 'מחק יעד', lang)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                          <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => deleteGoal(goal.id)}
+                          >
+                            {t('Delete', 'מחק', lang)}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardContent>

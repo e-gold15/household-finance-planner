@@ -8,6 +8,7 @@ import { Badge } from './ui/badge'
 import { Progress } from './ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
 import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
@@ -683,7 +684,7 @@ export function Expenses() {
           const budgetColor =
             budgetPct === null ? '' :
             budgetPct >= 100 ? 'bg-destructive' :
-            budgetPct >= 80  ? 'bg-[hsl(var(--chart-3))]' :
+            budgetPct >= 80  ? 'bg-warning' :
             'bg-primary'
 
           return (
@@ -780,7 +781,7 @@ export function Expenses() {
                             {expense.dueMonth != null && (
                               <span className={`text-xs flex items-center gap-0.5 ${
                                 dueIn === 0 ? 'text-destructive font-medium' :
-                                dueIn != null && dueIn <= 2 ? 'text-[hsl(var(--chart-3))]' :
+                                dueIn != null && dueIn <= 2 ? 'text-warning' :
                                 'text-muted-foreground'
                               }`}>
                                 <CalendarDays className="h-3 w-3" />
@@ -802,15 +803,33 @@ export function Expenses() {
                           {expense.period === 'yearly' ? '/yr' : '/mo'}
                         </span>
                         <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
-                        <Button
-                          variant="ghost" size="icon"
-                          className="min-h-[44px] min-w-[44px] text-destructive"
-                          onClick={() => deleteExpense(expense.id)}
-                          title={t('Delete expense', 'מחק הוצאה', lang)}
-                          aria-label={t('Delete expense', 'מחק הוצאה', lang)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost" size="icon"
+                              className="min-h-[44px] min-w-[44px] text-destructive"
+                              title={t('Delete expense', 'מחק הוצאה', lang)}
+                              aria-label={t('Delete expense', 'מחק הוצאה', lang)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                              <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                onClick={() => deleteExpense(expense.id)}
+                              >
+                                {t('Delete', 'מחק', lang)}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   )
