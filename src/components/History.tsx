@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp, AlertTriangle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -423,20 +423,54 @@ function HistoricalIncomeDialog({
 export function History() {
   const { data, snapshotMonth, setData, deleteHistoricalExpense, deleteHistoricalIncome } = useFinance()
   const lang = data.language
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
 
-  const deleteSnapshot = (id: string) =>
+  // Auto-hide the warning after 4 seconds
+  useEffect(() => {
+    if (!showDuplicateWarning) return
+    const timer = setTimeout(() => setShowDuplicateWarning(false), 4000)
+    return () => clearTimeout(timer)
+  }, [showDuplicateWarning])
+
+  const deleteSnapshot = (id: string) => {
+    setShowDuplicateWarning(false)
     setData((d) => ({ ...d, history: d.history.filter((h) => h.id !== id) }))
+  }
+
+  const handleSnapshot = () => {
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    const alreadyExists = data.history.some((h) => {
+      const d = new Date(h.date)
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth
+    })
+    if (alreadyExists) {
+      setShowDuplicateWarning(true)
+    } else {
+      setShowDuplicateWarning(false)
+    }
+    snapshotMonth()
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-muted-foreground">
           {data.history.length} {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
         </p>
-        <Button size="sm" onClick={snapshotMonth}>
-          <Camera className="h-4 w-4 me-1" />
-          {t('Snapshot This Month', 'צלם חודש זה', lang)}
-        </Button>
+        <div className="flex flex-col items-end gap-2">
+          <Button size="sm" onClick={handleSnapshot}>
+            <Camera className="h-4 w-4 me-1" />
+            {t('Snapshot This Month', 'צלם חודש זה', lang)}
+          </Button>
+          {showDuplicateWarning && (
+            <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 rounded-md px-3 py-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {t('A snapshot for this month already exists.', 'קיים כבר תמונת מצב לחודש זה.', lang)}
+            </div>
+          )}
+        </div>
       </div>
 
       {data.history.length === 0 ? (

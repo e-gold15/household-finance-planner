@@ -4,8 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/AuthContext'
-import { cn } from '@/lib/utils'
+import { cn, t } from '@/lib/utils'
 import { isGoogleAvailable, renderGoogleButton } from '@/lib/googleAuth'
+
+// AuthPage is rendered outside FinanceProvider (no household yet).
+// Language defaults to 'en' on the pre-login screen.
+const lang: 'en' | 'he' = 'en'
 
 // ─── Shared sub-components ─────────────────────────────────────────────────
 
@@ -41,7 +45,7 @@ function PasswordInput({ id, value, onChange, placeholder, autoComplete }: {
         type="button"
         tabIndex={-1}
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-label={visible ? t('Hide password', 'הסתר סיסמה', lang) : t('Show password', 'הצג סיסמה', lang)}
         className="absolute inset-y-0 end-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors"
       >
         {visible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
@@ -104,7 +108,7 @@ function GoogleButton() {
     return (
       <div className="w-full h-11 rounded-md border bg-muted/40 animate-pulse flex items-center justify-center gap-2 text-sm text-muted-foreground">
         <GoogleSVG />
-        Loading Google Sign-In…
+        {t('Loading Google Sign-In\u2026', '\u05d8\u05d5\u05e2\u05df \u05db\u05e0\u05d9\u05e1\u05d4 \u05e2\u05dd Google\u2026', lang)}
       </div>
     )
   }
@@ -122,7 +126,7 @@ function GoogleButton() {
         }}
       >
         <GoogleSVG />
-        Continue with Google
+        {t('Continue with Google', '\u05d4\u05de\u05e9\u05da \u05e2\u05dd Google', lang)}
       </Button>
     )
   }
@@ -145,7 +149,10 @@ function SignInForm({ onClose }: { onClose: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!email || !password) { setError('Please fill in all fields.'); return }
+    if (!email || !password) {
+      setError(t('Please fill in all fields.', '\u05d0\u05e0\u05d0 \u05de\u05dc\u05d0 \u05d0\u05ea \u05db\u05dc \u05d4\u05e9\u05d3\u05d5\u05ea.', lang))
+      return
+    }
     setLoading(true)
     const err = await signInEmail(email, password)
     setLoading(false)
@@ -157,17 +164,21 @@ function SignInForm({ onClose }: { onClose: () => void }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <ErrorBanner message={error} />}
       <div className="space-y-1.5">
-        <Label htmlFor="signin-email">Email</Label>
-        <Input id="signin-email" type="email" autoComplete="email" placeholder="you@example.com"
+        <Label htmlFor="signin-email">{t('Email', '\u05d0\u05d9\u05de\u05d9\u05d9\u05dc', lang)}</Label>
+        <Input id="signin-email" type="email" autoComplete="email"
+          placeholder={t('you@example.com', 'you@example.com', lang)}
           value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="signin-password">Password</Label>
+        <Label htmlFor="signin-password">{t('Password', '\u05e1\u05d9\u05e1\u05de\u05d0', lang)}</Label>
         <PasswordInput id="signin-password" value={password} onChange={setPassword}
-          placeholder="••••••••" autoComplete="current-password" />
+          placeholder={t('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022', '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022', lang)}
+          autoComplete="current-password" />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Signing in…' : 'Sign In'}
+        {loading
+          ? t('Signing in\u2026', '\u05de\u05ea\u05d7\u05d1\u05e8\u2026', lang)
+          : t('Sign In', '\u05d4\u05ea\u05d7\u05d1\u05e8', lang)}
       </Button>
     </form>
   )
@@ -185,9 +196,18 @@ function SignUpForm({ onClose }: { onClose: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!name || !email || !password || !confirm) { setError('Please fill in all fields.'); return }
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
-    if (password !== confirm) { setError('Passwords do not match.'); return }
+    if (!name || !email || !password || !confirm) {
+      setError(t('Please fill in all fields.', '\u05d0\u05e0\u05d0 \u05de\u05dc\u05d0 \u05d0\u05ea \u05db\u05dc \u05d4\u05e9\u05d3\u05d5\u05ea.', lang))
+      return
+    }
+    if (password.length < 6) {
+      setError(t('Password must be at least 6 characters.', '\u05d4\u05e1\u05d9\u05e1\u05de\u05d0 \u05d7\u05d9\u05d9\u05d1\u05ea \u05dc\u05d4\u05db\u05d9\u05dc \u05dc\u05e4\u05d7\u05d5\u05ea 6 \u05ea\u05d5\u05d5\u05d9\u05dd.', lang))
+      return
+    }
+    if (password !== confirm) {
+      setError(t('Passwords do not match.', '\u05d4\u05e1\u05d9\u05e1\u05de\u05d0\u05d5\u05ea \u05d0\u05d9\u05e0\u05df \u05ea\u05d5\u05d0\u05de\u05d5\u05ea.', lang))
+      return
+    }
     setLoading(true)
     const err = await signUpEmail(email, password, name)
     setLoading(false)
@@ -199,27 +219,33 @@ function SignUpForm({ onClose }: { onClose: () => void }) {
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <ErrorBanner message={error} />}
       <div className="space-y-1.5">
-        <Label htmlFor="signup-name">Full Name</Label>
-        <Input id="signup-name" type="text" autoComplete="name" placeholder="Alex Cohen"
+        <Label htmlFor="signup-name">{t('Full Name', '\u05e9\u05dd \u05de\u05dc\u05d0', lang)}</Label>
+        <Input id="signup-name" type="text" autoComplete="name"
+          placeholder={t('Alex Cohen', '\u05d0\u05dc\u05db\u05e1 \u05db\u05d4\u05df', lang)}
           value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="signup-email">Email</Label>
-        <Input id="signup-email" type="email" autoComplete="email" placeholder="you@example.com"
+        <Label htmlFor="signup-email">{t('Email', '\u05d0\u05d9\u05de\u05d9\u05d9\u05dc', lang)}</Label>
+        <Input id="signup-email" type="email" autoComplete="email"
+          placeholder={t('you@example.com', 'you@example.com', lang)}
           value={email} onChange={(e) => setEmail(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="signup-password">Password</Label>
+        <Label htmlFor="signup-password">{t('Password', '\u05e1\u05d9\u05e1\u05de\u05d0', lang)}</Label>
         <PasswordInput id="signup-password" value={password} onChange={setPassword}
-          placeholder="Min. 6 characters" autoComplete="new-password" />
+          placeholder={t('Min. 6 characters', '\u05de\u05d9\u05e0. 6 \u05ea\u05d5\u05d5\u05d9\u05dd', lang)}
+          autoComplete="new-password" />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="confirm-password">Confirm Password</Label>
+        <Label htmlFor="confirm-password">{t('Confirm Password', '\u05d0\u05e9\u05e8 \u05e1\u05d9\u05e1\u05de\u05d0', lang)}</Label>
         <PasswordInput id="confirm-password" value={confirm} onChange={setConfirm}
-          placeholder="••••••••" autoComplete="new-password" />
+          placeholder={t('\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022', '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022', lang)}
+          autoComplete="new-password" />
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? 'Creating account…' : 'Create Account'}
+        {loading
+          ? t('Creating account\u2026', '\u05d9\u05d5\u05e6\u05e8 \u05d7\u05e9\u05d1\u05d5\u05df\u2026', lang)
+          : t('Create Account', '\u05e6\u05d5\u05e8 \u05d7\u05e9\u05d1\u05d5\u05df', lang)}
       </Button>
     </form>
   )
@@ -241,8 +267,9 @@ export function AuthPage() {
             <Wallet className="h-10 w-10 text-primary-foreground" />
           </div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight">Household Finance Planner</h1>
-            <p className="text-sm text-muted-foreground mt-1">מתכנן פיננסי ביתי</p>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t('Household Finance Planner', '\u05de\u05ea\u05db\u05e0\u05df \u05e4\u05d9\u05e0\u05e0\u05e1\u05d9 \u05d1\u05d9\u05ea\u05d9', lang)}
+            </h1>
           </div>
         </div>
 
@@ -253,7 +280,7 @@ export function AuthPage() {
           {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="flex-1 border-t" />
-            <span className="text-xs text-muted-foreground">or</span>
+            <span className="text-xs text-muted-foreground">{t('or', '\u05d0\u05d5', lang)}</span>
             <div className="flex-1 border-t" />
           </div>
 
@@ -263,7 +290,7 @@ export function AuthPage() {
             onClick={() => setEmailOpen((o) => !o)}
             className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
           >
-            Continue with Email
+            {t('Continue with Email', '\u05d4\u05de\u05e9\u05da \u05e2\u05dd \u05d0\u05d9\u05de\u05d9\u05d9\u05dc', lang)}
             <ChevronDown className={cn('h-4 w-4 transition-transform', emailOpen && 'rotate-180')} aria-hidden="true" />
           </button>
         </div>
@@ -284,7 +311,9 @@ export function AuthPage() {
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   )}
                 >
-                  {tab === 'signin' ? 'Sign In' : 'Create Account'}
+                  {tab === 'signin'
+                    ? t('Sign In', '\u05d4\u05ea\u05d7\u05d1\u05e8', lang)
+                    : t('Create Account', '\u05e6\u05d5\u05e8 \u05d7\u05e9\u05d1\u05d5\u05df', lang)}
                 </button>
               ))}
             </div>
@@ -299,7 +328,11 @@ export function AuthPage() {
         )}
 
         <p className="text-xs text-center text-muted-foreground">
-          All data is stored locally on this device — no cloud, no subscriptions.
+          {t(
+            'Your data is stored locally and synced to the cloud for shared households.',
+            '\u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05e9\u05dc\u05da \u05de\u05d0\u05d5\u05d7\u05e1\u05e0\u05d9\u05dd \u05de\u05e7\u05d5\u05de\u05d9\u05ea \u05d5\u05de\u05e1\u05d5\u05e0\u05db\u05e8\u05e0\u05d9\u05dd \u05dc\u05e2\u05e0\u05df \u05e2\u05d1\u05d5\u05e8 \u05de\u05e9\u05e7\u05d9 \u05d1\u05d9\u05ea \u05de\u05e9\u05d5\u05ea\u05e4\u05d9\u05dd.',
+            lang
+          )}
         </p>
       </div>
     </div>

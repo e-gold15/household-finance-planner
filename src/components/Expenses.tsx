@@ -707,7 +707,7 @@ export function Expenses() {
                   </div>
                   <div className="flex items-center gap-2">
                     <BudgetEditor category={cat.value} lang={lang} />
-                    <Badge variant="outline">{formatCurrency(catTotal, data.currency, data.locale)}/mo</Badge>
+                    <Badge variant="outline">{formatCurrency(catTotal, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}</Badge>
                   </div>
                 </div>
 
@@ -777,7 +777,7 @@ export function Expenses() {
                         {expense.period === 'yearly' && (
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             <Badge variant="outline" className="text-xs py-0">
-                              {formatCurrency(expense.amount / 12, data.currency, data.locale)}/mo
+                              {formatCurrency(expense.amount / 12, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}
                             </Badge>
                             {expense.dueMonth != null && (
                               <span className={`text-xs flex items-center gap-0.5 ${
@@ -801,7 +801,7 @@ export function Expenses() {
                       <div className="flex items-center gap-1 shrink-0">
                         <span className="text-sm font-semibold tabular-nums">
                           {formatCurrency(expense.amount, data.currency, data.locale)}
-                          {expense.period === 'yearly' ? '/yr' : '/mo'}
+                          {expense.period === 'yearly' ? t('/yr', '/שנה', lang) : t('/mo', '/חו׳', lang)}
                         </span>
                         <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
                         <AlertDialog>

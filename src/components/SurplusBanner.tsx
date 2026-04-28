@@ -12,7 +12,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import { Sparkles, X, ChevronRight } from 'lucide-react'
+import { Sparkles, X, ChevronRight, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
@@ -155,7 +155,17 @@ export function SurplusBanner() {
             size="sm"
             variant="ghost"
             className="text-muted-foreground text-xs"
-            onClick={() => markSurplusActioned(snapshot.id)}
+            onClick={() => {
+              markSurplusActioned(snapshot.id)
+              toast(t('Dismissed', 'בוטל', lang), {
+                description: t(
+                  "You won't be asked about this surplus again.",
+                  'לא תישאל שוב על עודף זה.',
+                  lang
+                ),
+                duration: 5000,
+              })
+            }}
             title={t("Don't ask again", 'אל תשאל שוב', lang)}
           >
             {t("Don't ask again", 'אל תשאל שוב', lang)}
@@ -216,6 +226,12 @@ export function SurplusBanner() {
                 {t('Available surplus:', 'עודף זמין:', lang)}{' '}
                 {formatCurrency(surplus, data.currency, data.locale)}
               </p>
+              {isValidAmount && parsedAmount > surplus && (
+                <p className="text-xs text-warning flex items-center gap-1 mt-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t("Amount exceeds this month's surplus.", 'הסכום עולה על העודף החודשי.', lang)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -270,6 +286,12 @@ export function SurplusBanner() {
                 {t('Available surplus:', 'עודף זמין:', lang)}{' '}
                 {formatCurrency(surplus, data.currency, data.locale)}
               </p>
+              {isValidAmount && parsedAmount > surplus && (
+                <p className="text-xs text-warning flex items-center gap-1 mt-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t("Amount exceeds this month's surplus.", 'הסכום עולה על העודף החודשי.', lang)}
+                </p>
+              )}
             </div>
           </div>
 

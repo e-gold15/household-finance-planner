@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Crown, User, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
@@ -122,8 +122,19 @@ export function Members() {
   const { data } = useFinance()
   const lang = data.language
 
+  // Cloud member fetch (refreshMembersFromCloud) is async — show skeleton
+  // for up to 1.5 s while it resolves so we don't flash an empty list.
+  const [isLoading, setIsLoading] = useState(true)
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 1500)
+    return () => clearTimeout(timer)
+  }, [])
+
   const members    = getMembers()
   const isOwner    = household?.createdBy === user?.id
+
+  // Once members arrive from cloud we can stop showing the skeleton early
+  const showSkeleton = isLoading && members.length === 0
 
   const handleRemove = async (targetId: string, name: string) => {
     const err = await removeMember(targetId)
@@ -132,6 +143,22 @@ export function Members() {
     } else {
       toast.success(t(`${name} removed from household`, `${name} הוסר/ה ממשק הבית`, lang))
     }
+  }
+
+  if (showSkeleton) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse">
+            <div className="h-10 w-10 rounded-full bg-muted shrink-0" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-32 rounded bg-muted" />
+              <div className="h-2 w-20 rounded bg-muted" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   if (members.length === 0) {

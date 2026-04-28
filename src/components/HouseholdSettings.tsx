@@ -639,7 +639,7 @@ export function HouseholdSettings() {
                 <UserPlus className="h-3.5 w-3.5" />
                 {t('Invite', 'הזמן', lang)}
                 {pendingCount > 0 && (
-                  <Badge variant="warning" className="h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                  <Badge variant="warning" className="min-w-[1.25rem] h-5 px-1 flex items-center justify-center text-[10px]">
                     {pendingCount}
                   </Badge>
                 )}

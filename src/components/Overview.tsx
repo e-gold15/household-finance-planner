@@ -97,8 +97,8 @@ function KpiCard({
           <Icon className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-xl font-bold tracking-tight">{value}</p>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="text-2xl font-bold tracking-tight text-primary">{value}</p>
           {sub && (
             <p className={`text-xs ${positive ? 'text-primary' : 'text-destructive'}`}>{sub}</p>
           )}
@@ -384,8 +384,8 @@ export function Overview() {
       {/* ── 2. End-of-month surplus action banner (v3.0) ── */}
       <SurplusBanner />
 
-      {/* ── 3. Deficit warning banner ── */}
-      {freeCashFlow < 0 && (
+      {/* ── 3. Deficit warning banner — suppressed when budget health gauge already shows 'over' ── */}
+      {freeCashFlow < 0 && !(budgetHealth && budgetHealth.over > 0) && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {t('Your expenses exceed income. Review your budget.', 'ההוצאות עולות על ההכנסות. בדוק את התקציב.', lang)}
@@ -422,6 +422,12 @@ export function Overview() {
                         <Cell key={i} fill={entry.fill} />
                       ))}
                     </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [
+                        `${Math.round(Number(value))} ${t('cat.', 'קטג.', lang)}`,
+                        name,
+                      ]}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -473,7 +479,7 @@ export function Overview() {
               return (
                 <div key={b.expense.id} className="flex items-center justify-between py-2.5 border-b last:border-b-0">
                   <span className="text-xs text-muted-foreground w-8 shrink-0">{monthShort[b.month]}</span>
-                  <span className="flex-1 text-sm font-medium px-3">{b.expense.name}</span>
+                  <span className="flex-1 min-w-0 truncate text-sm font-medium px-3">{b.expense.name}</span>
                   <div className="flex items-center gap-2">
                     <Badge variant={cb.variant}>{cb.label}</Badge>
                     <span className="text-sm font-semibold text-destructive">
@@ -581,6 +587,12 @@ export function Overview() {
                           <Cell key={i} fill={entry.fill} />
                         ))}
                       </Pie>
+                      <Tooltip
+                        formatter={(value, name) => [
+                          `${Math.round(Number(value))} ${t('goals', 'יעדים', lang)}`,
+                          name,
+                        ]}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -657,15 +669,15 @@ export function Overview() {
                 <TrendingUp className="h-4 w-4 text-primary" />
                 {t('12-Month Savings Forecast', 'תחזית חיסכון 12 חודשים', lang)}
               </CardTitle>
-              <Badge variant="success">
-                +{formatCurrency(savingsProjection.projected12 - totalAssets, data.currency, data.locale)}{' '}
+              <Badge variant={savingsProjection.projected12 - totalAssets > 0 ? 'success' : 'secondary'}>
+                {savingsProjection.projected12 - totalAssets > 0 ? '+' : ''}{formatCurrency(savingsProjection.projected12 - totalAssets, data.currency, data.locale)}{' '}
                 {t('projected', 'צפוי', lang)}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
             {/* 3-col summary */}
-            <div className="grid grid-cols-3 divide-x mb-4 text-center">
+            <div className="grid grid-cols-3 divide-x rtl:divide-x-reverse mb-4 text-center">
               <div className="px-3 py-2">
                 <p className="text-xs text-muted-foreground mb-1">{t('Today', 'היום', lang)}</p>
                 <p className="text-lg font-bold">{formatCurrency(totalAssets, data.currency, data.locale)}</p>

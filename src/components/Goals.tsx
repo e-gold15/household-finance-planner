@@ -259,6 +259,9 @@ export function Goals() {
             value={[data.emergencyBufferMonths]}
             onValueChange={([v]) => setData((d) => ({ ...d, emergencyBufferMonths: v }))}
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            {t('Use arrow keys to adjust', 'השתמש במקשי החצים לכוונון', lang)}
+          </p>
         </CardContent>
       </Card>
 
