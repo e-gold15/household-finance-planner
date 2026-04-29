@@ -565,7 +565,7 @@ export function History() {
                     </div>
 
                     {/* Summary totals */}
-                    <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-center">
                       <div className="bg-muted/50 rounded p-2">
                         <p className="text-muted-foreground">{t('Income', 'הכנסה', lang)}</p>
                         <p className="font-semibold text-primary">{formatCurrency(snap.totalIncome, data.currency, data.locale)}</p>
@@ -577,6 +577,12 @@ export function History() {
                       <div className="bg-muted/50 rounded p-2">
                         <p className="text-muted-foreground">{t('Savings', 'חיסכון', lang)}</p>
                         <p className="font-semibold">{formatCurrency(snap.totalSavings, data.currency, data.locale)}</p>
+                      </div>
+                      <div className="bg-muted/50 rounded p-2">
+                        <p className="text-muted-foreground">{t('Free Cash', 'תזרים חופשי', lang)}</p>
+                        <p className={`font-semibold ${snap.totalIncome === 0 ? 'text-muted-foreground' : snap.freeCashFlow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
+                          {snap.totalIncome === 0 ? '—' : `${snap.freeCashFlow >= 0 ? '+' : ''}${formatCurrency(snap.freeCashFlow, data.currency, data.locale)}`}
+                        </p>
                       </div>
                     </div>
 
