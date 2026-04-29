@@ -231,6 +231,83 @@ describe('applyGoalTopUp()', () => {
   })
 })
 
+// ─── Pure: recordSurplusAllocation logic ─────────────────────────────────────
+function recordSurplusAllocation(
+  history: MonthSnapshot[],
+  snapshotId: string,
+  allocation: { amount: number; type: 'savings' | 'goal'; destinationId: string; destinationName: string },
+): MonthSnapshot[] {
+  return history.map((h) =>
+    h.id === snapshotId
+      ? {
+          ...h,
+          freeCashFlow: h.freeCashFlow - allocation.amount,
+          surplusActioned: true,
+          surplusAllocations: [
+            ...(h.surplusAllocations ?? []),
+            allocation,
+          ],
+        }
+      : h
+  )
+}
+
+// ── recordSurplusAllocation ───────────────────────────────────────────────────
+describe('recordSurplusAllocation()', () => {
+  const allocation = {
+    amount: 500,
+    type: 'goal' as const,
+    destinationId: 'goal1',
+    destinationName: 'Emergency Fund',
+  }
+
+  it('deducts allocation amount from snapshot freeCashFlow', () => {
+    const history = [makeSnapshot({ id: 'snap1', freeCashFlow: 2_000 })]
+    const result = recordSurplusAllocation(history, 'snap1', allocation)
+    expect(result[0].freeCashFlow).toBe(1_500)
+  })
+
+  it('appends allocation entry to surplusAllocations array', () => {
+    const history = [makeSnapshot({ id: 'snap1' })]
+    const result = recordSurplusAllocation(history, 'snap1', allocation)
+    expect(result[0].surplusAllocations).toHaveLength(1)
+    expect(result[0].surplusAllocations![0]).toEqual(allocation)
+  })
+
+  it('sets surplusActioned=true on the snapshot', () => {
+    const history = [makeSnapshot({ id: 'snap1' })]
+    const result = recordSurplusAllocation(history, 'snap1', allocation)
+    expect(result[0].surplusActioned).toBe(true)
+  })
+
+  it('accumulates multiple allocations and deducts each amount from FCF', () => {
+    const second = {
+      amount: 300,
+      type: 'savings' as const,
+      destinationId: 'acc1',
+      destinationName: 'Savings Account',
+    }
+    const history = [makeSnapshot({ id: 'snap1', freeCashFlow: 2_000 })]
+    const after1 = recordSurplusAllocation(history, 'snap1', allocation)
+    const after2 = recordSurplusAllocation(after1, 'snap1', second)
+    expect(after2[0].freeCashFlow).toBe(1_200)
+    expect(after2[0].surplusAllocations).toHaveLength(2)
+    expect(after2[0].surplusAllocations![0]).toEqual(allocation)
+    expect(after2[0].surplusAllocations![1]).toEqual(second)
+  })
+
+  it('does not mutate other snapshots in history', () => {
+    const history = [
+      makeSnapshot({ id: 'snap1', freeCashFlow: 2_000 }),
+      makeSnapshot({ id: 'snap2', label: 'Feb 2025', freeCashFlow: 1_000 }),
+    ]
+    const result = recordSurplusAllocation(history, 'snap1', allocation)
+    expect(result[1].freeCashFlow).toBe(1_000)
+    expect(result[1].surplusAllocations).toBeUndefined()
+    expect(result[1].surplusActioned).toBeUndefined()
+  })
+})
+
 // ── applyAccountDeposit ───────────────────────────────────────────────────────
 describe('applyAccountDeposit()', () => {
   it('increments balance by the given amount', () => {

@@ -159,6 +159,17 @@ export interface MonthSnapshot {
    * Hides the SurplusBanner for this snapshot permanently.
    */
   surplusActioned?: boolean
+  /**
+   * Record of where the surplus was allocated.
+   * Each entry represents one allocation action the user confirmed.
+   * Displayed in the History tab below the summary grid.
+   */
+  surplusAllocations?: Array<{
+    amount: number
+    type: 'savings' | 'goal'
+    destinationId: string
+    destinationName: string
+  }>
 }
 
 export interface FinanceData {

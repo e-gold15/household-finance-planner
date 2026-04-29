@@ -29,7 +29,7 @@ type ActionMode = 'goal' | 'account'
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function SurplusBanner() {
-  const { data, updateGoal, updateAccount, markSurplusActioned } = useFinance()
+  const { data, updateGoal, updateAccount, markSurplusActioned, recordSurplusAllocation } = useFinance()
   const lang = data.language
 
   // Session-level dismiss (doesn't persist)
@@ -90,6 +90,12 @@ export function SurplusBanner() {
       const goal = data.goals.find((g) => g.id === selectedId)
       if (!goal) return
       updateGoal({ ...goal, currentAmount: goal.currentAmount + parsedAmount })
+      recordSurplusAllocation(snapshot!.id, {
+        amount: parsedAmount,
+        type: 'goal',
+        destinationId: selectedId,
+        destinationName: goal.name,
+      })
       toast.success(
         t(
           `${formatCurrency(parsedAmount, data.currency, data.locale)} added to "${goal.name}" ✓`,
@@ -101,6 +107,12 @@ export function SurplusBanner() {
       const account = data.accounts.find((a) => a.id === selectedId)
       if (!account) return
       updateAccount({ ...account, balance: account.balance + parsedAmount })
+      recordSurplusAllocation(snapshot!.id, {
+        amount: parsedAmount,
+        type: 'savings',
+        destinationId: selectedId,
+        destinationName: account.name,
+      })
       toast.success(
         t(
           `${formatCurrency(parsedAmount, data.currency, data.locale)} deposited into "${account.name}" ✓`,
@@ -110,7 +122,6 @@ export function SurplusBanner() {
       )
     }
 
-    markSurplusActioned(snapshot!.id)
     closeDialog()
   }
 

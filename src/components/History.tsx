@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp, AlertTriangle, PiggyBank, Target } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -585,6 +585,28 @@ export function History() {
                         </p>
                       </div>
                     </div>
+
+                    {/* Surplus allocations — shown when the user allocated this month's surplus */}
+                    {snap.surplusAllocations && snap.surplusAllocations.length > 0 && (
+                      <div className="mt-2 border-t pt-2 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {t('Allocated from surplus', 'שויך מהעודף', lang)}
+                        </p>
+                        {snap.surplusAllocations.map((alloc, i) => (
+                          <div key={i} className="flex items-center justify-between text-xs">
+                            <span className="flex items-center gap-1 text-muted-foreground">
+                              {alloc.type === 'savings'
+                                ? <PiggyBank className="h-3 w-3" />
+                                : <Target className="h-3 w-3" />}
+                              {alloc.destinationName}
+                            </span>
+                            <span className="font-medium text-primary">
+                              +{formatCurrency(alloc.amount, data.currency, data.locale)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Recorded historical incomes — above actuals and expenses */}
                     <div className="mt-3 border-t pt-3">
