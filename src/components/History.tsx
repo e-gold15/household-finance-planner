@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp, AlertTriangle, PiggyBank, Target } from 'lucide-react'
+import { CsvExportButton } from './CsvExportButton'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -460,10 +461,13 @@ export function History() {
           {data.history.length} {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
         </p>
         <div className="flex flex-col items-end gap-2">
-          <Button size="sm" onClick={handleSnapshot}>
-            <Camera className="h-4 w-4 me-1" />
-            {t('Snapshot This Month', 'צלם חודש זה', lang)}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <CsvExportButton history={data.history} currency={data.currency} lang={lang} />
+            <Button size="sm" onClick={handleSnapshot}>
+              <Camera className="h-4 w-4 me-1" />
+              {t('Snapshot This Month', 'צלם חודש זה', lang)}
+            </Button>
+          </div>
           {showDuplicateWarning && (
             <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 rounded-md px-3 py-2">
               <AlertTriangle className="h-4 w-4 shrink-0" />
