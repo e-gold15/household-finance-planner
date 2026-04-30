@@ -67,6 +67,44 @@ export function Header() {
   const userName = user?.name ?? user?.email ?? ''
   const userInitial = userName.slice(0, 1).toUpperCase()
 
+  // ── CSV helpers ──────────────────────────────────────────────────────────
+  function downloadCsv(filename: string, rows: (string | number)[][]): void {
+    const content = rows
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportExpensesCsv = () => {
+    const header = ['Name', 'Amount', 'Period', 'Category', 'Type', 'Linked Account']
+    const rows = data.expenses.map(e => {
+      const linkedAccount = e.linkedAccountId
+        ? (data.accounts.find(a => a.id === e.linkedAccountId)?.name ?? '')
+        : ''
+      return [e.name, e.amount, e.period, e.category, e.expenseType ?? 'fixed', linkedAccount]
+    })
+    downloadCsv('expenses.csv', [header, ...rows])
+  }
+
+  const handleExportHistoryCsv = () => {
+    const header = ['Month', 'Year', 'Label', 'Income', 'Expenses', 'Savings', 'Free Cash Flow', 'Surplus Allocations']
+    const sorted = [...data.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    const rows = sorted.map(snap => {
+      const allocations = snap.surplusAllocations?.length
+        ? snap.surplusAllocations.map(al => `${al.amount} \u2192 ${al.destinationName}`).join('; ')
+        : ''
+      const d = new Date(snap.date)
+      return [d.getMonth() + 1, d.getFullYear(), snap.label, snap.totalIncome, snap.totalExpenses, snap.totalSavings, snap.freeCashFlow, allocations]
+    })
+    downloadCsv('history.csv', [header, ...rows])
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-sm">
       <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -217,6 +255,16 @@ export function Header() {
                       {t('Import JSON', 'ייבא JSON', lang)}
                     </Button>
                     <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportExpensesCsv} className="flex-1 gap-1.5 min-h-[44px]">
+                      <Download className="h-4 w-4" />
+                      {t('Expenses CSV', 'הוצאות CSV', lang)}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExportHistoryCsv} className="flex-1 gap-1.5 min-h-[44px]">
+                      <Download className="h-4 w-4" />
+                      {t('History CSV', 'היסטוריה CSV', lang)}
+                    </Button>
                   </div>
                 </div>
               </div>
