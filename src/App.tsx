@@ -77,7 +77,7 @@ function hasPrevMonthSnapshot(history: import('./types').MonthSnapshot[]): boole
 }
 
 function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
-  const { data, snapshotPreviousMonth } = useFinance()
+  const { data, snapshotPreviousMonth, clearVariableExpenses } = useFinance()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -101,6 +101,7 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
 
   const handleSnapshot = () => {
     snapshotPreviousMonth()
+    clearVariableExpenses()
     setOpen(false)
     toast.success(
       t(`Snapshot saved for ${monthLabel}`, `תמונת מצב נשמרה עבור ${monthLabel}`, lang)
@@ -119,6 +120,13 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
           {t(
             `${monthLabel} has no snapshot yet. Would you like to save it now?`,
             `ל${monthLabel} אין עדיין תמונת מצב. האם תרצה לשמור אותה עכשיו?`,
+            lang
+          )}
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          {t(
+            'Variable expenses will be cleared so the new month starts fresh. Fixed expenses are kept.',
+            'הוצאות משתנות יימחקו כדי שהחודש החדש יתחיל נקי. הוצאות קבועות נשמרות.',
             lang
           )}
         </p>

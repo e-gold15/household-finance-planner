@@ -88,6 +88,8 @@ interface FinanceContextType {
   moveGoal: (id: string, direction: 'up' | 'down') => void
   snapshotMonth: () => void
   snapshotPreviousMonth: () => void
+  /** Remove all variable (non-fixed) expenses from the live budget. Used at month rollover. */
+  clearVariableExpenses: () => void
   exportData: () => void
   importData: (json: string) => void
   /** Set or clear the monthly budget limit for a category. Pass undefined to remove the limit. */
@@ -380,6 +382,12 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }
       return { ...d, history: [...d.history, snapshot] }
     })
+
+  const clearVariableExpenses = () =>
+    setData((d) => ({
+      ...d,
+      expenses: d.expenses.filter((e) => (e.expenseType ?? 'fixed') === 'fixed'),
+    }))
 
   const updateCategoryBudget = (category: ExpenseCategory, budget: number | undefined) =>
     setData((d) => {
@@ -687,7 +695,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addExpense, updateExpense, deleteExpense,
       addAccount, updateAccount, deleteAccount,
       addGoal, updateGoal, deleteGoal, moveGoal,
-      snapshotMonth, snapshotPreviousMonth, exportData, importData,
+      snapshotMonth, snapshotPreviousMonth, clearVariableExpenses, exportData, importData,
       updateCategoryBudget, updateSnapshotActuals,
       addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
       addExpenseToMonth,
