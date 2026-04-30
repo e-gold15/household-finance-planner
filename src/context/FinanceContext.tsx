@@ -87,6 +87,7 @@ interface FinanceContextType {
   deleteGoal: (id: string) => void
   moveGoal: (id: string, direction: 'up' | 'down') => void
   snapshotMonth: () => void
+  snapshotPreviousMonth: () => void
   exportData: () => void
   importData: (json: string) => void
   /** Set or clear the monthly budget limit for a category. Pass undefined to remove the limit. */
@@ -334,6 +335,46 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         id: generateId(), label,
         date: new Date().toISOString(),
         totalIncome, totalExpenses, totalSavings,
+        freeCashFlow: totalIncome - totalExpenses - totalSavings,
+        categoryActuals,
+      }
+      return { ...d, history: [...d.history, snapshot] }
+    })
+
+  const snapshotPreviousMonth = () =>
+    setData((d) => {
+      const now = new Date()
+      // getMonth() is 0-indexed; previous month is 1-indexed
+      const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+      const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+
+      // Don't create a duplicate if one already exists for that month/year
+      const alreadyExists = d.history.some((s) => {
+        const sd = new Date(s.date)
+        return sd.getFullYear() === prevYear && sd.getMonth() + 1 === prevMonth
+      })
+      if (alreadyExists) return d
+
+      const prevDate = new Date(prevYear, prevMonth - 1, 1)
+      const label = prevDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+      const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
+      const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
+      const totalSavings  = d.accounts.reduce((s, a) => s + a.monthlyContribution, 0)
+
+      const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+      d.expenses.forEach((e) => {
+        const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+        categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+      })
+
+      const snapshot: MonthSnapshot = {
+        id: `snap-${prevYear}-${prevMonth}`,
+        label,
+        date: prevDate.toISOString(),
+        totalIncome,
+        totalExpenses,
+        totalSavings,
         freeCashFlow: totalIncome - totalExpenses - totalSavings,
         categoryActuals,
       }
@@ -646,7 +687,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addExpense, updateExpense, deleteExpense,
       addAccount, updateAccount, deleteAccount,
       addGoal, updateGoal, deleteGoal, moveGoal,
-      snapshotMonth, exportData, importData,
+      snapshotMonth, snapshotPreviousMonth, exportData, importData,
       updateCategoryBudget, updateSnapshotActuals,
       addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
       addExpenseToMonth,

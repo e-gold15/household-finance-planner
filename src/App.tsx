@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2, Users } from 'lucide-react'
-import { Toaster } from 'sonner'
+import { Toaster, toast } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AuthPage } from './pages/AuthPage'
@@ -14,6 +14,8 @@ import { History as HistoryTab } from './components/History'
 import { Members } from './components/Members'
 import { t } from './lib/utils'
 import { cn } from './lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog'
+import { Button } from './components/ui/button'
 
 // ─── Welcome banner (shown once after accepting an invite) ──────────────────
 
@@ -44,6 +46,99 @@ function JoinedHouseholdBanner({ lang }: { lang: 'en' | 'he' }) {
         <X className="h-4 w-4" />
       </button>
     </div>
+  )
+}
+
+// ─── Auto-snapshot prompt (shown once per month if previous month has no snapshot) ─
+
+const LAST_SEEN_KEY = 'hf-last-seen-month'
+
+function currentMonthKey(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function prevMonthLabel(lang: 'en' | 'he'): string {
+  const now = new Date()
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+  const prevDate  = new Date(prevYear, prevMonth - 1, 1)
+  return prevDate.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' })
+}
+
+function hasPrevMonthSnapshot(history: import('./types').MonthSnapshot[]): boolean {
+  const now = new Date()
+  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+  return history.some((s) => {
+    const sd = new Date(s.date)
+    return sd.getFullYear() === prevYear && sd.getMonth() + 1 === prevMonth
+  })
+}
+
+function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
+  const { data, snapshotPreviousMonth } = useFinance()
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    const stored   = localStorage.getItem(LAST_SEEN_KEY)
+    const current  = currentMonthKey()
+
+    // Always update the last-seen key regardless of whether we show the prompt
+    localStorage.setItem(LAST_SEEN_KEY, current)
+
+    // Only show when:
+    //   1. The stored month differs from the current month (first open of a new month)
+    //   2. There is no snapshot for the previous month yet
+    if (stored && stored !== current && !hasPrevMonthSnapshot(data.history)) {
+      setOpen(true)
+    }
+  // Run only once on mount — data.history checked at mount time intentionally
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const monthLabel = prevMonthLabel(lang)
+
+  const handleSnapshot = () => {
+    snapshotPreviousMonth()
+    setOpen(false)
+    toast.success(
+      t(`Snapshot saved for ${monthLabel}`, `תמונת מצב נשמרה עבור ${monthLabel}`, lang)
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {t('New month — snapshot last month?', 'חודש חדש — לצלם את החודש שעבר?', lang)}
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground mt-1">
+          {t(
+            `${monthLabel} has no snapshot yet. Would you like to save it now?`,
+            `ל${monthLabel} אין עדיין תמונת מצב. האם תרצה לשמור אותה עכשיו?`,
+            lang
+          )}
+        </p>
+        <div className="flex gap-3 justify-end mt-4">
+          <Button
+            variant="outline"
+            className="min-h-[44px]"
+            onClick={() => setOpen(false)}
+          >
+            {t('Skip', 'דלג', lang)}
+          </Button>
+          <Button
+            className="min-h-[44px]"
+            onClick={handleSnapshot}
+          >
+            {t(`Snapshot ${monthLabel}`, `צלם את ${monthLabel}`, lang)}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -109,6 +204,7 @@ function AppShell() {
 
         <h1 className="sr-only">{t('Household Finance Planner', 'מתכנן פיננסי ביתי', lang)}</h1>
 
+        <NewMonthPrompt lang={lang} />
         {isLoading ? <DataLoadingSkeleton lang={lang} /> : (
           <>
             {tab === 'overview'  && <Overview />}
