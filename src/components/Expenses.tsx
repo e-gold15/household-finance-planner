@@ -553,9 +553,12 @@ function BudgetEditor({
 // ── Main Expenses component ───────────────────────────────────────────────────
 
 export function Expenses() {
-  const { data, addExpense, updateExpense, deleteExpense } = useFinance()
+  const { data, addExpense, updateExpense, deleteExpense, clearVariableExpenses } = useFinance()
   const lang = data.language
   const [comparing, setComparing] = useState(false)
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+
+  const hasVariableExpenses = data.expenses.some((e) => (e.expenseType ?? 'fixed') === 'variable')
 
   // Stable current month value — avoids stale-capture if the tab is left open overnight
   const currentMonth = useMemo(() => new Date().getMonth() + 1, [])
@@ -632,7 +635,7 @@ export function Expenses() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {lastSnapshot && (
             <Button
               variant={comparing ? 'default' : 'outline'}
@@ -645,8 +648,49 @@ export function Expenses() {
               {t('Compare', 'השווה', lang)}
             </Button>
           )}
+          {hasVariableExpenses && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] gap-1.5 text-destructive hover:bg-destructive/10 border-destructive/30"
+              onClick={() => setClearConfirmOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {t('Clear Variable', 'נקה משתנות', lang)}
+            </Button>
+          )}
           <ExpenseDialog onSave={(e) => addExpense(e)} lang={lang} />
         </div>
+
+        {/* Clear variable expenses confirmation dialog */}
+        <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t('Clear all variable expenses?', 'לנקות את כל ההוצאות המשתנות?', lang)}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  'This removes all variable expenses from your budget. Fixed expenses are kept.',
+                  'פעולה זו מסירה את כל ההוצאות המשתנות מהתקציב. הוצאות קבועות נשמרות.',
+                  lang
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  clearVariableExpenses()
+                  setClearConfirmOpen(false)
+                }}
+              >
+                {t('Clear', 'נקה', lang)}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Compare context label */}
@@ -747,7 +791,14 @@ export function Expenses() {
                     <div key={expense.id} className="flex items-center justify-between py-2 border-b last:border-0">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-sm font-medium">{expense.name}</p>
+                          <p className="text-sm font-medium">
+                            {expense.name}
+                            {expense.expenseType === 'variable' && expense.createdAt && (
+                              <span className="text-xs text-muted-foreground ms-1">
+                                · {new Date(expense.createdAt).toLocaleDateString(data.locale)}
+                              </span>
+                            )}
+                          </p>
                           {/* Fixed / Variable badge */}
                           <Badge
                             variant={isFixed ? 'secondary' : 'outline'}

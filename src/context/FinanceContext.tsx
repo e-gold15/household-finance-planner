@@ -226,7 +226,11 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
   const addExpense = (expense: Omit<Expense, 'id'>) =>
     setData((d) => {
-      const newExpense: Expense = { ...expense, id: generateId() }
+      const expenseWithDate = {
+        ...expense,
+        createdAt: expense.createdAt ?? new Date().toISOString(),
+      }
+      const newExpense: Expense = { ...expenseWithDate, id: generateId() }
       const newExpenses = [...d.expenses, newExpense]
 
       // Sync monthlyContribution on the linked account (atomic update)

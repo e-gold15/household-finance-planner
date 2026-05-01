@@ -70,6 +70,12 @@ export interface Expense {
    * contribution amount onto the linked account's monthlyContribution field.
    */
   linkedAccountId?: string
+  /**
+   * ISO timestamp of when this expense was first created.
+   * Set once by addExpense and never overwritten by updateExpense.
+   * Optional for backward compat — old expenses without it show nothing.
+   */
+  createdAt?: string
 }
 
 export type AccountType =

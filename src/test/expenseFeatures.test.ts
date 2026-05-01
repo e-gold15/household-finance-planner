@@ -83,6 +83,37 @@ function buildSnapshot(overrides: Partial<MonthSnapshot> = {}): MonthSnapshot {
   }
 }
 
+// ─── createdAt stamping (mirrors addExpense logic in FinanceContext) ──────────
+
+/**
+ * Mirrors the stamping logic inside FinanceContext.addExpense:
+ *   createdAt: expense.createdAt ?? new Date().toISOString()
+ */
+function stampCreatedAt(expense: Omit<Expense, 'id'>): Omit<Expense, 'id'> {
+  return {
+    ...expense,
+    createdAt: expense.createdAt ?? new Date().toISOString(),
+  }
+}
+
+describe('addExpense — createdAt stamping', () => {
+  it('stamps createdAt as an ISO string when not provided', () => {
+    const before = Date.now()
+    const result = stampCreatedAt(buildExpense({ createdAt: undefined }))
+    const after = Date.now()
+    expect(result.createdAt).toBeDefined()
+    const ts = new Date(result.createdAt!).getTime()
+    expect(ts).toBeGreaterThanOrEqual(before)
+    expect(ts).toBeLessThanOrEqual(after)
+  })
+
+  it('preserves existing createdAt if one is already set (idempotent)', () => {
+    const original = '2025-01-15T10:00:00.000Z'
+    const result = stampCreatedAt(buildExpense({ createdAt: original }))
+    expect(result.createdAt).toBe(original)
+  })
+})
+
 // ─── F1: Fixed vs Variable classification ────────────────────────────────────
 
 describe('F1 — Fixed vs Variable classification', () => {
