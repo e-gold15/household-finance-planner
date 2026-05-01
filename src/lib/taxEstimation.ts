@@ -132,7 +132,7 @@ export function estimateTax(source: IncomeSource): TaxBreakdown {
   const studyFundBase  = source.studyFundBase  ?? g
   const employerPension     = pensionBase   * (r.pensionEmployer / 100)
   const employerEducation   = studyFundBase * (r.educationFundEmployer / 100)
-  const employerSeverance   = g             * (r.severanceEmployer / 100)
+  const employerSeverance   = pensionBase    * (r.severanceEmployer / 100)
   const totalEmployerContrib = employerPension + employerEducation + employerSeverance
 
   // ── Manual override ────────────────────────────────────────────────────────

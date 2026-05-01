@@ -204,7 +204,7 @@ function PayslipAdvanced({
   const studyBase     = form.studyFundBase ?? taxableGross
   const empPension    = ((form.pensionEmployer ?? 6.5) / 100) * pensionBase
   const empStudy      = ((form.educationFundEmployer ?? 7.5) / 100) * studyBase
-  const empSeverance  = ((form.severanceEmployer ?? 8.33) / 100) * taxableGross
+  const empSeverance  = ((form.severanceEmployer ?? 8.33) / 100) * pensionBase
   const totalEmpCost  = taxableGross + empPension + empStudy + empSeverance
 
   const PAYSLIP_FIELDS: Array<{
