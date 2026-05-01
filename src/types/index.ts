@@ -1,4 +1,23 @@
 export type Country = 'IL' | 'US' | 'UK' | 'DE' | 'FR' | 'CA'
+
+/**
+ * Structured breakdown of an Israeli salary payslip (חשבון שכר).
+ * Used when IncomeSource.payslipMode === 'advanced'.
+ */
+export interface PayslipComponents {
+  /** שכר יסוד — fixed guaranteed base salary */
+  base: number
+  /** גלובאלי 125% — overtime at 125% rate */
+  overtime125: number
+  /** גלובאלי 150% — overtime at 150% rate */
+  overtime150: number
+  /** תוספות חייבות — other taxable additions */
+  otherTaxable: number
+  /** שווי מס — imputed income / taxable benefits (car, phone, meals) */
+  imputedIncome: number
+  /** החזרים — non-taxable reimbursements (travel, meals). Added to net after tax. */
+  nonTaxableReimbursements: number
+}
 export type Currency = 'ILS' | 'USD' | 'GBP' | 'EUR' | 'CAD'
 export type Locale = 'he-IL' | 'en-US' | 'en-GB' | 'de-DE' | 'fr-FR' | 'en-CA'
 export type IncomeSourceType = 'salary' | 'freelance' | 'business' | 'rental' | 'investment' | 'pension' | 'other'
@@ -24,6 +43,23 @@ export interface IncomeSource {
   pensionEmployer: number
   educationFundEmployer: number
   severanceEmployer: number
+  // ── v3.2: Israeli payslip breakdown (IL salary only) ──────────────────────
+  /** 'simple' = single amount field (default). 'advanced' = structured payslip breakdown. */
+  payslipMode?: 'simple' | 'advanced'
+  /** Payslip component breakdown. Only meaningful when payslipMode === 'advanced'. */
+  payslipComponents?: PayslipComponents
+  /**
+   * Explicit pension contribution base (שכר מבוטח לפנסיה).
+   * When set, pension employee/employer deductions use this instead of gross.
+   * Absent = use gross (existing behaviour).
+   */
+  pensionBase?: number
+  /**
+   * Explicit study fund contribution base (בסיס חישוב קרן השתלמות).
+   * When set, study fund employee/employer deductions use this instead of gross.
+   * Absent = use gross (existing behaviour).
+   */
+  studyFundBase?: number
 }
 
 export interface HouseholdMember {

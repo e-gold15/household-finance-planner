@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Plus, Trash2, ChevronDown, ChevronUp, UserPlus, Users,
-  ArrowRight, BadgeCheck, Pencil, CalendarCheck, History,
+  ArrowRight, BadgeCheck, Pencil, CalendarCheck, History, Info,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -15,7 +15,7 @@ import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { estimateTax, getNetMonthly, type TaxBreakdown } from '@/lib/taxEstimation'
 import { formatCurrency, generateId, t } from '@/lib/utils'
-import type { Country, IncomeSource, IncomeSourceType, HouseholdMember } from '@/types'
+import type { Country, IncomeSource, IncomeSourceType, HouseholdMember, PayslipComponents } from '@/types'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -145,6 +145,241 @@ function ContribRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+// ── Payslip helpers ───────────────────────────────────────────────────────────
+
+const DEFAULT_PAYSLIP_COMPONENTS: PayslipComponents = {
+  base: 0,
+  overtime125: 0,
+  overtime150: 0,
+  otherTaxable: 0,
+  imputedIncome: 0,
+  nonTaxableReimbursements: 0,
+}
+
+function computeTaxableGross(c: PayslipComponents): number {
+  return c.base + c.overtime125 + c.overtime150 + c.otherTaxable + c.imputedIncome
+}
+
+function computeTotalGross(c: PayslipComponents): number {
+  return computeTaxableGross(c) + c.nonTaxableReimbursements
+}
+
+// ── PayslipAdvanced ───────────────────────────────────────────────────────────
+
+function PayslipAdvanced({
+  form,
+  setForm,
+  lang,
+  currency,
+  locale,
+}: {
+  form: IncomeSource
+  setForm: React.Dispatch<React.SetStateAction<IncomeSource>>
+  lang: 'en' | 'he'
+  currency: string
+  locale: string
+}) {
+  const fmt = (v: number) => formatCurrency(v, currency as never, locale as never)
+  const [showBases, setShowBases] = useState(false)
+
+  const comp = form.payslipComponents ?? DEFAULT_PAYSLIP_COMPONENTS
+
+  const setComp = (key: keyof PayslipComponents, value: number) => {
+    const next = { ...comp, [key]: value }
+    const taxableGross = computeTaxableGross(next)
+    setForm((f) => ({
+      ...f,
+      payslipComponents: next,
+      amount: taxableGross,
+    }))
+  }
+
+  const taxableGross = computeTaxableGross(comp)
+  const totalGross   = computeTotalGross(comp)
+  const nonTaxable   = comp.nonTaxableReimbursements
+  const guaranteedPct = taxableGross > 0 ? Math.round((comp.base / taxableGross) * 100) : 0
+
+  // Employer cost card values (read-only)
+  const pensionBase   = form.pensionBase ?? taxableGross
+  const studyBase     = form.studyFundBase ?? taxableGross
+  const empPension    = ((form.pensionEmployer ?? 6.5) / 100) * pensionBase
+  const empStudy      = ((form.educationFundEmployer ?? 7.5) / 100) * studyBase
+  const empSeverance  = ((form.severanceEmployer ?? 8.33) / 100) * taxableGross
+  const totalEmpCost  = taxableGross + empPension + empStudy + empSeverance
+
+  const PAYSLIP_FIELDS: Array<{
+    key: keyof PayslipComponents
+    en: string
+    he: string
+  }> = [
+    { key: 'base',                    en: 'Base salary',                   he: 'שכר יסוד' },
+    { key: 'overtime125',             en: 'Global overtime 125%',          he: 'גלובאלי 125%' },
+    { key: 'overtime150',             en: 'Global overtime 150%',          he: 'גלובאלי 150%' },
+    { key: 'otherTaxable',            en: 'Other taxable additions',       he: 'תוספות חייבות' },
+    { key: 'imputedIncome',           en: 'Imputed income (שווי מס)',      he: 'שווי מס' },
+    { key: 'nonTaxableReimbursements',en: 'Reimbursements (non-taxable)',  he: 'החזרים (לא חייבים)' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {/* Helper info note */}
+      <div className="flex gap-2 rounded-lg border bg-muted/40 p-3">
+        <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {t(
+            'In many Israeli payslips, the pension/study fund bases differ from total gross. Copy the contribution bases from your payslip for accurate results.',
+            'בתלושי שכר רבים, שכר הבסיס לפנסיה/קרן השתלמות שונה מהברוטו הכולל. העתק את הבסיסים מהתלוש לחישוב מדויק.',
+            lang,
+          )}
+        </p>
+      </div>
+
+      {/* Component fields */}
+      <div className="rounded-lg border bg-secondary/20 p-4 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {t('Payslip components', 'רכיבי תלוש', lang)}
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {PAYSLIP_FIELDS.map(({ key, en, he }) => (
+            <FieldRow key={key} label={t(en, he, lang)}>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                className="min-h-[44px]"
+                value={comp[key] || ''}
+                placeholder="0"
+                onChange={(e) => setComp(key, Math.max(0, +e.target.value))}
+              />
+            </FieldRow>
+          ))}
+        </div>
+
+        {/* Live summary */}
+        <div className="rounded-md bg-muted/60 border px-3 py-2 text-xs space-y-0.5">
+          <div className="flex flex-wrap gap-3">
+            <span>
+              <span className="text-muted-foreground">{t('Total gross', 'ברוטו כולל', lang)}: </span>
+              <span className="font-semibold">{fmt(totalGross)}</span>
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span>
+              <span className="text-muted-foreground">{t('Taxable', 'חייב', lang)}: </span>
+              <span className="font-semibold text-primary">{fmt(taxableGross)}</span>
+            </span>
+            <span className="text-muted-foreground">|</span>
+            <span>
+              <span className="text-muted-foreground">{t('Non-taxable', 'לא חייב', lang)}: </span>
+              <span className="font-semibold">{fmt(nonTaxable)}</span>
+            </span>
+          </div>
+          {taxableGross > 0 && (
+            <div className="pt-1">
+              <Badge variant="secondary" className="text-xs">
+                {t('Guaranteed', 'מובטח', lang)} {guaranteedPct}%
+              </Badge>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Contribution bases — collapsible */}
+      <div className="rounded-lg border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowBases((v) => !v)}
+          className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium bg-secondary/30 hover:bg-secondary/50 transition-colors min-h-[44px]"
+        >
+          <span>{t('Contribution bases', 'בסיסי חישוב', lang)}</span>
+          {showBases ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+
+        {showBases && (
+          <div className="p-4 space-y-4 bg-card">
+            <FieldRow label={t('Pension insured salary', 'שכר מבוטח לפנסיה', lang)}>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                className="min-h-[44px]"
+                value={form.pensionBase ?? ''}
+                placeholder={t('Defaults to taxable gross', 'ברירת מחדל: ברוטו חייב', lang)}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    pensionBase: e.target.value ? Math.max(0, +e.target.value) : undefined,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('Defaults to taxable gross if left blank', 'ברירת מחדל: שכר ברוטו החייב', lang)}
+              </p>
+            </FieldRow>
+
+            <FieldRow label={t('Study fund base', 'בסיס קרן השתלמות', lang)}>
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                className="min-h-[44px]"
+                value={form.studyFundBase ?? ''}
+                placeholder={t('Defaults to taxable gross', 'ברירת מחדל: ברוטו חייב', lang)}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    studyFundBase: e.target.value ? Math.max(0, +e.target.value) : undefined,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('Defaults to taxable gross if left blank', 'ברירת מחדל: שכר ברוטו החייב', lang)}
+              </p>
+            </FieldRow>
+          </div>
+        )}
+      </div>
+
+      {/* Employer cost card — read-only */}
+      {taxableGross > 0 && (
+        <div className="rounded-lg border border-dashed p-4 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            {t('Employer total cost', 'עלות מעסיק', lang)}
+          </p>
+
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{t('Gross salary', 'שכר ברוטו', lang)}</span>
+              <span className="font-semibold">{fmt(taxableGross)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                {t('Employer pension', 'פנסיה מעסיק', lang)} ({form.pensionEmployer ?? 6.5}%)
+              </span>
+              <span className="font-semibold">{fmt(empPension)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                {t('Employer study fund', 'קרן השתלמות מעסיק', lang)} ({form.educationFundEmployer ?? 7.5}%)
+              </span>
+              <span className="font-semibold">{fmt(empStudy)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                {t('Severance', 'פיצויים', lang)} ({form.severanceEmployer ?? 8.33}%)
+              </span>
+              <span className="font-semibold">{fmt(empSeverance)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-2 mt-1">
+              <span className="text-muted-foreground font-medium">{t('Total', 'סה"כ', lang)}</span>
+              <span className="text-primary font-bold">{fmt(totalEmpCost)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── SourceDialog ──────────────────────────────────────────────────────────────
 
 function SourceDialog({
@@ -169,7 +404,12 @@ function SourceDialog({
 
   const breakdown = useMemo(() => estimateTax(form), [form])
 
-  const canSubmit = form.name.trim().length > 0 && form.amount > 0 &&
+  const isILSalary = form.type === 'salary' && form.country === 'IL'
+  const isAdvanced = isILSalary && form.payslipMode === 'advanced'
+
+  // In advanced mode, amount is auto-computed; we just need name + at least one component > 0
+  const canSubmit = form.name.trim().length > 0 &&
+    (isAdvanced ? form.amount > 0 : form.amount > 0) &&
     (!form.useManualNet || (form.manualNetOverride != null && form.manualNetOverride > 0))
 
   const handleOpen = (v: boolean) => {
@@ -179,7 +419,23 @@ function SourceDialog({
 
   const handleSave = () => {
     if (!canSubmit) return
-    onSave(memberId, form)
+
+    let saved = form
+
+    if (form.payslipMode === 'advanced' && form.payslipComponents) {
+      const taxableGross = computeTaxableGross(form.payslipComponents)
+      // Clamp contribution bases to taxable gross
+      const clampedPensionBase   = form.pensionBase   != null ? Math.min(form.pensionBase,   taxableGross) : undefined
+      const clampedStudyFundBase = form.studyFundBase != null ? Math.min(form.studyFundBase, taxableGross) : undefined
+      saved = {
+        ...form,
+        amount: taxableGross,
+        pensionBase:   clampedPensionBase,
+        studyFundBase: clampedStudyFundBase,
+      }
+    }
+
+    onSave(memberId, saved)
     setOpen(false)
   }
 
@@ -225,19 +481,23 @@ function SourceDialog({
             />
           </FieldRow>
 
-          <div className="grid grid-cols-2 gap-3">
-            <FieldRow label={t('Monthly Amount', 'סכום חודשי', lang)}>
-              <Input
-                type="number"
-                min={0}
-                value={form.amount || ''}
-                onChange={(e) => set('amount', +e.target.value)}
-                placeholder="0"
-              />
-            </FieldRow>
+          <div className={isAdvanced ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
+            {/* Amount field — hidden in advanced mode (auto-computed) */}
+            {!isAdvanced && (
+              <FieldRow label={t('Monthly Amount', 'סכום חודשי', lang)}>
+                <Input
+                  type="number"
+                  min={0}
+                  className="min-h-[44px]"
+                  value={form.amount || ''}
+                  onChange={(e) => set('amount', +e.target.value)}
+                  placeholder="0"
+                />
+              </FieldRow>
+            )}
             <FieldRow label={t('Type', 'סוג', lang)}>
               <Select value={form.type} onValueChange={(v) => set('type', v as IncomeSourceType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="min-h-[44px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {SOURCE_TYPES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
@@ -248,6 +508,60 @@ function SourceDialog({
               </Select>
             </FieldRow>
           </div>
+
+          {/* ── Simple / Advanced toggle (IL salary only) ─────────────── */}
+          {isILSalary && (
+            <div>
+              <Label className="mb-2 block text-sm text-muted-foreground">
+                {t('Payslip mode', 'מצב תלוש', lang)}
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  aria-pressed={!isAdvanced}
+                  onClick={() => {
+                    set('payslipMode', 'simple')
+                  }}
+                  className={`flex items-center justify-center rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    !isAdvanced
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {t('Simple', 'פשוט', lang)}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={isAdvanced}
+                  onClick={() => {
+                    setForm((f) => ({
+                      ...f,
+                      payslipMode: 'advanced',
+                      payslipComponents: f.payslipComponents ?? { ...DEFAULT_PAYSLIP_COMPONENTS },
+                    }))
+                  }}
+                  className={`flex items-center justify-center gap-1.5 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                    isAdvanced
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-input text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {t('Advanced', 'מפורט', lang)}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Advanced payslip fields ───────────────────────────────── */}
+          {isAdvanced && (
+            <PayslipAdvanced
+              form={form}
+              setForm={setForm}
+              lang={lang}
+              currency={currency}
+              locale={locale}
+            />
+          )}
 
           {/* ── 2. Gross Toggle ───────────────────────────────────────── */}
           <ToggleRow
@@ -512,6 +826,11 @@ function SourceCard({
             {source.useContributions && (
               <Badge variant="secondary" className="text-xs py-0">
                 {t('Contributions', 'הפרשות', lang)}
+              </Badge>
+            )}
+            {source.payslipMode === 'advanced' && (
+              <Badge variant="secondary" className="text-xs py-0">
+                {t('Detailed payslip', 'תלוש מפורט', lang)}
               </Badge>
             )}
           </div>

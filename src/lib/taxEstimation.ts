@@ -128,9 +128,11 @@ export function estimateTax(source: IncomeSource): TaxBreakdown {
   const r = resolve(source)
   const g = r.gross
 
-  const employerPension     = g * (r.pensionEmployer / 100)
-  const employerEducation   = g * (r.educationFundEmployer / 100)
-  const employerSeverance   = g * (r.severanceEmployer / 100)
+  const pensionBase    = source.pensionBase    ?? g
+  const studyFundBase  = source.studyFundBase  ?? g
+  const employerPension     = pensionBase   * (r.pensionEmployer / 100)
+  const employerEducation   = studyFundBase * (r.educationFundEmployer / 100)
+  const employerSeverance   = g             * (r.severanceEmployer / 100)
   const totalEmployerContrib = employerPension + employerEducation + employerSeverance
 
   // ── Manual override ────────────────────────────────────────────────────────
@@ -181,8 +183,8 @@ export function estimateTax(source: IncomeSource): TaxBreakdown {
     incomeTax = annualTax / 12
   }
 
-  const pensionEmp   = r.useContributions ? g * (r.pensionEmployee / 100) : 0
-  const eduFundEmp   = r.useContributions ? g * (r.educationFundEmployee / 100) : 0
+  const pensionEmp   = r.useContributions ? pensionBase   * (r.pensionEmployee / 100) : 0
+  const eduFundEmp   = r.useContributions ? studyFundBase * (r.educationFundEmployee / 100) : 0
   const totalEmpContrib = pensionEmp + eduFundEmp
 
   const totalDeductions = incomeTax + bituachLeumi + healthTax + totalEmpContrib
@@ -202,5 +204,7 @@ export function estimateTax(source: IncomeSource): TaxBreakdown {
 }
 
 export function getNetMonthly(source: IncomeSource): number {
-  return estimateTax(source).netMonthly
+  const net = estimateTax(source).netMonthly
+  const reimbursements = source.payslipComponents?.nonTaxableReimbursements ?? 0
+  return net + reimbursements
 }
