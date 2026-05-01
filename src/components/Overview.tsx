@@ -124,10 +124,18 @@ export function Overview() {
     () => data.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0),
     [data.expenses]
   )
-  const totalContributions = useMemo(
-    () => data.accounts.reduce((s, a) => s + a.monthlyContribution, 0),
-    [data.accounts]
-  )
+  // Accounts whose contribution is already captured by a linked savings expense
+  // must not be counted again in FCF — that would double-count the same money.
+  const totalContributions = useMemo(() => {
+    const linkedIds = new Set(
+      data.expenses
+        .filter(e => e.linkedAccountId && e.category === 'savings')
+        .map(e => e.linkedAccountId!)
+    )
+    return data.accounts
+      .filter(a => !linkedIds.has(a.id))
+      .reduce((s, a) => s + a.monthlyContribution, 0)
+  }, [data.accounts, data.expenses])
   const freeCashFlow = totalIncome - totalExpenses - totalContributions
   const totalAssets = useMemo(
     () => data.accounts.reduce((s, a) => s + a.balance, 0),

@@ -7,6 +7,23 @@ import { supabaseConfigured } from '@/lib/supabase'
 
 const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
+/**
+ * Returns the total monthly savings contributions from accounts that are NOT
+ * already covered by a linked savings expense in `expenses`.
+ * Accounts linked via expense.linkedAccountId have their amount counted inside
+ * totalExpenses, so they must not be added again to avoid double-counting FCF.
+ */
+function getUnlinkedContributions(accounts: SavingsAccount[], expenses: Expense[]): number {
+  const linkedIds = new Set(
+    expenses
+      .filter(e => e.linkedAccountId && e.category === 'savings')
+      .map(e => e.linkedAccountId!)
+  )
+  return accounts
+    .filter(a => !linkedIds.has(a.id))
+    .reduce((s, a) => s + a.monthlyContribution, 0)
+}
+
 const defaultData: FinanceData = {
   members: [],
   expenses: [],
@@ -326,7 +343,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     setData((d) => {
       const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
-      const totalSavings  = d.accounts.reduce((s, a) => s + a.monthlyContribution, 0)
+      const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
       const label         = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
       // Pre-populate category actuals with planned amounts at snapshot time.
@@ -366,7 +383,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
       const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
-      const totalSavings  = d.accounts.reduce((s, a) => s + a.monthlyContribution, 0)
+      const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
 
       const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
       d.expenses.forEach((e) => {
