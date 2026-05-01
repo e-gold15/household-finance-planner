@@ -87,11 +87,17 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
     // Always update the last-seen key regardless of whether we show the prompt
     localStorage.setItem(LAST_SEEN_KEY, current)
 
-    // Only show when:
-    //   1. The stored month differs from the current month (first open of a new month)
-    //   2. There is no snapshot for the previous month yet
-    if (stored && stored !== current && !hasPrevMonthSnapshot(data.history)) {
-      setOpen(true)
+    if (stored && stored !== current) {
+      // First open of a new month — always clear variable expenses immediately,
+      // unconditionally. This happens whether or not the snapshot prompt is shown
+      // and regardless of whether the user clicks "Snapshot" or "Skip".
+      clearVariableExpenses()
+
+      // Show the snapshot prompt only when there is no snapshot for the previous
+      // month yet — the user can still skip it without affecting the clearing.
+      if (!hasPrevMonthSnapshot(data.history)) {
+        setOpen(true)
+      }
     }
   // Run only once on mount — data.history checked at mount time intentionally
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,7 +107,6 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
 
   const handleSnapshot = () => {
     snapshotPreviousMonth()
-    clearVariableExpenses()
     setOpen(false)
     toast.success(
       t(`Snapshot saved for ${monthLabel}`, `תמונת מצב נשמרה עבור ${monthLabel}`, lang)
@@ -125,8 +130,8 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
         </p>
         <p className="text-xs text-muted-foreground mt-2">
           {t(
-            'Variable expenses will be cleared so the new month starts fresh. Fixed expenses are kept.',
-            'הוצאות משתנות יימחקו כדי שהחודש החדש יתחיל נקי. הוצאות קבועות נשמרות.',
+            'Variable expenses have been cleared so the new month starts fresh. Fixed expenses are kept.',
+            'הוצאות משתנות נמחקו כדי שהחודש החדש יתחיל נקי. הוצאות קבועות נשמרות.',
             lang
           )}
         </p>
