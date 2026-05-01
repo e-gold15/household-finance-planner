@@ -133,7 +133,7 @@ export function Overview() {
         .map(e => e.linkedAccountId!)
     )
     return data.accounts
-      .filter(a => !linkedIds.has(a.id))
+      .filter(a => !linkedIds.has(a.id) && !a.deductedFromSalary)
       .reduce((s, a) => s + a.monthlyContribution, 0)
   }, [data.accounts, data.expenses])
   const freeCashFlow = totalIncome - totalExpenses - totalContributions

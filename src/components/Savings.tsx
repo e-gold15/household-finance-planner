@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 import { Badge } from './ui/badge'
+import { Switch } from './ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
@@ -50,13 +51,14 @@ function AccountDialog({
       liquidity: 'immediate',
       annualReturnPercent: 0,
       monthlyContribution: 0,
+      deductedFromSalary: false,
     }
   )
   const set = <K extends keyof SavingsAccount>(k: K, v: SavingsAccount[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   useEffect(() => {
     if (open && !existing) {
-      setForm({ id: generateId(), name: '', type: 'checking', balance: 0, liquidity: 'immediate', annualReturnPercent: 0, monthlyContribution: 0 })
+      setForm({ id: generateId(), name: '', type: 'checking', balance: 0, liquidity: 'immediate', annualReturnPercent: 0, monthlyContribution: 0, deductedFromSalary: false })
     }
   }, [open, existing])
 
@@ -119,6 +121,16 @@ function AccountDialog({
               <Input id="acct-contrib" type="number" value={form.monthlyContribution} onChange={(e) => set('monthlyContribution', +e.target.value)} />
             </div>
           </div>
+          <div className="flex items-center gap-3 min-h-[44px] rounded-md border px-3 py-2 bg-muted/30">
+            <Switch
+              id="acct-deducted"
+              checked={!!form.deductedFromSalary}
+              onCheckedChange={(checked) => set('deductedFromSalary', checked)}
+            />
+            <Label htmlFor="acct-deducted" className="cursor-pointer leading-snug">
+              {t('Deducted from salary (e.g. pension, study fund)', 'מנוכה מהשכר (למשל פנסיה, קרן השתלמות)', lang)}
+            </Label>
+          </div>
           <Button className="w-full" onClick={() => { onSave(form); setOpen(false) }}>
             {t('Save', 'שמור', lang)}
           </Button>
@@ -158,6 +170,11 @@ export function Savings() {
             <p className="text-xs text-muted-foreground mt-0.5">
               +{formatCurrency(account.monthlyContribution, data.currency, data.locale)}/mo
             </p>
+          )}
+          {account.deductedFromSalary && (
+            <Badge variant="secondary" className="text-xs py-0 mt-0.5">
+              {t('Salary deducted', 'מנוכה מהשכר', lang)}
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-1">

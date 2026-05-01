@@ -99,6 +99,13 @@ export interface SavingsAccount {
   liquidity: Liquidity
   annualReturnPercent: number
   monthlyContribution: number
+  /**
+   * When true, this account's contributions are already deducted from gross salary
+   * before the net income figure the user enters (e.g. קרן השתלמות / study fund).
+   * Such accounts must NOT be subtracted again from FCF — doing so would double-count.
+   * Optional for backward compatibility — treat absence as false.
+   */
+  deductedFromSalary?: boolean
 }
 
 export type GoalPriority = 'high' | 'medium' | 'low'

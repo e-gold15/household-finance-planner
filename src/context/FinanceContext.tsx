@@ -20,7 +20,7 @@ function getUnlinkedContributions(accounts: SavingsAccount[], expenses: Expense[
       .map(e => e.linkedAccountId!)
   )
   return accounts
-    .filter(a => !linkedIds.has(a.id))
+    .filter(a => !linkedIds.has(a.id) && !a.deductedFromSalary)
     .reduce((s, a) => s + a.monthlyContribution, 0)
 }
 
