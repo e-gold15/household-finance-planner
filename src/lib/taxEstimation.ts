@@ -205,6 +205,13 @@ export function estimateTax(source: IncomeSource): TaxBreakdown {
 
 export function getNetMonthly(source: IncomeSource): number {
   const net = estimateTax(source).netMonthly
-  const reimbursements = source.payslipComponents?.nonTaxableReimbursements ?? 0
-  return net + reimbursements
+  const components = source.payslipComponents
+  // Imputed income (שווי מס) is added to taxable gross so the tax engine computes
+  // the correct tax, but it is never paid as cash. Subtract it from net so the
+  // take-home figure reflects only real money received.
+  const imputedIncome = components?.imputedIncome ?? 0
+  // Non-taxable reimbursements (e.g. travel) are real cash but were excluded from
+  // the taxable gross, so add them back to net.
+  const reimbursements = components?.nonTaxableReimbursements ?? 0
+  return net - imputedIncome + reimbursements
 }

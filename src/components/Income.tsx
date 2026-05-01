@@ -205,7 +205,9 @@ function PayslipAdvanced({
   const empPension    = ((form.pensionEmployer ?? 6.5) / 100) * pensionBase
   const empStudy      = ((form.educationFundEmployer ?? 7.5) / 100) * studyBase
   const empSeverance  = ((form.severanceEmployer ?? 8.33) / 100) * pensionBase
-  const totalEmpCost  = taxableGross + empPension + empStudy + empSeverance
+  // Employer cost gross = pensionBase (the insured salary, per spec).
+  // Pension, study fund and severance contributions are all based on their respective bases.
+  const totalEmpCost  = pensionBase + empPension + empStudy + empSeverance
 
   const PAYSLIP_FIELDS: Array<{
     key: keyof PayslipComponents
@@ -348,8 +350,8 @@ function PayslipAdvanced({
 
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">{t('Gross salary', 'שכר ברוטו', lang)}</span>
-              <span className="font-semibold">{fmt(taxableGross)}</span>
+              <span className="text-muted-foreground">{t('Gross salary (pension base)', 'שכר ברוטו (בסיס פנסיה)', lang)}</span>
+              <span className="font-semibold">{fmt(pensionBase)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">
