@@ -7,6 +7,20 @@ At the start of each session, declare which role you are acting as.
 
 ---
 
+## ⚠️ Mandatory: Product Spec Before Any Development
+
+**No development may begin before a clear product specification is written.**
+
+For every new feature or change — no matter how small — the flow is:
+
+1. **Product Agent first** — use the Product Manager role to write a full feature spec (problem, proposed solution, acceptance criteria, out of scope, success metric).
+2. **Review the spec** — confirm the spec captures the intent before any code is written.
+3. **Then implement** — spawn the relevant developer/QA/UX agents only after the spec is approved.
+
+This rule applies to all agents. If an agent receives an implementation request without a spec, it must write the spec first and ask for confirmation before touching any code.
+
+---
+
 ## Project Context
 
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui + Recharts
@@ -16,7 +30,7 @@ At the start of each session, declare which role you are acting as.
 - **Live URL:** https://household-finance-planner.com
 - **Repo:** https://github.com/e-gold15/household-finance-planner
 - **Deploy:** Vercel — auto-deploys on push to `main`
-- **Tests:** Vitest — `npm test` (300 tests, must stay green)
+- **Tests:** Vitest — `npm test` (395 tests, must stay green)
 - **i18n:** Every string uses `t(en, he, lang)` — no hardcoded English in JSX
 
 ---
