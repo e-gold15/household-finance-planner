@@ -483,10 +483,8 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       return { ...d, history: [...d.history, snapshot] }
     })
 
-  // Run once per household AFTER cloud sync completes.
-  // Using isLoading as the trigger ensures we don't race with mergeFinanceData
-  // overwriting history (cloud wins on history, so the snapshot must be created
-  // after the merged data is in state, not before).
+  // Seed the auto-snapshot once after cloud sync completes (avoids race with
+  // mergeFinanceData which gives cloud priority on history).
   const hasAutoSnapshotted = useRef(false)
   useEffect(() => {
     hasAutoSnapshotted.current = false
@@ -498,6 +496,15 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     autoSnapshotCurrentMonth()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading])
+
+  // Keep the live auto-snapshot in sync whenever expenses, members, or accounts
+  // change during the session. We intentionally exclude data.history from deps
+  // to avoid an infinite loop (autoSnapshotCurrentMonth only writes to history).
+  useEffect(() => {
+    if (isLoading) return
+    autoSnapshotCurrentMonth()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.expenses, data.members, data.accounts])
 
   const clearVariableExpenses = () =>
     setData((d) => ({
