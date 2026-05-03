@@ -458,9 +458,9 @@ How will we know this feature is working?
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
 
-**Later (v3)**
+**Later (v4)**
 - [ ] Bank statement CSV import
-- [ ] Mobile PWA / install to home screen
+- [ ] Mobile PWA / install to home screen — spec written in PRODUCT_DESIGN.md §28 (v4.0)
 - [ ] Multi-currency conversion (live rates)
 - [ ] Recurring expense reminders
 

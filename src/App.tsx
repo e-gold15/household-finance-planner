@@ -12,6 +12,8 @@ import { Savings } from './components/Savings'
 import { Goals } from './components/Goals'
 import { History as HistoryTab } from './components/History'
 import { Members } from './components/Members'
+import { PWAInstallBanner } from './components/PWAInstallBanner'
+import { IOSInstallTooltip } from './components/IOSInstallTooltip'
 import { t } from './lib/utils'
 import { cn } from './lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog'
@@ -197,6 +199,8 @@ function AppShell() {
       <Header />
       <main className="max-w-4xl mx-auto px-4 py-6">
         {justJoined && <JoinedHouseholdBanner lang={lang} />}
+        <PWAInstallBanner lang={lang} />
+        <IOSInstallTooltip lang={lang} />
         <nav className="flex gap-1 mb-6 overflow-x-auto pb-1">
           {TABS.map(({ id, icon: Icon, en, he }) => (
             <button

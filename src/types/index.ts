@@ -18,7 +18,7 @@ export interface PayslipComponents {
   /** החזרים — non-taxable reimbursements (travel, meals). Added to net after tax. */
   nonTaxableReimbursements: number
 }
-export type Currency = 'ILS' | 'USD' | 'GBP' | 'EUR' | 'CAD'
+export type Currency = 'ILS' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | 'AUD'
 export type Locale = 'he-IL' | 'en-US' | 'en-GB' | 'de-DE' | 'fr-FR' | 'en-CA'
 export type IncomeSourceType = 'salary' | 'freelance' | 'business' | 'rental' | 'investment' | 'pension' | 'other'
 
@@ -60,6 +60,14 @@ export interface IncomeSource {
    * Absent = use gross (existing behaviour).
    */
   studyFundBase?: number
+  /**
+   * ISO 4217 currency code for this income source.
+   * When absent or equal to FinanceData.currency, no conversion is needed.
+   * When present and different, the amount is converted to the household
+   * currency using the daily exchange rate before being included in totals.
+   * amount is always stored in sourceCurrency — never converted at write time.
+   */
+  sourceCurrency?: Currency
 }
 
 export interface HouseholdMember {

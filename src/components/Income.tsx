@@ -15,7 +15,16 @@ import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { estimateTax, getNetMonthly, type TaxBreakdown } from '@/lib/taxEstimation'
 import { formatCurrency, generateId, t } from '@/lib/utils'
-import type { Country, IncomeSource, IncomeSourceType, HouseholdMember, PayslipComponents } from '@/types'
+import type { Country, Currency, IncomeSource, IncomeSourceType, HouseholdMember, PayslipComponents } from '@/types'
+import { convertAmount, formatRateNote } from '@/lib/fxRates'
+
+// ── Currency helpers ──────────────────────────────────────────────────────────
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  ILS: '₪', USD: '$', EUR: '€', GBP: '£',
+  JPY: '¥', CHF: 'Fr', CAD: 'CA$', AUD: 'A$',
+}
+const CURRENCIES = ['ILS', 'USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'] as const
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -385,7 +394,7 @@ function PayslipAdvanced({
 // ── SourceDialog ──────────────────────────────────────────────────────────────
 
 function SourceDialog({
-  memberId, existing, onSave, lang, currency, locale,
+  memberId, existing, onSave, lang, currency, locale, fxRates,
 }: {
   memberId: string
   existing?: IncomeSource
@@ -393,12 +402,14 @@ function SourceDialog({
   lang: 'en' | 'he'
   currency: string
   locale: string
+  fxRates: import('@/lib/fxRates').FxRateCache | null
 }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<IncomeSource>(() => ({
     ...DEFAULT_SOURCE,
     ...existing,
     id: existing?.id ?? generateId(),
+    sourceCurrency: existing?.sourceCurrency ?? undefined,
   }))
 
   const set = <K extends keyof IncomeSource>(k: K, v: IncomeSource[K]) =>
@@ -415,7 +426,7 @@ function SourceDialog({
     (!form.useManualNet || (form.manualNetOverride != null && form.manualNetOverride > 0))
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ ...DEFAULT_SOURCE, ...existing, id: existing?.id ?? generateId() })
+    if (v) setForm({ ...DEFAULT_SOURCE, ...existing, id: existing?.id ?? generateId(), sourceCurrency: existing?.sourceCurrency ?? undefined })
     setOpen(v)
   }
 
@@ -588,6 +599,37 @@ function SourceDialog({
                   </SelectContent>
                 </Select>
               </FieldRow>
+
+              {/* Currency selector — non-IL income */}
+              {form.country !== 'IL' && (
+                <div>
+                  <Label>{t('Currency', 'מטבע', lang)}</Label>
+                  <Select
+                    value={form.sourceCurrency ?? (currency as Currency)}
+                    onValueChange={(v) => set('sourceCurrency', v as Currency)}
+                  >
+                    <SelectTrigger className="min-h-[44px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {CURRENCY_SYMBOLS[c]} {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(form.sourceCurrency && form.sourceCurrency !== (currency as Currency)) && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t(
+                        `Amount in ${form.sourceCurrency}. Converted to ${currency} using today's rate.`,
+                        `סכום ב-${form.sourceCurrency}. מומר ל-${currency} לפי שער היום.`,
+                        lang,
+                      )}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* IL-specific fields */}
               {form.country === 'IL' && (
@@ -787,7 +829,7 @@ function TaxBreakdownExpander({
 // ── SourceCard ────────────────────────────────────────────────────────────────
 
 function SourceCard({
-  source, member, onDelete, lang, currency, locale, onSave,
+  source, member, onDelete, lang, currency, locale, onSave, fxRates,
 }: {
   source: IncomeSource
   member: HouseholdMember
@@ -796,6 +838,7 @@ function SourceCard({
   currency: string
   locale: string
   onSave: (memberId: string, src: IncomeSource) => void
+  fxRates: import('@/lib/fxRates').FxRateCache | null
 }) {
   const bd = useMemo(() => estimateTax(source), [source])
   const fmt = (v: number) => formatCurrency(v, currency as any, locale as any)
@@ -845,6 +888,30 @@ function SourceCard({
           )}
           <p className="font-semibold text-primary tabular-nums">{fmt(bd.netMonthly)}</p>
           <p className="text-xs text-muted-foreground">{t('/mo net', '/חודש נטו', lang)}</p>
+          {(() => {
+            const src = source.sourceCurrency
+            if (!src || src === (currency as Currency)) return null
+            const converted = convertAmount(getNetMonthly(source), src, currency as Currency, fxRates)
+            const rateNote = formatRateNote(src, currency as Currency, fxRates, lang)
+            const sym = CURRENCY_SYMBOLS[src] ?? src
+            return (
+              <div className="text-xs text-muted-foreground mt-0.5 space-y-0.5">
+                <span>
+                  {sym}{source.amount.toLocaleString(locale)} {src} → {formatCurrency(converted ?? 0, currency as Currency, locale as never)}/mo
+                </span>
+                {rateNote && (
+                  <div className={fxRates?.isEstimated ? 'text-warning' : ''}>
+                    {rateNote}
+                  </div>
+                )}
+                {converted === null && (
+                  <Badge variant="destructive" className="text-xs">
+                    {t('Rate unavailable', 'שער לא זמין', lang)}
+                  </Badge>
+                )}
+              </div>
+            )
+          })()}
         </div>
       </div>
 
@@ -860,6 +927,7 @@ function SourceCard({
           lang={lang}
           currency={currency}
           locale={locale}
+          fxRates={fxRates}
         />
         <AlertDialog>
           <AlertDialogTrigger asChild>
@@ -1191,7 +1259,7 @@ function AddIncomeDialog({
 // ── Income Tab ────────────────────────────────────────────────────────────────
 
 export function Income() {
-  const { data, addMember, updateMember, deleteMember } = useFinance()
+  const { data, fxRates, addMember, updateMember, deleteMember } = useFinance()
   const lang = data.language
   const [addMemberName, setAddMemberName] = useState('')
   const [memberOpen, setMemberOpen] = useState(false)
@@ -1333,6 +1401,7 @@ export function Income() {
                     currency={data.currency}
                     locale={data.locale}
                     onSave={handleSaveSource}
+                    fxRates={fxRates}
                   />
                 ))}
                 <SourceDialog
@@ -1341,6 +1410,7 @@ export function Income() {
                   lang={lang}
                   currency={data.currency}
                   locale={data.locale}
+                  fxRates={fxRates}
                 />
               </CardContent>
             </Card>

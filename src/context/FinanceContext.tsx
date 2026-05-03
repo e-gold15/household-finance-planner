@@ -4,6 +4,8 @@ import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
 import { supabaseConfigured } from '@/lib/supabase'
+import { getRates } from '@/lib/fxRates'
+import type { FxRateCache } from '@/lib/fxRates'
 
 const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -89,6 +91,8 @@ interface FinanceContextType {
    * empty-state UI while this is true.
    */
   isLoading: boolean
+  /** Daily FX rate cache for multi-currency income conversion. Null when no foreign sources exist. */
+  fxRates: FxRateCache | null
   setData: (updater: (prev: FinanceData) => FinanceData) => void
   addMember: (name: string) => void
   updateMember: (member: HouseholdMember) => void
@@ -151,6 +155,19 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
   // If true, the background cloud fetch must NOT overwrite their edits.
   const hasLocalEditRef  = useRef(false)
   const pushTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── FX rates — fetched when any income source uses a foreign currency ──────
+  const [fxRates, setFxRates] = useState<FxRateCache | null>(null)
+
+  useEffect(() => {
+    const hasForeignSource = data.members.some(m =>
+      m.sources.some(s => s.sourceCurrency && s.sourceCurrency !== data.currency)
+    )
+    if (!hasForeignSource) return
+    getRates(data.currency).then(cache => {
+      if (cache) setFxRates(cache)
+    })
+  }, [data.currency]) // re-fetch when household currency changes
 
   // ── Cloud sync: fetch on mount ─────────────────────────────────────────────
   //
@@ -711,7 +728,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
   return (
     <FinanceContext.Provider value={{
-      data, isLoading, setData,
+      data, isLoading, fxRates, setData,
       addMember, updateMember, deleteMember,
       addExpense, updateExpense, deleteExpense,
       addAccount, updateAccount, deleteAccount,
