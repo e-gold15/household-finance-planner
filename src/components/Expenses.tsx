@@ -108,6 +108,8 @@ function ExpenseDialog({
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null }
     if (o && existing) setForm(existing)
     if (o) {
+      setScanError(null)
+      setScanning(false)
       setMode('budget')
       setSavedLabel(null)
       // default to previous month
@@ -208,6 +210,7 @@ function ExpenseDialog({
                   ref={fileInputRef}
                   type="file"
                   accept="image/*,application/pdf"
+                  capture="environment"
                   className="hidden"
                   aria-hidden="true"
                   onChange={handleReceiptFile}
