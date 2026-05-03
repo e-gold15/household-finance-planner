@@ -420,6 +420,12 @@ function HistoricalIncomeDialog({
 
 // ── Main History component ────────────────────────────────────────────────────
 
+const isCurrentMonth = (s: MonthSnapshot) => {
+  const now = new Date()
+  const d = new Date(s.date)
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+}
+
 export function History() {
   const { data, snapshotMonth, setData, deleteHistoricalExpense, deleteHistoricalIncome } = useFinance()
   const lang = data.language
@@ -460,10 +466,12 @@ export function History() {
           {data.history.length} {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
         </p>
         <div className="flex flex-col items-end gap-2">
-          <Button size="sm" onClick={handleSnapshot}>
-            <Camera className="h-4 w-4 me-1" />
-            {t('Snapshot This Month', 'צלם חודש זה', lang)}
-          </Button>
+          {!data.history.some(s => s.autoSnapshot && isCurrentMonth(s)) && (
+            <Button size="sm" onClick={handleSnapshot}>
+              <Camera className="h-4 w-4 me-1" />
+              {t('Snapshot This Month', 'צלם חודש זה', lang)}
+            </Button>
+          )}
           {showDuplicateWarning && (
             <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 rounded-md px-3 py-2">
               <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -508,7 +516,15 @@ export function History() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold truncate">{snap.label}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold truncate">{snap.label}</p>
+                          {snap.autoSnapshot && isCurrentMonth(snap) && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                              {t('Live', 'חי', lang)}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">{new Date(snap.date).toLocaleDateString(data.locale)}</p>
                         {snap.totalIncome === 0 && snap.totalExpenses > 0 && (
                           <p className="text-xs text-muted-foreground/70 italic mt-0.5">

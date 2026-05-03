@@ -227,6 +227,15 @@ export interface MonthSnapshot {
     destinationId: string
     destinationName: string
   }>
+  /**
+   * When true, this snapshot was auto-created by the app on load.
+   * Auto-snapshots are refreshed every load; manual snapshots are never touched.
+   */
+  autoSnapshot?: boolean
+  /**
+   * ISO timestamp of when the auto-snapshot was last refreshed.
+   */
+  autoSnapshotUpdatedAt?: string
 }
 
 export interface FinanceData {

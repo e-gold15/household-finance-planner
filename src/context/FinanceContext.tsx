@@ -109,6 +109,7 @@ interface FinanceContextType {
   moveGoal: (id: string, direction: 'up' | 'down') => void
   snapshotMonth: () => void
   snapshotPreviousMonth: () => void
+  autoSnapshotCurrentMonth: () => void
   /** Remove all variable (non-fixed) expenses from the live budget. Used at month rollover. */
   clearVariableExpenses: () => void
   exportData: () => void
@@ -420,6 +421,71 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }
       return { ...d, history: [...d.history, snapshot] }
     })
+
+  const autoSnapshotCurrentMonth = () =>
+    setData((d) => {
+      const now = new Date()
+      const currentYear  = now.getFullYear()
+      const currentMonth = now.getMonth() + 1   // 1-indexed
+
+      const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
+      const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
+      const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
+      const label         = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      const autoSnapshotUpdatedAt = now.toISOString()
+
+      const categoryActuals: Partial<Record<ExpenseCategory, number>> = {}
+      d.expenses.forEach((e) => {
+        const monthly = e.period === 'yearly' ? e.amount / 12 : e.amount
+        categoryActuals[e.category] = (categoryActuals[e.category] ?? 0) + monthly
+      })
+
+      const existingIdx = d.history.findIndex((h) => {
+        const hDate = new Date(h.date)
+        return hDate.getFullYear() === currentYear && hDate.getMonth() + 1 === currentMonth
+      })
+
+      if (existingIdx !== -1) {
+        const existing = d.history[existingIdx]
+
+        // Manual snapshot — never overwrite
+        if (!existing.autoSnapshot) return d
+
+        // Auto-snapshot — refresh computed totals, preserve all user-edited fields
+        const updated: MonthSnapshot = {
+          ...existing,
+          totalIncome,
+          totalExpenses,
+          totalSavings,
+          freeCashFlow: totalIncome - totalExpenses - totalSavings,
+          categoryActuals,
+          autoSnapshotUpdatedAt,
+        }
+        return {
+          ...d,
+          history: d.history.map((h, i) => i === existingIdx ? updated : h),
+        }
+      }
+
+      // No snapshot yet for this month — create a new auto-snapshot
+      const snapshot: MonthSnapshot = {
+        id: generateId(),
+        label,
+        date: now.toISOString(),
+        totalIncome,
+        totalExpenses,
+        totalSavings,
+        freeCashFlow: totalIncome - totalExpenses - totalSavings,
+        categoryActuals,
+        autoSnapshot: true,
+        autoSnapshotUpdatedAt,
+      }
+      return { ...d, history: [...d.history, snapshot] }
+    })
+
+  // Run once on mount (per household) to seed/refresh the current-month auto-snapshot.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { autoSnapshotCurrentMonth() }, [])
 
   const clearVariableExpenses = () =>
     setData((d) => ({
@@ -733,7 +799,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addExpense, updateExpense, deleteExpense,
       addAccount, updateAccount, deleteAccount,
       addGoal, updateGoal, deleteGoal, moveGoal,
-      snapshotMonth, snapshotPreviousMonth, clearVariableExpenses, exportData, importData,
+      snapshotMonth, snapshotPreviousMonth, autoSnapshotCurrentMonth, clearVariableExpenses, exportData, importData,
       updateCategoryBudget, updateSnapshotActuals,
       addHistoricalExpense, deleteHistoricalExpense, updateHistoricalExpense,
       addExpenseToMonth,
