@@ -1,13 +1,13 @@
 /**
- * Tests for receipt scan response parsing (v3.2).
+ * Tests for receipt scan response parsing (v3.2, updated v3.3 for Gemini).
  *
  * The `scanReceipt` function makes a live API call, so we test the
  * pure parsing/validation logic that runs on the API response.
  * All tests are self-contained with no network calls.
  *
- * Architecture (v3.2):
- *   Both images AND PDFs → single fetch to /v1/messages with inline base64.
- *   No Files API upload step — avoids CORS preflight issues in the browser.
+ * Architecture (v3.3):
+ *   Both images AND PDFs → single fetch to Gemini generateContent with inline base64.
+ *   No upload step — avoids CORS preflight issues in the browser.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { scanReceipt } from '@/lib/aiAdvisor'
@@ -157,75 +157,73 @@ describe('parseReceiptResponse()', () => {
   })
 })
 
-// ─── scanReceipt() — integration tests ───────────────────────────────────────
-//
-// Architecture (v3.2): single fetch to /v1/messages for both images and PDFs.
-// PDFs use an inline base64 "document" block — no Files API upload step.
+// ─── scanReceipt() — integration tests (Gemini API) ──────────────────────────
 
-function mockSingleFetch(mockFetch: ReturnType<typeof vi.fn>, claudeJson: string) {
+const GEMINI_URL_PREFIX = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+
+function mockGeminiFetch(mockFetch: ReturnType<typeof vi.fn>, responseText: string) {
   mockFetch.mockResolvedValueOnce({
     ok: true,
-    json: async () => ({ content: [{ text: claudeJson }] }),
+    json: async () => ({
+      candidates: [{ content: { parts: [{ text: responseText }] } }],
+    }),
   })
 }
 
-describe('scanReceipt() — image path (inline base64, single fetch)', () => {
+describe('scanReceipt() — image path (Gemini inline base64)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    vi.stubEnv('VITE_ANTHROPIC_API_KEY', 'test-key')
+    vi.stubEnv('VITE_GEMINI_API_KEY', 'test-key')
   })
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
   it('makes exactly one fetch call for images', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     await scanReceipt('base64data', 'image/jpeg', 'en')
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
-  it('sends image request directly to /v1/messages', async () => {
+  it('sends request to Gemini generateContent endpoint', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     await scanReceipt('base64data', 'image/jpeg', 'en')
-    expect(mockFetch.mock.calls[0][0]).toBe('https://api.anthropic.com/v1/messages')
+    expect(mockFetch.mock.calls[0][0]).toContain(GEMINI_URL_PREFIX)
   })
 
-  it('image message does NOT include beta header', async () => {
+  it('includes API key in URL query param', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     await scanReceipt('base64data', 'image/jpeg', 'en')
-    const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
-    expect(headers['anthropic-beta']).toBeUndefined()
+    expect(mockFetch.mock.calls[0][0]).toContain('key=test-key')
   })
 
-  it('image content block uses inline base64 source', async () => {
+  it('sends image as inline_data in contents.parts', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     await scanReceipt('base64data', 'image/jpeg', 'en')
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
-    const block = body.messages[0].content[0]
-    expect(block.type).toBe('image')
-    expect(block.source.type).toBe('base64')
-    expect(block.source.media_type).toBe('image/jpeg')
-    expect(block.source.data).toBe('base64data')
+    const part = body.contents[0].parts[0]
+    expect(part.inline_data.mime_type).toBe('image/jpeg')
+    expect(part.inline_data.data).toBe('base64data')
   })
 
   it('normalises unsupported mime types (e.g. heic) to image/jpeg', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Photo","amount":50,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Photo","amount":50,"category":"food"}')
     await scanReceipt('base64data', 'image/heic', 'en')
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
-    expect(body.messages[0].content[0].source.media_type).toBe('image/jpeg')
+    expect(body.contents[0].parts[0].inline_data.mime_type).toBe('image/jpeg')
   })
 
   it('returns parsed name, amount, category for image', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Shufersal","amount":153.5,"category":"food"}')
     const result = await scanReceipt('base64data', 'image/jpeg', 'en')
     expect(result).toEqual({ name: 'Shufersal', amount: 153.5, category: 'food' })
   })
 
-  it('throws if messages request fails', async () => {
+  it('throws if request fails', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch.mockResolvedValueOnce({
       ok: false, status: 400,
@@ -235,55 +233,38 @@ describe('scanReceipt() — image path (inline base64, single fetch)', () => {
   })
 })
 
-describe('scanReceipt() — PDF path (inline base64, single fetch)', () => {
+describe('scanReceipt() — PDF path (Gemini inline base64)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    vi.stubEnv('VITE_ANTHROPIC_API_KEY', 'test-key')
+    vi.stubEnv('VITE_GEMINI_API_KEY', 'test-key')
   })
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
 
-  it('makes exactly ONE fetch call for PDFs (no Files API upload)', async () => {
+  it('makes exactly ONE fetch call for PDFs', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
+    mockGeminiFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
     await scanReceipt('base64data', 'application/pdf', 'en')
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
 
-  it('sends PDF request to /v1/messages (not /v1/files)', async () => {
+  it('sends PDF as inline_data with application/pdf mime type', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
-    await scanReceipt('base64data', 'application/pdf', 'en')
-    expect(mockFetch.mock.calls[0][0]).toBe('https://api.anthropic.com/v1/messages')
-  })
-
-  it('PDF message does NOT include beta header (inline base64, no Files API)', async () => {
-    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
-    await scanReceipt('base64data', 'application/pdf', 'en')
-    const headers = mockFetch.mock.calls[0][1].headers as Record<string, string>
-    expect(headers['anthropic-beta']).toBeUndefined()
-  })
-
-  it('PDF content block uses "document" type with inline base64 source', async () => {
-    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
+    mockGeminiFetch(mockFetch, '{"name":"Receipt","amount":200,"category":"utilities"}')
     await scanReceipt('base64data', 'application/pdf', 'en')
     const body = JSON.parse(mockFetch.mock.calls[0][1].body as string)
-    const block = body.messages[0].content[0]
-    expect(block.type).toBe('document')
-    expect(block.source.type).toBe('base64')
-    expect(block.source.media_type).toBe('application/pdf')
-    expect(block.source.data).toBe('base64data')
+    const part = body.contents[0].parts[0]
+    expect(part.inline_data.mime_type).toBe('application/pdf')
+    expect(part.inline_data.data).toBe('base64data')
   })
 
   it('returns parsed name, amount, category for PDF', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
-    mockSingleFetch(mockFetch, '{"name":"Carrefour City","amount":57.57,"category":"food"}')
+    mockGeminiFetch(mockFetch, '{"name":"Carrefour City","amount":57.57,"category":"food"}')
     const result = await scanReceipt('base64data', 'application/pdf', 'en')
     expect(result).toEqual({ name: 'Carrefour City', amount: 57.57, category: 'food' })
   })
 
-  it('throws if PDF messages request fails', async () => {
+  it('throws if PDF request fails', async () => {
     const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
     mockFetch.mockResolvedValueOnce({
       ok: false, status: 400,
