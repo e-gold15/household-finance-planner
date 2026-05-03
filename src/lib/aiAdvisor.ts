@@ -122,7 +122,7 @@ export interface ReceiptScanResult {
 
 const VALID_CATEGORIES = [
   'housing', 'food', 'transport', 'education', 'leisure',
-  'health', 'utilities', 'clothing', 'insurance', 'savings', 'other',
+  'health', 'utilities', 'clothing', 'insurance', 'savings', 'work', 'other',
 ] as const
 
 const RECEIPT_PROMPT = (lang: 'en' | 'he') => `You are a receipt parser. Look at this receipt and extract the following fields.
@@ -130,13 +130,13 @@ Return ONLY a JSON object with exactly these keys — no markdown, no explanatio
 {
   "name": "<merchant or store name, max 40 chars>",
   "amount": <total amount as a number, no currency symbol>,
-  "category": "<one of: housing, food, transport, education, leisure, health, utilities, clothing, insurance, savings, other>"
+  "category": "<one of: housing, food, transport, education, leisure, health, utilities, clothing, insurance, savings, work, other>"
 }
 
 Rules:
 - "amount" must be the final total paid (including tax), as a plain number.
 - "category" must be exactly one of the listed values.
-- Supermarket/restaurant → "food". Gas station → "transport". Pharmacy/clinic → "health". Clothing store → "clothing". Utility bill → "utilities". Rent/mortgage → "housing". School/course → "education". Cinema/entertainment → "leisure". Insurance → "insurance". Bank/savings → "savings". Anything else → "other".
+- Supermarket/restaurant → "food". Gas station → "transport". Pharmacy/clinic → "health". Clothing store → "clothing". Utility bill → "utilities". Rent/mortgage → "housing". School/course → "education". Cinema/entertainment → "leisure". Insurance → "insurance". Bank/savings → "savings". Work tools/office supplies/professional expenses → "work". Anything else → "other".
 - If you cannot read the amount, use 0.
 - If you cannot read the merchant name, use "Receipt".
 ${lang === 'he' ? '- Keep merchant names in their original language as printed on the receipt.' : '- Keep merchant names in their original language as printed on the receipt.'}`

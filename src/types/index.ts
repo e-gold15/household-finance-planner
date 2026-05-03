@@ -87,6 +87,7 @@ export type ExpenseCategory =
   | 'clothing'
   | 'insurance'
   | 'savings'
+  | 'work'
   | 'other'
 
 export interface Expense {

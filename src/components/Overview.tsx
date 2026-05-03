@@ -52,6 +52,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, { en: string; he: string }> = {
   clothing:  { en: 'Clothing',  he: 'ביגוד' },
   insurance: { en: 'Insurance', he: 'ביטוח' },
   savings:   { en: 'Savings',   he: 'חיסכון' },
+  work:      { en: 'Work',      he: 'עבודה' },
   other:     { en: 'Other',     he: 'אחר' },
 }
 
