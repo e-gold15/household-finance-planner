@@ -448,10 +448,10 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       if (existingIdx !== -1) {
         const existing = d.history[existingIdx]
 
-        // Manual snapshot — never overwrite
-        if (!existing.autoSnapshot) return d
-
-        // Auto-snapshot — refresh computed totals, preserve all user-edited fields
+        // Current month is always live — refresh totals regardless of whether
+        // it was manually or automatically created. Past months with no
+        // autoSnapshot flag are left alone (protected manual history).
+        // Preserve all user-edited fields (historicalExpenses, surplusActioned, etc.)
         const updated: MonthSnapshot = {
           ...existing,
           totalIncome,
@@ -459,6 +459,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
           totalSavings,
           freeCashFlow: totalIncome - totalExpenses - totalSavings,
           categoryActuals,
+          autoSnapshot: true,
           autoSnapshotUpdatedAt,
         }
         return {
