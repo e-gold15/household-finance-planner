@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2 } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -506,7 +506,8 @@ function BudgetEditor({
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
 
-  const startEdit = () => {
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
     setValue(budget?.toString() ?? '')
     setEditing(true)
   }
@@ -524,6 +525,7 @@ function BudgetEditor({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={commit}
+        onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false) }}
         className="w-24 text-xs border border-input rounded px-1.5 py-0.5 bg-background"
         autoFocus
@@ -557,6 +559,15 @@ export function Expenses() {
   const lang = data.language
   const [comparing, setComparing] = useState(false)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
+
+  const toggleCategory = (cat: ExpenseCategory) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev)
+      next.has(cat) ? next.delete(cat) : next.add(cat)
+      return next
+    })
+  }
 
   const hasVariableExpenses = data.expenses.some((e) => (e.expenseType ?? 'fixed') === 'variable')
 
@@ -732,12 +743,26 @@ export function Expenses() {
             budgetPct >= 80  ? 'bg-warning' :
             'bg-primary'
 
+          const isExpanded = expandedCategories.has(cat.value)
+          const catExpenses = grouped[cat.value]
+
           return (
             <Card key={cat.value}>
-              <CardHeader className="pb-2">
+              <CardHeader
+                className="pb-2 cursor-pointer min-h-[44px]"
+                onClick={() => toggleCategory(cat.value)}
+                aria-expanded={isExpanded}
+              >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     <CardTitle className="text-sm">{lang === 'he' ? cat.he : cat.en}</CardTitle>
+                    {/* Item count badge */}
+                    <Badge variant="secondary">
+                      {catExpenses.length === 1
+                        ? t('1 item', 'פריט אחד', lang)
+                        : t(`${catExpenses.length} items`, `${catExpenses.length} פריטים`, lang)
+                      }
+                    </Badge>
                     {/* Month-over-month delta badge */}
                     {delta !== null && (
                       <span className={`text-xs font-medium flex items-center gap-0.5 ${
@@ -751,7 +776,14 @@ export function Expenses() {
                   </div>
                   <div className="flex items-center gap-2">
                     <BudgetEditor category={cat.value} lang={lang} />
-                    <Badge variant="outline">{formatCurrency(catTotal, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}</Badge>
+                    <Badge variant="outline" onClick={(e) => e.stopPropagation()}>
+                      {formatCurrency(catTotal, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}
+                    </Badge>
+                    <ChevronDown
+                      className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ms-auto shrink-0 ${
+                        isExpanded ? 'rotate-180' : ''
+                      }`}
+                    />
                   </div>
                 </div>
 
@@ -780,8 +812,9 @@ export function Expenses() {
                 )}
               </CardHeader>
 
+              {isExpanded && (
               <CardContent className="space-y-0">
-                {grouped[cat.value].map((expense) => {
+                {catExpenses.map((expense) => {
                   const isFixed = (expense.expenseType ?? 'fixed') === 'fixed'
                   const dueIn = expense.period === 'yearly' && expense.dueMonth != null
                     ? monthsUntilDue(expense.dueMonth)
@@ -887,6 +920,7 @@ export function Expenses() {
                   )
                 })}
               </CardContent>
+              )}
             </Card>
           )
         })
