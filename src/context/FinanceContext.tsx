@@ -3,6 +3,7 @@ import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, Month
 import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
+import { applyMonthlyContributions } from '@/lib/contributionEngine'
 import { supabaseConfigured } from '@/lib/supabase'
 import { getRates } from '@/lib/fxRates'
 import type { FxRateCache } from '@/lib/fxRates'
@@ -495,6 +496,20 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     if (hasAutoSnapshotted.current) return
     hasAutoSnapshotted.current = true
     autoSnapshotCurrentMonth()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading])
+
+  // Apply auto-increment to savings accounts once per session after cloud sync.
+  const hasAppliedContributions = useRef(false)
+  useEffect(() => {
+    hasAppliedContributions.current = false
+  }, [householdId])
+  useEffect(() => {
+    if (isLoading) return
+    if (hasAppliedContributions.current) return
+    hasAppliedContributions.current = true
+    const nowYearMonth = new Date().toISOString().slice(0, 7) // "YYYY-MM"
+    setData(d => applyMonthlyContributions(d, nowYearMonth))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading])
 

@@ -151,6 +151,17 @@ export interface SavingsAccount {
    * Optional for backward compatibility — treat absence as false.
    */
   deductedFromSalary?: boolean
+  /**
+   * The "YYYY-MM" month in which the balance was last auto-incremented by
+   * applyMonthlyContributions(). Used to prevent double-counting across sessions.
+   * Absent on first run — treated as "no prior increment" (elapsed = 0).
+   */
+  lastAutoIncrementMonth?: string
+  /**
+   * Chronological log of every auto-increment applied to this account.
+   * Capped at the 24 most-recent entries (oldest are dropped).
+   */
+  autoIncrementLog?: Array<{ month: string; amount: number }>
 }
 
 export type GoalPriority = 'high' | 'medium' | 'low'

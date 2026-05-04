@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, PiggyBank, Edit2 } from 'lucide-react'
+import { Plus, Trash2, PiggyBank, Edit2, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -152,59 +152,114 @@ export function Savings() {
 
   const getLiquidityInfo = (l: Liquidity) => LIQUIDITIES.find((x) => x.value === l)!
 
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
   const AccountCard = ({ account }: { account: SavingsAccount }) => {
     const liq = getLiquidityInfo(account.liquidity)
     const typeLabel = ACCOUNT_TYPES.find((t) => t.value === account.type)
+    const log = account.autoIncrementLog
+    const hasLog = Array.isArray(log) && log.length > 0
+    const isExpanded = expandedIds.has(account.id)
+    const recentEntries = hasLog ? [...log].reverse().slice(0, 6) : []
+
     return (
-      <div className="flex items-center justify-between py-2 border-b last:border-0">
-        <div>
-          <p className="font-medium text-sm">{account.name}</p>
-          <div className="flex gap-1.5 mt-0.5">
-            <Badge variant="outline" className="text-xs py-0">{lang === 'he' ? typeLabel?.he : typeLabel?.en}</Badge>
-            <Badge variant={liq.color as any} className="text-xs py-0">{lang === 'he' ? liq.he : liq.en}</Badge>
-            {account.annualReturnPercent > 0 && (
-              <Badge variant="secondary" className="text-xs py-0">{account.annualReturnPercent}%/yr</Badge>
+      <div className="py-2 border-b last:border-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-sm">{account.name}</p>
+            <div className="flex gap-1.5 mt-0.5">
+              <Badge variant="outline" className="text-xs py-0">{lang === 'he' ? typeLabel?.he : typeLabel?.en}</Badge>
+              <Badge variant={liq.color as any} className="text-xs py-0">{lang === 'he' ? liq.he : liq.en}</Badge>
+              {account.annualReturnPercent > 0 && (
+                <Badge variant="secondary" className="text-xs py-0">{account.annualReturnPercent}%/yr</Badge>
+              )}
+            </div>
+            {account.monthlyContribution > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                +{formatCurrency(account.monthlyContribution, data.currency, data.locale)}/mo
+              </p>
+            )}
+            {account.deductedFromSalary && (
+              <Badge variant="secondary" className="text-xs py-0 mt-0.5">
+                {t('Salary deducted', 'מנוכה מהשכר', lang)}
+              </Badge>
             )}
           </div>
-          {account.monthlyContribution > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              +{formatCurrency(account.monthlyContribution, data.currency, data.locale)}/mo
-            </p>
-          )}
-          {account.deductedFromSalary && (
-            <Badge variant="secondary" className="text-xs py-0 mt-0.5">
-              {t('Salary deducted', 'מנוכה מהשכר', lang)}
-            </Badge>
-          )}
+          <div className="flex items-center gap-1">
+            <span className="font-semibold tabular-nums">{formatCurrency(account.balance, data.currency, data.locale)}</span>
+            <AccountDialog existing={account} onSave={(a) => updateAccount(a)} lang={lang} />
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
+                  title={t('Delete account', 'מחק חשבון', lang)}
+                  aria-label={t('Delete account', 'מחק חשבון', lang)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                  <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => deleteAccount(account.id)}
+                  >
+                    {t('Delete', 'מחק', lang)}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="font-semibold tabular-nums">{formatCurrency(account.balance, data.currency, data.locale)}</span>
-          <AccountDialog existing={account} onSave={(a) => updateAccount(a)} lang={lang} />
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
-                title={t('Delete account', 'מחק חשבון', lang)}
-                aria-label={t('Delete account', 'מחק חשבון', lang)}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
-                <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => deleteAccount(account.id)}
-                >
-                  {t('Delete', 'מחק', lang)}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+
+        {hasLog && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => toggleExpanded(account.id)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors min-h-[44px] w-full text-start"
+              aria-expanded={isExpanded}
+            >
+              <span>📈 {t('Contribution history', 'היסטוריית הפקדות', lang)} ({log!.length})</span>
+              {isExpanded ? <ChevronUp className="h-3.5 w-3.5 ms-1" /> : <ChevronDown className="h-3.5 w-3.5 ms-1" />}
+            </button>
+
+            {isExpanded && (
+              <div className="mt-1 space-y-1">
+                {recentEntries.map((entry, idx) => {
+                  const monthLabel = new Date(entry.month + '-01').toLocaleDateString(data.locale, { month: 'long', year: 'numeric' })
+                  return (
+                    <div key={idx} className="flex justify-between items-center text-xs px-1">
+                      <span className="text-muted-foreground">{monthLabel}</span>
+                      <span className="font-medium text-primary">+{formatCurrency(entry.amount, data.currency, data.locale)}</span>
+                    </div>
+                  )
+                })}
+                {account.lastAutoIncrementMonth && (
+                  <p className="text-xs text-muted-foreground px-1 pt-1">
+                    {t('Last updated:', 'עודכן לאחרונה:', lang)}{' '}
+                    {new Date(account.lastAutoIncrementMonth + '-01').toLocaleDateString(data.locale, { month: 'long', year: 'numeric' })}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
