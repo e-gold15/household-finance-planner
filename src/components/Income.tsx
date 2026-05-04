@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Plus, Trash2, ChevronDown, ChevronUp, UserPlus, Users,
   ArrowRight, BadgeCheck, Pencil, CalendarCheck, History, Info,
+  Camera, Loader2, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -17,6 +18,7 @@ import { estimateTax, getNetMonthly, type TaxBreakdown } from '@/lib/taxEstimati
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import type { Country, Currency, IncomeSource, IncomeSourceType, HouseholdMember, PayslipComponents } from '@/types'
 import { convertAmount, formatRateNote } from '@/lib/fxRates'
+import { scanPayslip, aiEnabled, type PayslipScanResult } from '@/lib/aiAdvisor'
 
 // ── Currency helpers ──────────────────────────────────────────────────────────
 
@@ -417,6 +419,103 @@ function SourceDialog({
 
   const breakdown = useMemo(() => estimateTax(form), [form])
 
+  // ── Payslip scan state ───────────────────────────────────────────────────────
+  const payslipFileRef = useRef<HTMLInputElement>(null)
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [scanSuccess, setScanSuccess] = useState<string | null>(null)
+
+  const applyPayslipScan = (result: PayslipScanResult) => {
+    const hasComponents = [
+      result.base, result.overtime125, result.overtime150,
+      result.otherTaxable, result.imputedIncome, result.nonTaxableReimbursements,
+    ].some((v) => v !== null && v > 0)
+
+    setForm((prev) => {
+      const next = { ...prev }
+
+      if (hasComponents) {
+        next.payslipMode = 'advanced'
+        next.country = 'IL'
+        next.type = 'salary'
+        next.isGross = true
+        next.payslipComponents = {
+          base:                     result.base ?? prev.payslipComponents?.base ?? 0,
+          overtime125:              result.overtime125 ?? prev.payslipComponents?.overtime125 ?? 0,
+          overtime150:              result.overtime150 ?? prev.payslipComponents?.overtime150 ?? 0,
+          otherTaxable:             result.otherTaxable ?? prev.payslipComponents?.otherTaxable ?? 0,
+          imputedIncome:            result.imputedIncome ?? prev.payslipComponents?.imputedIncome ?? 0,
+          nonTaxableReimbursements: result.nonTaxableReimbursements ?? prev.payslipComponents?.nonTaxableReimbursements ?? 0,
+        }
+      } else if (result.net !== null) {
+        next.useManualNet = true
+        next.manualNetOverride = result.net
+      }
+
+      if (result.pensionEmployee !== null)       { next.pensionEmployee = result.pensionEmployee;           next.useContributions = true }
+      if (result.pensionEmployer !== null)       { next.pensionEmployer = result.pensionEmployer }
+      if (result.educationFundEmployee !== null) { next.educationFundEmployee = result.educationFundEmployee; next.useContributions = true }
+      if (result.educationFundEmployer !== null) { next.educationFundEmployer = result.educationFundEmployer }
+      if (result.severanceEmployer !== null)     { next.severanceEmployer = result.severanceEmployer }
+      if (result.taxCreditPoints !== null)       { next.taxCreditPoints = result.taxCreditPoints }
+      if (result.pensionBase !== null && result.pensionBase > 0)     next.pensionBase = result.pensionBase
+      if (result.studyFundBase !== null && result.studyFundBase > 0) next.studyFundBase = result.studyFundBase
+
+      return next
+    })
+
+    const filled: string[] = []
+    if (hasComponents) filled.push(t('payslip breakdown', 'פירוט תלוש', lang))
+    else if (result.net !== null) filled.push(t('net salary', 'שכר נטו', lang))
+    if (result.taxCreditPoints !== null) filled.push(t('tax credit points', 'נקודות זיכוי', lang))
+    if (result.pensionEmployee !== null || result.pensionEmployer !== null) filled.push(t('pension %', 'פנסיה %', lang))
+    if (result.educationFundEmployee !== null) filled.push(t('study fund %', 'קרן השתלמות %', lang))
+
+    if (filled.length > 0) {
+      setScanSuccess(t('Payslip read — please review:', 'התלוש נקרא — אנא בדוק:', lang) + ' ' + filled.join(', '))
+    } else {
+      setScanError(t('Could not read payslip fields — please enter manually.', 'לא ניתן לקרוא שדות — אנא הזן ידנית.', lang))
+    }
+  }
+
+  const handlePayslipFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    if (file.size > 5 * 1024 * 1024) {
+      setScanError(t('File too large — use a file under 5 MB', 'הקובץ גדול מדי — השתמש בקובץ עד 5MB', lang))
+      return
+    }
+
+    setScanError(null)
+    setScanSuccess(null)
+    setScanning(true)
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1])
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+
+      const result = await scanPayslip(base64, file.type, lang)
+      applyPayslipScan(result)
+    } catch (err) {
+      setScanError(
+        t('Could not read payslip.', 'לא ניתן לקרוא את התלוש.', lang) +
+        ' — ' +
+        (err instanceof Error ? err.message : String(err)),
+      )
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const isILSalary = form.type === 'salary' && form.country === 'IL'
   const isAdvanced = isILSalary && form.payslipMode === 'advanced'
 
@@ -426,7 +525,11 @@ function SourceDialog({
     (!form.useManualNet || (form.manualNetOverride != null && form.manualNetOverride > 0))
 
   const handleOpen = (v: boolean) => {
-    if (v) setForm({ ...DEFAULT_SOURCE, ...existing, id: existing?.id ?? generateId(), sourceCurrency: existing?.sourceCurrency ?? undefined })
+    if (v) {
+      setForm({ ...DEFAULT_SOURCE, ...existing, id: existing?.id ?? generateId(), sourceCurrency: existing?.sourceCurrency ?? undefined })
+      setScanError(null)
+      setScanSuccess(null)
+    }
     setOpen(v)
   }
 
@@ -476,11 +579,50 @@ function SourceDialog({
       </DialogTrigger>
 
       <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between gap-2">
           <DialogTitle>
             {existing ? t('Edit Income Source', 'ערוך מקור הכנסה', lang) : t('Add Income Source', 'הוסף מקור הכנסה', lang)}
           </DialogTitle>
+          {aiEnabled && (
+            <>
+              <input
+                ref={payslipFileRef}
+                type="file"
+                accept="image/*,application/pdf"
+                capture="environment"
+                className="hidden"
+                aria-hidden="true"
+                onChange={handlePayslipFile}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={scanning}
+                onClick={() => { setScanError(null); setScanSuccess(null); payslipFileRef.current?.click() }}
+                title={t('Scan payslip with AI', 'סרוק תלוש עם AI', lang)}
+                aria-label={t('Scan payslip', 'סרוק תלוש', lang)}
+                className="shrink-0 gap-1.5"
+              >
+                {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                {scanning ? t('Scanning…', 'סורק…', lang) : t('Scan Payslip', 'סרוק תלוש', lang)}
+              </Button>
+            </>
+          )}
         </DialogHeader>
+
+        {scanError && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {scanError}
+          </div>
+        )}
+        {scanSuccess && (
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+            {scanSuccess}
+          </div>
+        )}
 
         <div className="space-y-4 mt-1">
 
@@ -740,7 +882,7 @@ function SourceDialog({
           )}
 
           {/* ── Submit ────────────────────────────────────────────────── */}
-          <Button className="w-full" disabled={!canSubmit} onClick={handleSave}>
+          <Button className="w-full" disabled={!canSubmit || scanning} onClick={handleSave}>
             {t('Save Source', 'שמור מקור', lang)}
           </Button>
         </div>

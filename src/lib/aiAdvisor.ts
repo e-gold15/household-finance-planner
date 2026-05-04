@@ -154,6 +154,134 @@ function parseReceiptText(text: string): ReceiptScanResult {
   return { name, amount, category }
 }
 
+// ─── Payslip scan ────────────────────────────────────────────────────────────
+
+export interface PayslipScanResult {
+  gross:                      number | null
+  net:                        number | null
+  base:                       number | null
+  overtime125:                number | null
+  overtime150:                number | null
+  otherTaxable:               number | null
+  imputedIncome:              number | null
+  nonTaxableReimbursements:   number | null
+  taxCreditPoints:            number | null
+  pensionEmployee:            number | null
+  pensionEmployer:            number | null
+  educationFundEmployee:      number | null
+  educationFundEmployer:      number | null
+  severanceEmployer:          number | null
+  pensionBase:                number | null
+  studyFundBase:              number | null
+}
+
+const PAYSLIP_PROMPT = `You are an Israeli payslip (תלוש שכר) parser. Extract salary fields from this document.
+Return ONLY a JSON object with exactly these keys — no markdown, no explanation:
+{
+  "gross": <total taxable gross / שכר ברוטו חייב — number or null>,
+  "net": <take-home net / נטו לתשלום — number or null>,
+  "base": <base salary / שכר יסוד — number or null>,
+  "overtime125": <overtime 125% / גלובאלי 125% — number or null>,
+  "overtime150": <overtime 150% / גלובאלי 150% — number or null>,
+  "otherTaxable": <other taxable additions / תוספות חייבות — number or null>,
+  "imputedIncome": <imputed income / שווי מס — number or null>,
+  "nonTaxableReimbursements": <non-taxable reimbursements / החזרים — number or null>,
+  "taxCreditPoints": <tax credit points / נקודות זיכוי — number or null>,
+  "pensionEmployee": <pension employee % / פנסיה עובד אחוז — number or null>,
+  "pensionEmployer": <pension employer % / פנסיה מעסיק אחוז — number or null>,
+  "educationFundEmployee": <study fund employee % / קרן השתלמות עובד אחוז — number or null>,
+  "educationFundEmployer": <study fund employer % / קרן השתלמות מעסיק אחוז — number or null>,
+  "severanceEmployer": <severance % / פיצויים אחוז — number or null>,
+  "pensionBase": <insured pension salary / שכר מבוטח לפנסיה — number or null>,
+  "studyFundBase": <study fund base salary / בסיס קרן השתלמות — number or null>
+}
+
+Rules:
+- All monetary values are plain numbers (no currency symbols, no commas).
+- All percentage values are plain numbers (e.g. 6.5 not 0.065).
+- If a field is not found or not readable, use null — never guess.
+- For non-Israeli payslips, return only gross and/or net; set all other fields to null.`
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && isFinite(v) ? v : null
+}
+
+function clampOrNull(v: number | null, min: number, max: number): number | null {
+  if (v === null) return null
+  return Math.min(max, Math.max(min, v))
+}
+
+function positiveOrNull(v: number | null): number | null {
+  if (v === null) return null
+  return v > 0 ? v : null
+}
+
+function parsePayslipText(text: string): PayslipScanResult {
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  let parsed: Record<string, unknown>
+  try { parsed = JSON.parse(clean) }
+  catch { throw new Error('Could not parse payslip scan response') }
+
+  return {
+    gross:                    positiveOrNull(numOrNull(parsed.gross)),
+    net:                      positiveOrNull(numOrNull(parsed.net)),
+    base:                     positiveOrNull(numOrNull(parsed.base)),
+    overtime125:              positiveOrNull(numOrNull(parsed.overtime125)),
+    overtime150:              positiveOrNull(numOrNull(parsed.overtime150)),
+    otherTaxable:             positiveOrNull(numOrNull(parsed.otherTaxable)),
+    imputedIncome:            positiveOrNull(numOrNull(parsed.imputedIncome)),
+    nonTaxableReimbursements: positiveOrNull(numOrNull(parsed.nonTaxableReimbursements)),
+    taxCreditPoints:          clampOrNull(numOrNull(parsed.taxCreditPoints), 0, 20),
+    pensionEmployee:          clampOrNull(numOrNull(parsed.pensionEmployee), 0, 30),
+    pensionEmployer:          clampOrNull(numOrNull(parsed.pensionEmployer), 0, 30),
+    educationFundEmployee:    clampOrNull(numOrNull(parsed.educationFundEmployee), 0, 20),
+    educationFundEmployer:    clampOrNull(numOrNull(parsed.educationFundEmployer), 0, 20),
+    severanceEmployer:        clampOrNull(numOrNull(parsed.severanceEmployer), 0, 20),
+    pensionBase:              positiveOrNull(numOrNull(parsed.pensionBase)),
+    studyFundBase:            positiveOrNull(numOrNull(parsed.studyFundBase)),
+  }
+}
+
+export async function scanPayslip(
+  fileBase64: string,
+  mimeType: string,
+  lang: 'en' | 'he',
+): Promise<PayslipScanResult> {
+  const provider = getProvider()
+  if (!provider) throw new Error('No API key configured')
+
+  // Reject files > 5 MB before making any API call
+  if (fileBase64.length * 0.75 > 5 * 1024 * 1024) {
+    throw new Error('File too large — use a file under 5 MB')
+  }
+
+  // Normalize unsupported MIME types to image/jpeg
+  const supportedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+  const normalizedMime = supportedMimes.includes(mimeType) ? mimeType : 'image/jpeg'
+
+  const prompt = lang === 'he'
+    ? PAYSLIP_PROMPT
+    : PAYSLIP_PROMPT
+
+  if (provider === 'anthropic') {
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+    const fileBlock: AnthropicContent = normalizedMime === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: normalizedMime,       data: fileBase64 } }
+    const text = await callAnthropic(apiKey, [fileBlock, { type: 'text', text: prompt }], 600)
+    return parsePayslipText(text)
+  }
+
+  // Gemini
+  const text = await callGemini(import.meta.env.VITE_GEMINI_API_KEY, [
+    { inline_data: { mime_type: normalizedMime, data: fileBase64 } },
+    { text: prompt },
+  ])
+  return parsePayslipText(text)
+}
+
+// ─── Receipt scan ─────────────────────────────────────────────────────────────
+
 export async function scanReceipt(
   fileBase64: string,
   mimeType: string,
