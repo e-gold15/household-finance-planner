@@ -137,6 +137,14 @@ export function Overview() {
       .filter(a => !linkedIds.has(a.id) && !a.deductedFromSalary)
       .reduce((s, a) => s + a.monthlyContribution, 0)
   }, [data.accounts, data.expenses])
+
+  // Total savings flow — ALL money going into savings accounts each month:
+  // linked savings expenses + deductedFromSalary accounts + unlinked manual contributions.
+  // Used for the forecast display (not FCF — we want the full picture here).
+  const totalSavingsFlow = useMemo(
+    () => data.accounts.reduce((s, a) => s + a.monthlyContribution, 0),
+    [data.accounts]
+  )
   const freeCashFlow = totalIncome - totalExpenses - totalContributions
   const totalAssets = useMemo(
     () => data.accounts.reduce((s, a) => s + a.balance, 0),
@@ -693,7 +701,7 @@ export function Overview() {
               </div>
               <div className="px-3 py-2">
                 <p className="text-xs text-muted-foreground mb-1">{t('Monthly adding', 'הוספה חודשית', lang)}</p>
-                <p className="text-lg font-bold text-primary">+{formatCurrency(totalContributions, data.currency, data.locale)}</p>
+                <p className="text-lg font-bold text-primary">+{formatCurrency(totalSavingsFlow, data.currency, data.locale)}</p>
               </div>
               <div className="px-3 py-2">
                 <p className="text-xs text-muted-foreground mb-1">{t('In 12 months', 'בעוד 12 חודשים', lang)}</p>
