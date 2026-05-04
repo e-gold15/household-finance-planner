@@ -66,7 +66,7 @@ function ExpenseDialog({
       category: 'other',
       recurring: true,
       period: 'monthly',
-      expenseType: 'fixed',
+      expenseType: 'variable',
     }
   )
   const [mode, setMode] = useState<'budget' | 'past'>('budget')
@@ -471,13 +471,6 @@ function ExpenseDialog({
             </div>
           )}
 
-          {/* Recurring */}
-          {mode === 'budget' && (
-            <div className="flex items-center gap-3">
-              <Switch checked={form.recurring} onCheckedChange={(v) => set('recurring', v)} />
-              <Label>{t('Recurring expense', 'הוצאה קבועה', lang)}</Label>
-            </div>
-          )}
 
           <Button className="w-full" onClick={handleSave}>
             {t('Save', 'שמור', lang)}
