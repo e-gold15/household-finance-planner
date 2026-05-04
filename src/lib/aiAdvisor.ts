@@ -173,6 +173,10 @@ export interface PayslipScanResult {
   severanceEmployer:          number | null
   pensionBase:                number | null
   studyFundBase:              number | null
+  /** Monthly employer contribution amount to study fund / סכום הפרשת מעסיק חודשית לקרן השתלמות */
+  studyFundEmployerAmount:    number | null
+  /** Monthly employee contribution amount to study fund / סכום ניכוי עובד חודשי לקרן השתלמות */
+  studyFundEmployeeAmount:    number | null
 }
 
 const PAYSLIP_PROMPT = `You are an Israeli payslip (תלוש שכר) parser. Extract salary fields from this document.
@@ -193,7 +197,9 @@ Return ONLY a JSON object with exactly these keys — no markdown, no explanatio
   "educationFundEmployer": <study fund employer % / קרן השתלמות מעסיק אחוז — number or null>,
   "severanceEmployer": <severance % / פיצויים אחוז — number or null>,
   "pensionBase": <insured pension salary / שכר מבוטח לפנסיה — if multiple pension funds exist, sum their "סיס" or "בסיס" amounts — number or null>,
-  "studyFundBase": <study fund base salary / בסיס קרן השתלמות — number or null>
+  "studyFundBase": <study fund base salary / בסיס קרן השתלמות — number or null>,
+  "studyFundEmployerAmount": <actual monthly employer contribution amount to study fund — look for "סכום הפרשה" next to קרן השתלמות מעסיק; if absent, compute studyFundBase × educationFundEmployer% — number or null>,
+  "studyFundEmployeeAmount": <actual monthly employee contribution amount to study fund — look for "סכום ניכוי" next to קרן השתלמות עובד; if absent, compute studyFundBase × educationFundEmployee% — number or null>
 }
 
 Rules:
@@ -243,6 +249,8 @@ function parsePayslipText(text: string): PayslipScanResult {
     severanceEmployer:        clampOrNull(numOrNull(parsed.severanceEmployer), 0, 20),
     pensionBase:              positiveOrNull(numOrNull(parsed.pensionBase)),
     studyFundBase:            positiveOrNull(numOrNull(parsed.studyFundBase)),
+    studyFundEmployerAmount:  positiveOrNull(numOrNull(parsed.studyFundEmployerAmount)),
+    studyFundEmployeeAmount:  positiveOrNull(numOrNull(parsed.studyFundEmployeeAmount)),
   }
 }
 

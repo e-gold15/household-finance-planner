@@ -60,6 +60,8 @@ function parsePayslipResponse(rawText: string): PayslipScanResult {
     severanceEmployer:        clampOrNull(numOrNull(parsed.severanceEmployer), 0, 20),
     pensionBase:              positiveOrNull(numOrNull(parsed.pensionBase)),
     studyFundBase:            positiveOrNull(numOrNull(parsed.studyFundBase)),
+    studyFundEmployerAmount:  positiveOrNull(numOrNull(parsed.studyFundEmployerAmount)),
+    studyFundEmployeeAmount:  positiveOrNull(numOrNull(parsed.studyFundEmployeeAmount)),
   }
 }
 
@@ -83,11 +85,13 @@ function validPayslipJson(overrides: Partial<Record<keyof PayslipScanResult, unk
     severanceEmployer: 8.33,
     pensionBase: 17000,
     studyFundBase: 17000,
+    studyFundEmployerAmount: 1275,
+    studyFundEmployeeAmount: 425,
   }
   return JSON.stringify({ ...defaults, ...overrides })
 }
 
-// ─── 1. Happy path — all 16 fields populated ─────────────────────────────────
+// ─── 1. Happy path — all 18 fields populated ─────────────────────────────────
 
 describe('parsePayslipResponse() — happy path', () => {
   it('returns correct values for a fully populated Israeli payslip', () => {
@@ -108,11 +112,13 @@ describe('parsePayslipResponse() — happy path', () => {
     expect(result.severanceEmployer).toBe(8.33)
     expect(result.pensionBase).toBe(17000)
     expect(result.studyFundBase).toBe(17000)
+    expect(result.studyFundEmployerAmount).toBe(1275)
+    expect(result.studyFundEmployeeAmount).toBe(425)
   })
 
-  it('returns an object with exactly 16 keys', () => {
+  it('returns an object with exactly 18 keys', () => {
     const result = parsePayslipResponse(validPayslipJson())
-    expect(Object.keys(result)).toHaveLength(16)
+    expect(Object.keys(result)).toHaveLength(18)
   })
 })
 
@@ -508,7 +514,7 @@ describe('parsePayslipResponse() — extra fields ignored', () => {
     })
     const result = parsePayslipResponse(raw)
     expect(result.gross).toBe(20000)
-    expect(Object.keys(result)).toHaveLength(16)
+    expect(Object.keys(result)).toHaveLength(18)
   })
 })
 

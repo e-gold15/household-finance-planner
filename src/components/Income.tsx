@@ -450,7 +450,12 @@ function SourceDialog({
         next.payslipComponents = components
         // Keep form.amount in sync so canSubmit passes (same logic as setComp)
         next.amount = computeTaxableGross(components)
-      } else if (result.net !== null) {
+      }
+
+      // Always pin the net from the payslip — our tax engine can never perfectly
+      // replicate every employer's calculation (multiple pension funds, partial months,
+      // exact BL caps, grossed-up items, etc.). The payslip "נטו לתשלום" IS the ground truth.
+      if (result.net !== null && result.net > 0) {
         next.useManualNet = true
         next.manualNetOverride = result.net
       }
@@ -469,10 +474,15 @@ function SourceDialog({
 
     const filled: string[] = []
     if (hasComponents) filled.push(t('payslip breakdown', 'פירוט תלוש', lang))
-    else if (result.net !== null) filled.push(t('net salary', 'שכר נטו', lang))
+    if (result.net !== null && result.net > 0) filled.push(t('net salary (from payslip)', 'נטו לתשלום (מהתלוש)', lang))
     if (result.taxCreditPoints !== null) filled.push(t('tax credit points', 'נקודות זיכוי', lang))
     if (result.pensionEmployee !== null || result.pensionEmployer !== null) filled.push(t('pension %', 'פנסיה %', lang))
-    if (result.educationFundEmployee !== null) filled.push(t('study fund %', 'קרן השתלמות %', lang))
+    if (result.educationFundEmployee !== null || result.studyFundEmployerAmount !== null) {
+      const sfDetail = result.studyFundEmployerAmount != null
+        ? `קרן השתלמות — מעסיק ₪${result.studyFundEmployerAmount.toLocaleString()} / חודש`
+        : t('study fund %', 'קרן השתלמות %', lang)
+      filled.push(sfDetail)
+    }
 
     if (filled.length > 0) {
       setScanSuccess(t('Payslip read — please review:', 'התלוש נקרא — אנא בדוק:', lang) + ' ' + filled.join(', '))
