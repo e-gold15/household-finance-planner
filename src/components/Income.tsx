@@ -743,7 +743,7 @@ function SourceDialog({
             onCheckedChange={(v) => set('isGross', v)}
           />
 
-          {form.isGross && !form.useManualNet && (
+          {form.isGross && (
             <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-4">
 
               {/* Country */}
@@ -789,8 +789,8 @@ function SourceDialog({
                 </div>
               )}
 
-              {/* IL-specific fields */}
-              {form.country === 'IL' && (
+              {/* IL-specific fields — hidden when manual net is used (tax calc not needed) */}
+              {form.country === 'IL' && !form.useManualNet && (
                 <div className="grid grid-cols-2 gap-3">
                   <FieldRow label={t('Tax Credit Points', 'נקודות זיכוי', lang)}>
                     <Input
@@ -882,7 +882,7 @@ function SourceDialog({
           )}
 
           {/* ── Employer summary (collapsed, informational) ───────────── */}
-          {form.isGross && !form.useManualNet && form.useContributions && form.amount > 0 && (
+          {form.isGross && form.useContributions && form.amount > 0 && (
             <div className="rounded-lg border border-dashed p-3 space-y-1">
               <p className="text-xs font-medium text-muted-foreground mb-1">
                 {t('Employer Cost (on top of your gross)', 'עלות מעסיק (מעל הברוטו)', lang)}
