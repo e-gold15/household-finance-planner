@@ -439,7 +439,7 @@ function SourceDialog({
         next.country = 'IL'
         next.type = 'salary'
         next.isGross = true
-        next.payslipComponents = {
+        const components: PayslipComponents = {
           base:                     result.base ?? prev.payslipComponents?.base ?? 0,
           overtime125:              result.overtime125 ?? prev.payslipComponents?.overtime125 ?? 0,
           overtime150:              result.overtime150 ?? prev.payslipComponents?.overtime150 ?? 0,
@@ -447,6 +447,9 @@ function SourceDialog({
           imputedIncome:            result.imputedIncome ?? prev.payslipComponents?.imputedIncome ?? 0,
           nonTaxableReimbursements: result.nonTaxableReimbursements ?? prev.payslipComponents?.nonTaxableReimbursements ?? 0,
         }
+        next.payslipComponents = components
+        // Keep form.amount in sync so canSubmit passes (same logic as setComp)
+        next.amount = computeTaxableGross(components)
       } else if (result.net !== null) {
         next.useManualNet = true
         next.manualNetOverride = result.net
@@ -519,9 +522,12 @@ function SourceDialog({
   const isILSalary = form.type === 'salary' && form.country === 'IL'
   const isAdvanced = isILSalary && form.payslipMode === 'advanced'
 
-  // In advanced mode, amount is auto-computed; we just need name + at least one component > 0
+  // In advanced mode, amount is auto-synced from components by applyPayslipScan / setComp
   const canSubmit = form.name.trim().length > 0 &&
-    (isAdvanced ? form.amount > 0 : form.amount > 0) &&
+    (isAdvanced
+      ? (form.payslipComponents != null && computeTaxableGross(form.payslipComponents) > 0)
+      : form.amount > 0
+    ) &&
     (!form.useManualNet || (form.manualNetOverride != null && form.manualNetOverride > 0))
 
   const handleOpen = (v: boolean) => {
