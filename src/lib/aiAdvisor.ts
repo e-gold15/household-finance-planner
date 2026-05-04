@@ -178,21 +178,21 @@ export interface PayslipScanResult {
 const PAYSLIP_PROMPT = `You are an Israeli payslip (תלוש שכר) parser. Extract salary fields from this document.
 Return ONLY a JSON object with exactly these keys — no markdown, no explanation:
 {
-  "gross": <total taxable gross / שכר ברוטו חייב — number or null>,
-  "net": <take-home net / נטו לתשלום — number or null>,
+  "gross": <total taxable gross income used for income-tax calculation — look for the field labelled "ברוטו לחישוב מס הכנסה" or "הכנסה חייבת במס"; if absent, sum all taxable items — number or null>,
+  "net": <final take-home pay / נטו לתשלום — the amount transferred to the employee's bank account — number or null>,
   "base": <base salary / שכר יסוד — number or null>,
-  "overtime125": <overtime 125% / גלובאלי 125% — number or null>,
-  "overtime150": <overtime 150% / גלובאלי 150% — number or null>,
-  "otherTaxable": <other taxable additions / תוספות חייבות — number or null>,
-  "imputedIncome": <imputed income / שווי מס — number or null>,
-  "nonTaxableReimbursements": <non-taxable reimbursements / החזרים — number or null>,
+  "overtime125": <overtime 125% / גלובאלי 125% or שע"נ 125% — number or null>,
+  "overtime150": <overtime 150% / גלובאלי 150% or שע"נ 150% — number or null>,
+  "otherTaxable": <SUM of all other taxable additions not captured above: travel allowance (נסיעות), periodic payments (גלום, תקופתי), bonuses, commissions, taxable meal allowance — number or null>,
+  "imputedIncome": <SUM of all imputed income / benefit-in-kind items. Look for ANY "שווי" line OR the "זיקופי שכר" section (e.g. שווי רכב, שווי ביס, שווי יש, שווי מתנה מגולם, שווי אופציות). Add all such amounts together — number or null>,
+  "nonTaxableReimbursements": <non-taxable reimbursements that are added to net AFTER tax, e.g. approved travel reimbursement above taxable cap — number or null>,
   "taxCreditPoints": <tax credit points / נקודות זיכוי — number or null>,
-  "pensionEmployee": <pension employee % / פנסיה עובד אחוז — number or null>,
-  "pensionEmployer": <pension employer % / פנסיה מעסיק אחוז — number or null>,
+  "pensionEmployee": <pension employee contribution % / פנסיה עובד אחוז — number or null>,
+  "pensionEmployer": <pension employer contribution % / פנסיה מעסיק אחוז — number or null>,
   "educationFundEmployee": <study fund employee % / קרן השתלמות עובד אחוז — number or null>,
   "educationFundEmployer": <study fund employer % / קרן השתלמות מעסיק אחוז — number or null>,
   "severanceEmployer": <severance % / פיצויים אחוז — number or null>,
-  "pensionBase": <insured pension salary / שכר מבוטח לפנסיה — number or null>,
+  "pensionBase": <insured pension salary / שכר מבוטח לפנסיה — if multiple pension funds exist, sum their "סיס" or "בסיס" amounts — number or null>,
   "studyFundBase": <study fund base salary / בסיס קרן השתלמות — number or null>
 }
 
@@ -200,6 +200,10 @@ Rules:
 - All monetary values are plain numbers (no currency symbols, no commas).
 - All percentage values are plain numbers (e.g. 6.5 not 0.065).
 - If a field is not found or not readable, use null — never guess.
+- CRITICAL: "gross" must be the FULL taxable gross (ברוטו לחישוב מס), not just base+overtime. It must include imputedIncome and otherTaxable items.
+- CRITICAL: "imputedIncome" — scan the entire payslip for any line containing the word "שווי" or the section "זיקופי שכר". Sum ALL such lines.
+- "net" is always "נטו לתשלום" — the last bottom-line figure paid to the bank, after ALL deductions.
+- For multiple pension funds: sum employee % across all funds for pensionEmployee; sum employer % for pensionEmployer; sum all pension bases for pensionBase.
 - For non-Israeli payslips, return only gross and/or net; set all other fields to null.`
 
 function numOrNull(v: unknown): number | null {
