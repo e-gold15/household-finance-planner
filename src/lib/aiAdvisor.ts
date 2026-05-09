@@ -1,3 +1,20 @@
+import type { BriefingResult, BriefingBulletType } from '../types'
+
+export interface BriefingPayload {
+  month: string                    // e.g. "May 2026"
+  fcf: number                      // this month's free cash flow
+  fcfAvg3m: number                 // average FCF over last 3 months (0 if < 3 months of history)
+  incomeTotal: number
+  expensesTotal: number
+  budgetOverruns: Array<{ category: string; budget: number; actual: number }>
+  savingsGrowthTotal: number       // sum of all account.monthlyContribution
+  goalsSummary: Array<{ name: string; status: string; pctComplete: number }>
+  upcomingBills: Array<{ name: string; amount: number; daysUntilDue: number }>
+  surplusActioned: boolean
+  emergencyBufferMonths: number
+  currency: string
+}
+
 export interface GoalPlanPayload {
   goals: Array<{
     name: string
@@ -110,6 +127,101 @@ Keep your response concise (under 200 words). Be encouraging but honest.${lang =
     return callAnthropic(import.meta.env.VITE_ANTHROPIC_API_KEY, [{ type: 'text', text: prompt }])
   }
   return callGemini(import.meta.env.VITE_GEMINI_API_KEY, [{ text: prompt }])
+}
+
+// ─── Monthly AI Financial Briefing ───────────────────────────────────────────
+
+const VALID_BULLET_TYPES: BriefingBulletType[] = ['positive', 'warning', 'urgent', 'neutral']
+
+function parseBriefingText(text: string): BriefingResult {
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  let parsed: Record<string, unknown>
+  try { parsed = JSON.parse(clean) }
+  catch { parsed = {} }
+
+  const headline = typeof parsed.headline === 'string' ? parsed.headline : ''
+  const advice   = typeof parsed.advice   === 'string' ? parsed.advice   : ''
+
+  const rawScore = typeof parsed.score === 'number' ? parsed.score : 0
+  const score    = Math.min(100, Math.max(0, Math.round(rawScore)))
+
+  const rawBullets = Array.isArray(parsed.bullets) ? parsed.bullets : []
+  const bullets = rawBullets
+    .slice(0, 6)
+    .map((b: unknown) => {
+      const bullet = b as Record<string, unknown>
+      const type: BriefingBulletType =
+        typeof bullet.type === 'string' && (VALID_BULLET_TYPES as string[]).includes(bullet.type)
+          ? (bullet.type as BriefingBulletType)
+          : 'neutral'
+      const btext = typeof bullet.text === 'string' ? bullet.text : ''
+      return { type, text: btext }
+    })
+
+  // Pad to minimum 3 bullets with neutral placeholders if AI returned fewer
+  while (bullets.length < 3) {
+    bullets.push({ type: 'neutral', text: '' })
+  }
+
+  return { headline, score, bullets, advice, generatedAt: new Date().toISOString() }
+}
+
+export async function generateMonthlyBriefing(
+  payload: BriefingPayload,
+  lang: 'en' | 'he',
+): Promise<BriefingResult> {
+  const provider = getProvider()
+  if (!provider) throw new Error('No API key configured')
+
+  const langInstruction = lang === 'he'
+    ? 'All text values in the JSON (headline, bullets[].text, advice) must be written in Hebrew.'
+    : 'All text values must be in English.'
+
+  const prompt = `You are a personal finance coach. Analyze the following household financial data for ${payload.month} and produce a structured JSON briefing.
+
+Financial data:
+${JSON.stringify(payload, null, 2)}
+
+Score rubric (start at 0, add points):
+- +20 if FCF > 0
+- +20 if FCF > fcfAvg3m (improving trend vs 3-month average; skip if fcfAvg3m is 0)
+- +20 if there are no budget overruns
+- +20 if all high-priority goals have status "realistic" or "tight" (not "unrealistic" or "blocked")
+- +20 if emergencyBufferMonths >= 3
+- Deduct points proportionally for budget overruns, negative FCF, or blocked/unrealistic goals
+
+Return ONLY a valid JSON object with exactly these keys — no markdown, no explanation:
+{
+  "headline": "<short summary of this month's financial health, max 60 chars>",
+  "score": <integer 0–100 calculated using the rubric above>,
+  "bullets": [
+    { "type": "<positive|warning|urgent|neutral>", "text": "<concise insight or action item>" }
+  ],
+  "advice": "<single actionable paragraph with the most important recommendation for next month>"
+}
+
+Rules:
+- "bullets" must contain 3–6 items.
+- Each bullet "type" must be exactly one of: positive, warning, urgent, neutral.
+- "score" must be an integer between 0 and 100.
+- Do NOT include markdown fences or any text outside the JSON object.
+- ${langInstruction}`
+
+  let raw: string
+  if (provider === 'anthropic') {
+    raw = await callAnthropic(
+      import.meta.env.VITE_ANTHROPIC_API_KEY,
+      [{ type: 'text', text: prompt }],
+      600,
+    )
+  } else {
+    raw = await callGemini(
+      import.meta.env.VITE_GEMINI_API_KEY,
+      [{ text: prompt }],
+    )
+  }
+
+  return parseBriefingText(raw)
 }
 
 // ─── Receipt scan ─────────────────────────────────────────────────────────────

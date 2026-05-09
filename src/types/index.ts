@@ -201,6 +201,21 @@ export interface HistoricalIncome {
   note?: string        // optional: "Monthly salary", "Bonus", "Freelance project"
 }
 
+export type BriefingBulletType = 'positive' | 'warning' | 'urgent' | 'neutral'
+
+export interface BriefingBullet {
+  type: BriefingBulletType
+  text: string
+}
+
+export interface BriefingResult {
+  headline: string           // short summary title, max ~60 chars
+  score: number              // 0–100 financial health score
+  bullets: BriefingBullet[] // 3–6 bullets
+  advice: string             // single actionable paragraph
+  generatedAt: string        // ISO timestamp
+}
+
 export interface MonthSnapshot {
   id: string
   label: string
@@ -248,6 +263,12 @@ export interface MonthSnapshot {
    * ISO timestamp of when the auto-snapshot was last refreshed.
    */
   autoSnapshotUpdatedAt?: string
+  /**
+   * AI-generated monthly financial briefing for this snapshot.
+   * Set by the user triggering "Generate Briefing" in the History tab.
+   * Optional for backward compatibility — older snapshots have no briefing.
+   */
+  aiBriefing?: BriefingResult
 }
 
 export interface FinanceData {

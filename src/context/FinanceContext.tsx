@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory, HistoricalExpense, HistoricalIncome } from '@/types'
+import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory, HistoricalExpense, HistoricalIncome, BriefingResult } from '@/types'
 import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
@@ -129,6 +129,8 @@ interface FinanceContextType {
   addIncomeToMonth: (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) => void
   /** Mark the end-of-month surplus for a snapshot as actioned — hides the banner permanently. */
   markSurplusActioned: (snapshotId: string) => void
+  /** Persist an AI-generated briefing onto a snapshot by id. */
+  saveBriefing: (snapshotId: string, briefing: BriefingResult) => void
   /**
    * Record a surplus allocation on a snapshot: deducts amount from freeCashFlow,
    * appends the allocation entry, and sets surplusActioned=true atomically.
@@ -772,6 +774,14 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       ),
     }))
 
+  const saveBriefing = (snapshotId: string, briefing: BriefingResult) =>
+    setData((d) => ({
+      ...d,
+      history: d.history.map((h) =>
+        h.id === snapshotId ? { ...h, aiBriefing: briefing } : h
+      ),
+    }))
+
   const recordSurplusAllocation = (
     snapshotId: string,
     allocation: { amount: number; type: 'savings' | 'goal'; destinationId: string; destinationName: string }
@@ -841,6 +851,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addHistoricalIncome, deleteHistoricalIncome, updateHistoricalIncome,
       addIncomeToMonth,
       markSurplusActioned,
+      saveBriefing,
       recordSurplusAllocation,
     }}>
       {children}

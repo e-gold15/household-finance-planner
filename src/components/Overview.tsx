@@ -1,7 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Target, PiggyBank, AlertTriangle,
-  CalendarDays, BarChart2,
+  CalendarDays, BarChart2, Bot, RefreshCw, Sparkles,
 } from 'lucide-react'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -10,12 +10,15 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { Button } from './ui/button'
 import { SurplusBanner } from './SurplusBanner'
 import { useFinance } from '@/context/FinanceContext'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { allocateGoals } from '@/lib/savingsEngine'
 import { formatCurrency, t } from '@/lib/utils'
-import type { ExpenseCategory } from '@/types'
+import { generateMonthlyBriefing, aiEnabled } from '@/lib/aiAdvisor'
+import type { BriefingPayload } from '@/lib/aiAdvisor'
+import type { ExpenseCategory, BriefingResult } from '@/types'
 
 // ─── Chart colour tokens ─────────────────────────────────────────────────────
 const CHART_COLORS = [
@@ -105,6 +108,205 @@ function KpiCard({
           )}
           {trendEl}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Monthly Briefing Card ────────────────────────────────────────────────────
+
+const BULLET_ICON: Record<string, string> = {
+  positive: '✅',
+  warning:  '⚠️',
+  urgent:   '🚨',
+  neutral:  'ℹ️',
+}
+
+const BULLET_BORDER: Record<string, string> = {
+  positive: 'border-l-4 border-green-500',
+  warning:  'border-l-4 border-yellow-500',
+  urgent:   'border-l-4 border-red-500',
+  neutral:  'border-l-4 border-muted',
+}
+
+interface MonthlyBriefingCardProps {
+  lang: 'en' | 'he'
+  payload: BriefingPayload
+  cached: BriefingResult | undefined
+  hasEnoughHistory: boolean
+  onSave: (result: BriefingResult) => void
+}
+
+function MonthlyBriefingCard({
+  lang,
+  payload,
+  cached,
+  hasEnoughHistory,
+  onSave,
+}: MonthlyBriefingCardProps) {
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState<string | null>(null)
+  const [result, setResult]     = useState<BriefingResult | undefined>(cached)
+
+  async function handleGenerate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const briefing = await generateMonthlyBriefing(payload, lang)
+      setResult(briefing)
+      onSave(briefing)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const scoreBadgeVariant =
+    (result?.score ?? 0) >= 75 ? 'success' :
+    (result?.score ?? 0) >= 50 ? 'warning' : 'destructive'
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 flex flex-col items-center gap-3 text-muted-foreground">
+          <RefreshCw className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm">{t('Analysing your finances…', 'מנתח את הכספים שלך…', lang)}</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ── Briefing result ────────────────────────────────────────────────────────
+  if (result) {
+    const visibleBullets = result.bullets.filter(b => b.text.trim() !== '')
+    const generatedDate  = new Date(result.generatedAt).toLocaleDateString(
+      lang === 'he' ? 'he-IL' : 'en-US',
+      { day: 'numeric', month: 'short', year: 'numeric' }
+    )
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              {t('Monthly Briefing', 'סיכום חודשי', lang)} — {payload.month}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant={scoreBadgeVariant}>
+                {t('Score', 'ציון', lang)}: {result.score}
+              </Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={handleGenerate}
+                disabled={loading}
+                title={t('Refresh briefing', 'רענן סיכום', lang)}
+              >
+                <RefreshCw className="h-3 w-3" />
+                {t('Refresh', 'רענן', lang)}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Error inline */}
+          {error && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Headline */}
+          <p className="font-semibold text-sm leading-snug">{result.headline}</p>
+
+          {/* Bullets */}
+          <div className="space-y-2">
+            {visibleBullets.map((bullet, i) => (
+              <div
+                key={i}
+                className={`ps-3 py-1 rounded-sm text-sm ${BULLET_BORDER[bullet.type] ?? BULLET_BORDER.neutral}`}
+              >
+                <span className="me-1.5">{BULLET_ICON[bullet.type] ?? 'ℹ️'}</span>
+                {bullet.text}
+              </div>
+            ))}
+          </div>
+
+          {/* Advice */}
+          {result.advice && (
+            <p className="text-sm italic text-muted-foreground leading-relaxed">
+              <span className="me-1 not-italic">💡</span>{result.advice}
+            </p>
+          )}
+
+          {/* Footer */}
+          <p className="text-xs text-muted-foreground text-end">
+            🤖 {t('Generated by AI', 'נוצר על ידי AI', lang)} · {generatedDate}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ── Not enough history ─────────────────────────────────────────────────────
+  if (!hasEnoughHistory) {
+    return (
+      <Card>
+        <CardContent className="py-8 flex flex-col items-center gap-3 text-muted-foreground text-center">
+          <Sparkles className="h-6 w-6 text-primary" />
+          <p className="text-sm">
+            {t(
+              'Come back after your first full month',
+              'חזור לאחר החודש הראשון שלך',
+              lang
+            )}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ── Error state (post-generate failure, no cached result) ─────────────────
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-6 space-y-3">
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleGenerate} disabled={loading}>
+            {t('Try again', 'נסה שנית', lang)}
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // ── Empty state — CTA ──────────────────────────────────────────────────────
+  return (
+    <Card>
+      <CardContent className="py-8 flex flex-col items-center gap-4 text-center">
+        <div className="rounded-full bg-primary/10 p-3">
+          <Bot className="h-6 w-6 text-primary" />
+        </div>
+        <div className="space-y-1">
+          <p className="font-semibold text-sm">
+            {t('Get your monthly financial briefing', 'קבל את הסיכום הפיננסי החודשי שלך', lang)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t('AI-powered analysis of your finances for', 'ניתוח מבוסס AI של הכספים שלך עבור', lang)}{' '}
+            {payload.month}
+          </p>
+        </div>
+        <Button onClick={handleGenerate} disabled={loading} className="min-h-[44px] px-6">
+          <Sparkles className="h-4 w-4 me-2" />
+          {t('Generate briefing', 'צור סיכום חודשי', lang)}
+        </Button>
       </CardContent>
     </Card>
   )
@@ -297,6 +499,74 @@ export function Overview() {
     return { points, projected12, weightedReturn }
   }, [data.accounts, lang, totalAssets])
 
+  // ── v3.3 — Monthly briefing data ────────────────────────────────────────
+  const { saveBriefing } = useFinance()
+
+  const currentSnapshot = useMemo(
+    () => data.history.find(h => h.autoSnapshot === true),
+    [data.history]
+  )
+
+  // Past (non-auto) snapshots — used to compute 3-month FCF average + history check
+  const pastSnapshots = useMemo(
+    () => data.history.filter(h => !h.autoSnapshot),
+    [data.history]
+  )
+
+  const fcfAvg3m = useMemo(() => {
+    const last3 = pastSnapshots.slice(-3)
+    if (last3.length === 0) return 0
+    return last3.reduce((s, h) => s + h.freeCashFlow, 0) / last3.length
+  }, [pastSnapshots])
+
+  const briefingPayload = useMemo<BriefingPayload | null>(() => {
+    if (!currentSnapshot) return null
+    const locale = data.locale
+
+    const budgetOverruns = Object.entries(data.categoryBudgets)
+      .filter(([cat, budget]) =>
+        budget !== undefined && (currentSnapshot.categoryActuals?.[cat as ExpenseCategory] ?? 0) > (budget as number)
+      )
+      .map(([cat, budget]) => ({
+        category: cat,
+        budget: budget as number,
+        actual: currentSnapshot.categoryActuals?.[cat as ExpenseCategory] ?? 0,
+      }))
+
+    return {
+      month: new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' }),
+      fcf: currentSnapshot.freeCashFlow,
+      fcfAvg3m,
+      incomeTotal: currentSnapshot.totalIncome,
+      expensesTotal: currentSnapshot.totalExpenses,
+      budgetOverruns,
+      savingsGrowthTotal: data.accounts.reduce((s, a) => s + a.monthlyContribution, 0),
+      goalsSummary: goalAllocations.map(g => ({
+        name: g.name,
+        status: g.status,
+        pctComplete: g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0,
+      })),
+      upcomingBills: upcomingBills.map(b => ({
+        name: b.expense.name,
+        amount: b.expense.amount,
+        daysUntilDue: b.daysUntil,
+      })),
+      surplusActioned: currentSnapshot.surplusActioned ?? false,
+      emergencyBufferMonths: data.emergencyBufferMonths,
+      currency: data.currency,
+    }
+  }, [
+    currentSnapshot,
+    data.locale,
+    data.categoryBudgets,
+    data.accounts,
+    data.emergencyBufferMonths,
+    data.currency,
+    fcfAvg3m,
+    goalAllocations,
+    upcomingBills,
+  ])
+
   // ── Existing breakdown charts ────────────────────────────────────────────
   const expenseByCategory = useMemo(() => {
     const map: Record<string, number> = {}
@@ -400,6 +670,17 @@ export function Overview() {
 
       {/* ── 2. End-of-month surplus action banner (v3.0) ── */}
       <SurplusBanner />
+
+      {/* ── 2b. Monthly AI Briefing Card (v3.3) ── */}
+      {aiEnabled && currentSnapshot && briefingPayload && (
+        <MonthlyBriefingCard
+          lang={lang}
+          payload={briefingPayload}
+          cached={currentSnapshot.aiBriefing}
+          hasEnoughHistory={pastSnapshots.length >= 2}
+          onSave={(result) => saveBriefing(currentSnapshot.id, result)}
+        />
+      )}
 
       {/* ── 3. Deficit warning banner — suppressed when budget health gauge already shows 'over' ── */}
       {freeCashFlow < 0 && !(budgetHealth && budgetHealth.over > 0) && (
