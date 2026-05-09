@@ -7,6 +7,8 @@ import { applyMonthlyContributions } from '@/lib/contributionEngine'
 import { supabaseConfigured } from '@/lib/supabase'
 import { getRates } from '@/lib/fxRates'
 import type { FxRateCache } from '@/lib/fxRates'
+import { isDemoSession } from '@/lib/localAuth'
+import { DEMO_FINANCE_DATA } from '@/lib/demoData'
 
 const MONTH_NAMES_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -147,13 +149,18 @@ const FinanceContext = createContext<FinanceContextType | null>(null)
 const CLOUD_PUSH_DEBOUNCE_MS = 1500
 
 export function FinanceProvider({ children, householdId }: { children: React.ReactNode; householdId: string }) {
-  const initialLocal = load(householdId)
+  // Demo mode: load static data in-memory, skip all localStorage/Supabase I/O.
+  const isDemo = isDemoSession({ userId: '', householdId })
+
+  const initialLocal = isDemo
+    ? (JSON.parse(JSON.stringify(DEMO_FINANCE_DATA)) as FinanceData)
+    : load(householdId)
 
   // Show the loading spinner only when Supabase is configured AND local has no data.
   // Existing users (non-empty local) see their data instantly; the cloud fetch patches
   // silently in the background.
   const [data, setDataState]     = useState<FinanceData>(initialLocal)
-  const [isLoading, setIsLoading] = useState(supabaseConfigured && isLocalEmpty(initialLocal))
+  const [isLoading, setIsLoading] = useState(!isDemo && supabaseConfigured && isLocalEmpty(initialLocal))
 
   // Ref tracks whether the user has written anything since mount.
   // If true, the background cloud fetch must NOT overwrite their edits.
@@ -189,7 +196,11 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
   //
   // The guard `!hasLocalEditRef.current` in case A prevents the cloud from
   // overwriting an edit the user made before the network request came back.
+  //
+  // Demo mode: skip entirely — demo data is already in state.
   useEffect(() => {
+    if (isDemo) return
+
     let cancelled = false
     hasLocalEditRef.current = false   // reset on household switch
 
@@ -225,9 +236,16 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
   }, [householdId])
 
   // ── Writes: localStorage immediately, cloud debounced ─────────────────────
+  // Demo mode: mutations are in-memory only — no localStorage or Supabase I/O.
   const setData = useCallback((updater: (prev: FinanceData) => FinanceData) => {
     setDataState((prev) => {
       const next = updater(prev)
+
+      if (isDemo) {
+        // Demo mode — changes are ephemeral; never persist anywhere.
+        return next
+      }
+
       save(householdId, next)
 
       // Mark that the user has made a local edit — the background cloud fetch
@@ -242,7 +260,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
       return next
     })
-  }, [householdId])
+  }, [householdId, isDemo])
 
   // Cleanup pending push timer on unmount / household switch.
   useEffect(() => {

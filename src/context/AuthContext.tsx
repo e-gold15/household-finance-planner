@@ -12,6 +12,10 @@ import {
   upsertHouseholdPublic,
   PENDING_INVITE_KEY,
   PENDING_INV_TOKEN_KEY,
+  isDemoSession,
+  createDemoSession,
+  DEMO_USER_ID,
+  DEMO_HOUSEHOLD_ID,
 } from '@/lib/localAuth'
 import { initGoogleAuth, promptGoogleSignIn } from '@/lib/googleAuth'
 import type { GoogleProfile } from '@/lib/googleAuth'
@@ -39,6 +43,12 @@ import type { CloudInvitation } from '@/lib/cloudInvites'
 interface AuthContextType {
   user: LocalUser | null
   household: Household | null
+  /** True when the current session is the ephemeral demo session. */
+  isDemo: boolean
+  /** Re-reads the session from localStorage and updates user/household state. */
+  refreshSession: () => void
+  /** Create a demo session with sample data and update app state. */
+  startDemo: () => void
   /**
    * True immediately after a user accepts an invite and joins a shared
    * household for the first time in this session. Used to show the
@@ -84,9 +94,12 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]                         = useState<LocalUser | null>(null)
   const [household, setHousehold]               = useState<Household | null>(null)
+  const [session, setSession]                   = useState(() => getSession())
   const [pendingInvites, setPendingInvites]      = useState<CloudInvitation[]>([])
   const [householdInvites, setHouseholdInvites] = useState<HouseholdInvite[]>([])
   const [justJoined, setJustJoined]             = useState(false)
+
+  const isDemo = isDemoSession(session)
 
   // ── Shared: pull live member list from Supabase and update local state ───────
   // Called on boot and after every login so every device always sees the
@@ -129,6 +142,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     migrateIfNeeded()
     const session = getSession()
     if (session) {
+      // Demo sessions have no real user/household in localStorage — synthesise them
+      if (isDemoSession(session)) {
+        const demoUser: LocalUser = {
+          id: DEMO_USER_ID,
+          name: 'Demo User',
+          email: 'demo@example.com',
+          authProvider: 'email',
+          householdId: DEMO_HOUSEHOLD_ID,
+          createdAt: new Date().toISOString(),
+        }
+        const demoHousehold: Household = {
+          id: DEMO_HOUSEHOLD_ID,
+          name: 'Demo Household',
+          createdBy: DEMO_USER_ID,
+          memberships: [{ userId: DEMO_USER_ID, role: 'owner', joinedAt: new Date().toISOString() }],
+          createdAt: new Date().toISOString(),
+        }
+        setUser(demoUser)
+        setHousehold(demoHousehold)
+        return
+      }
       const u = getUserById(session.userId)
       const h = getHouseholdById(session.householdId)
       if (u && h) {
@@ -310,6 +344,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    setSession(getSession())
     setUser(authedUser)
     setHousehold(authedHousehold)
   }
@@ -342,11 +377,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = () => {
     clearSession()
+    setSession(null)
     setUser(null)
     setHousehold(null)
     setPendingInvites([])
     setHouseholdInvites([])
     setJustJoined(false)
+  }
+
+  /**
+   * Re-reads the session from localStorage and updates user/household state.
+   * Used after createDemoSession() is called so the app re-renders with the
+   * demo user immediately.
+   */
+  const handleRefreshSession = () => {
+    const s = getSession()
+    setSession(s)
+    if (!s) {
+      setUser(null)
+      setHousehold(null)
+      return
+    }
+    // Demo sessions have no real user/household in localStorage — synthesise them
+    if (isDemoSession(s)) {
+      const demoUser: LocalUser = {
+        id: DEMO_USER_ID,
+        name: 'Demo User',
+        email: 'demo@example.com',
+        authProvider: 'email',
+        householdId: DEMO_HOUSEHOLD_ID,
+        createdAt: new Date().toISOString(),
+      }
+      const demoHousehold: Household = {
+        id: DEMO_HOUSEHOLD_ID,
+        name: 'Demo Household',
+        createdBy: DEMO_USER_ID,
+        memberships: [{ userId: DEMO_USER_ID, role: 'owner', joinedAt: new Date().toISOString() }],
+        createdAt: new Date().toISOString(),
+      }
+      setUser(demoUser)
+      setHousehold(demoHousehold)
+      return
+    }
+    const u = getUserById(s.userId)
+    const h = getHouseholdById(s.householdId)
+    if (u && h) {
+      setUser(u)
+      setHousehold(h)
+    } else {
+      clearSession()
+      setSession(null)
+    }
+  }
+
+  /** Create a demo session and immediately update app state. */
+  const handleStartDemo = () => {
+    createDemoSession()
+    handleRefreshSession()
   }
 
   // ── Invite management (legacy) ────────────────────────────────────────────
@@ -441,6 +528,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user,
       household,
+      isDemo,
+      refreshSession: handleRefreshSession,
+      startDemo: handleStartDemo,
       justJoined,
       clearJustJoined: () => setJustJoined(false),
       pendingInvites,

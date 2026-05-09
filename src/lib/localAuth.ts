@@ -372,6 +372,25 @@ export function renameHousehold(householdId: string, name: string) {
   upsertHousehold({ ...h, name: name.trim() })
 }
 
+// ─── Demo session ──────────────────────────────────────────────────────────
+export const DEMO_HOUSEHOLD_ID = 'demo-household'
+export const DEMO_USER_ID      = 'demo-user'
+
+/**
+ * Write a demo session to localStorage.
+ * The session has no expiry — it is cleared when the user signs in for real.
+ */
+export function createDemoSession(): AppSession {
+  const session: AppSession = { userId: DEMO_USER_ID, householdId: DEMO_HOUSEHOLD_ID }
+  localStorage.setItem('hf-session', JSON.stringify(session))
+  return session
+}
+
+/** Returns true when the active session is the ephemeral demo session. */
+export function isDemoSession(session: AppSession | null): boolean {
+  return session?.householdId === DEMO_HOUSEHOLD_ID
+}
+
 /** Remove a member from a household (owner only) */
 export function removeMember(householdId: string, targetUserId: string):
   { household: Household } | { error: string } {

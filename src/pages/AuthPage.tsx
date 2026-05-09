@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Wallet, Eye, EyeOff, AlertCircle, ChevronDown } from 'lucide-react'
+import { Wallet, Eye, EyeOff, AlertCircle, ChevronDown, FlaskConical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -254,6 +254,7 @@ function SignUpForm({ onClose }: { onClose: () => void }) {
 // ─── Main AuthPage ─────────────────────────────────────────────────────────
 
 export function AuthPage() {
+  const { startDemo }             = useAuth()
   const [emailOpen, setEmailOpen] = useState(false)
   const [emailTab, setEmailTab]   = useState<EmailTab>('signin')
 
@@ -326,6 +327,31 @@ export function AuthPage() {
             </div>
           </div>
         )}
+
+        {/* Try Demo */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 border-t" />
+            <span className="text-xs text-muted-foreground">{t('or', 'או', lang)}</span>
+            <div className="flex-1 border-t" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full min-h-[44px] gap-2"
+            onClick={startDemo}
+          >
+            <FlaskConical className="h-4 w-4" aria-hidden="true" />
+            {t('Try Demo', 'נסה דמו', lang)}
+          </Button>
+          <p className="text-xs text-center text-muted-foreground">
+            {t(
+              'Explore with sample data \u2014 nothing is saved',
+              '\u05d7\u05e7\u05d5\u05e8 \u05e2\u05dd \u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05dc\u05d3\u05d5\u05d2\u05de\u05d0 \u2014 \u05dc\u05d0 \u05e0\u05e9\u05de\u05e8',
+              lang
+            )}
+          </p>
+        </div>
 
         <p className="text-xs text-center text-muted-foreground">
           {t(

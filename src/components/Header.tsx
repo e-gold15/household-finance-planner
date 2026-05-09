@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users } from 'lucide-react'
+import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users, FlaskConical, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
@@ -23,7 +23,7 @@ const CURRENCY_OPTIONS: { value: Currency; label: string; locale: Locale }[] = [
 
 export function Header() {
   const { data, setData, exportData, importData } = useFinance()
-  const { user, household, signOut } = useAuth()
+  const { user, household, signOut, isDemo } = useAuth()
   const lang    = data.language
   const fileRef = useRef<HTMLInputElement>(null)
   const [pendingImport, setPendingImport] = useState<FinanceData | null>(null)
@@ -106,6 +106,7 @@ export function Header() {
   }
 
   return (
+    <>
     <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-sm">
       <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Logo + app name */}
@@ -294,5 +295,33 @@ export function Header() {
         </AlertDialogContent>
       </AlertDialog>
     </header>
+
+    {/* Demo Mode banner — shown below the sticky header when in demo session */}
+    {isDemo && (
+      <div className="sticky top-14 z-30 border-b border-warning/40 bg-warning/20">
+        <div className="max-w-4xl mx-auto px-4 h-10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <FlaskConical className="h-4 w-4 shrink-0 text-warning-foreground" aria-hidden="true" />
+            <span>
+              {t(
+                'Demo Mode \u2014 sample data only, nothing is saved',
+                '\u05de\u05e6\u05d1 \u05d3\u05de\u05d5 \u2014 \u05e0\u05ea\u05d5\u05e0\u05d9 \u05d3\u05d5\u05d2\u05de\u05d0 \u05d1\u05dc\u05d1\u05d3, \u05dc\u05d0 \u05e0\u05e9\u05de\u05e8 \u05d3\u05d1\u05e8',
+                lang
+              )}
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={signOut}
+            className="shrink-0 min-h-[32px] gap-1.5 text-xs"
+          >
+            {t('Exit Demo', 'צא מדמו', lang)}
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
