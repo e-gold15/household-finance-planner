@@ -140,6 +140,27 @@ function AccountDialog({
   )
 }
 
+function computeLastMonthBalance(account: SavingsAccount): number | null {
+  const currentYearMonth = new Date().toISOString().slice(0, 7)
+  const log = account.autoIncrementLog
+
+  if (Array.isArray(log) && log.length > 0) {
+    const thisMonthAdded = log
+      .filter((e) => e.month === currentYearMonth)
+      .reduce((s, e) => s + e.amount, 0)
+    const lastMonthBalance = account.balance - thisMonthAdded
+    return lastMonthBalance > 0 ? lastMonthBalance : null
+  }
+
+  // Fallback: rough estimate using monthlyContribution
+  if (account.monthlyContribution > 0) {
+    const lastMonthBalance = account.balance - account.monthlyContribution
+    return lastMonthBalance > 0 ? lastMonthBalance : null
+  }
+
+  return null
+}
+
 export function Savings() {
   const { data, addAccount, updateAccount, deleteAccount } = useFinance()
   const lang = data.language
@@ -173,6 +194,9 @@ export function Savings() {
     const hasLog = Array.isArray(log) && log.length > 0
     const isExpanded = expandedIds.has(account.id)
     const recentEntries = hasLog ? [...log].reverse().slice(0, 6) : []
+
+    const lastMonthBalance = computeLastMonthBalance(account)
+    const delta = lastMonthBalance !== null ? account.balance - lastMonthBalance : null
 
     return (
       <div className="py-2 border-b last:border-0">
@@ -226,6 +250,30 @@ export function Savings() {
             </AlertDialog>
           </div>
         </div>
+
+        {lastMonthBalance !== null && delta !== null && (
+          <div className="flex items-center gap-2 mt-1.5 text-xs">
+            <span className="text-muted-foreground">
+              {t('Last month:', 'חודש שעבר:', lang)}{' '}
+              {formatCurrency(lastMonthBalance, data.currency, data.locale)}
+            </span>
+            {delta > 0 && (
+              <span className="font-medium text-green-600 dark:text-green-400">
+                ▲ +{formatCurrency(delta, data.currency, data.locale)}
+              </span>
+            )}
+            {delta < 0 && (
+              <span className="font-medium text-destructive">
+                ▼ {formatCurrency(delta, data.currency, data.locale)}
+              </span>
+            )}
+            {delta === 0 && (
+              <span className="text-muted-foreground">
+                = {formatCurrency(0, data.currency, data.locale)}
+              </span>
+            )}
+          </div>
+        )}
 
         {hasLog && (
           <div className="mt-2">
