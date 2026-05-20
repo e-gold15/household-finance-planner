@@ -118,7 +118,7 @@ function makeSnapshot(overrides: Partial<MonthSnapshot> = {}): MonthSnapshot {
 // ─── 1. mergeFinanceData() — multi-member scenarios ──────────────────────────
 
 describe('mergeFinanceData() — multi-member scenarios', () => {
-  it('cloud expenses win over local expenses — 13 cloud vs 3 local', () => {
+  it('additive merge — 13 cloud expenses + 3 local-only → 16 total, cloud items first', () => {
     const cloudExpenses = Array.from({ length: 13 }, (_, i) =>
       makeExpense({ id: `cloud-exp-${i}`, name: `Cloud expense ${i}` })
     )
@@ -130,8 +130,18 @@ describe('mergeFinanceData() — multi-member scenarios', () => {
 
     const result = mergeFinanceData(cloud, local)
 
-    expect(result.expenses).toHaveLength(13)
+    // Additive merge: 13 cloud + 3 local-only (unique IDs) = 16
+    expect(result.expenses).toHaveLength(16)
+    // Cloud items come first (Map insertion order)
     expect(result.expenses[0].name).toBe('Cloud expense 0')
+    // All cloud items present
+    cloudExpenses.forEach((e) => {
+      expect(result.expenses.map((r) => r.name)).toContain(e.name)
+    })
+    // All local-only items preserved
+    localExpenses.forEach((e) => {
+      expect(result.expenses.map((r) => r.name)).toContain(e.name)
+    })
   })
 
   it('cloud members win — cloud has A+B, local only has A', () => {
@@ -160,20 +170,25 @@ describe('mergeFinanceData() — multi-member scenarios', () => {
     expect(result.goals.map((g) => g.name)).toContain('Emergency Fund')
   })
 
-  it('cloud accounts win — cloud has 4 accounts, local has 1', () => {
+  it('cloud accounts merged additively — cloud has 4, local has 1 unique → result has 5', () => {
     const cloudAccounts = Array.from({ length: 4 }, (_, i) =>
       makeAccount({ id: `cloud-acc-${i}`, name: `Account ${i}` })
     )
+    const localOnly = makeAccount({ id: 'local-acc-unique', name: 'Local Only' })
     const cloud = makeFinanceData({ accounts: cloudAccounts })
-    const local = makeFinanceData({ accounts: [makeAccount({ name: 'Local Only' })] })
+    const local = makeFinanceData({ accounts: [localOnly] })
 
     const result = mergeFinanceData(cloud, local)
 
-    expect(result.accounts).toHaveLength(4)
-    expect(result.accounts.every((a) => a.name.startsWith('Account'))).toBe(true)
+    // Additive merge: 4 cloud + 1 local-only = 5
+    expect(result.accounts).toHaveLength(5)
+    expect(result.accounts.map((a) => a.name)).toContain('Local Only')
+    cloudAccounts.forEach((a) => {
+      expect(result.accounts.map((acc) => acc.name)).toContain(a.name)
+    })
   })
 
-  it('cloud history wins — cloud has 6 snapshots, local has 1', () => {
+  it('history merged additively — cloud has 6 snapshots, local has 1 unique → result has 7', () => {
     const cloudSnapshots = Array.from({ length: 6 }, (_, i) =>
       makeSnapshot({ id: `snap-cloud-${i}`, label: `Month ${i + 1} 2026` })
     )
@@ -183,8 +198,12 @@ describe('mergeFinanceData() — multi-member scenarios', () => {
 
     const result = mergeFinanceData(cloud, local)
 
-    expect(result.history).toHaveLength(6)
-    expect(result.history.every((s) => s.label.startsWith('Month'))).toBe(true)
+    // Additive merge: 6 cloud + 1 local-only = 7
+    expect(result.history).toHaveLength(7)
+    expect(result.history.map((s) => s.label)).toContain('Local Only Month')
+    cloudSnapshots.forEach((s) => {
+      expect(result.history.map((snap) => snap.label)).toContain(s.label)
+    })
   })
 
   it('local darkMode is preserved — cloud has true, local has false', () => {
@@ -239,8 +258,9 @@ describe('mergeFinanceData() — multi-member scenarios', () => {
     expect(typeof result.categoryBudgets).toBe('object')
   })
 
-  it('cloud wins even when cloud expenses are empty and local has 5 items', () => {
-    // Cloud always wins on financial fields — even an empty cloud array overrides local
+  it('local-only expenses are preserved when cloud array is empty', () => {
+    // Additive merge: cloud has no expenses (empty array), local has 5.
+    // Local-only items (IDs not in cloud) are preserved — none are dropped.
     const localExpenses = Array.from({ length: 5 }, (_, i) =>
       makeExpense({ id: `local-${i}`, name: `Local expense ${i}` })
     )
@@ -249,8 +269,11 @@ describe('mergeFinanceData() — multi-member scenarios', () => {
 
     const result = mergeFinanceData(cloud, local)
 
-    // Cloud wins — result is empty, not the 5 local items
-    expect(result.expenses).toHaveLength(0)
+    // Additive merge preserves local-only items — all 5 survive
+    expect(result.expenses).toHaveLength(5)
+    for (let i = 0; i < 5; i++) {
+      expect(result.expenses.map((e) => e.name)).toContain(`Local expense ${i}`)
+    }
   })
 
   it('cloud currency wins — cloud has USD, local has ILS', () => {
@@ -478,7 +501,7 @@ describe('Multi-member sync — integration-style scenarios', () => {
     expect(result.expenses[9].name).toBe('Owner expense 9')
   })
 
-  it('existing member re-sync: 3 local expenses, 13 cloud expenses → member sees 13', () => {
+  it('existing member re-sync: 13 cloud expenses + 3 local-only → member sees 16 (additive)', () => {
     const cloudExpenses = Array.from({ length: 13 }, (_, i) =>
       makeExpense({ id: `cloud-${i}`, name: `Cloud expense ${i}` })
     )
@@ -490,7 +513,8 @@ describe('Multi-member sync — integration-style scenarios', () => {
 
     const result = mergeFinanceData(cloud, local)
 
-    expect(result.expenses).toHaveLength(13)
+    // Additive merge preserves all: 13 cloud + 3 local-only = 16
+    expect(result.expenses).toHaveLength(16)
   })
 
   it('merge is idempotent — 14 cloud, 14 local (same state) → result still 14', () => {
@@ -508,13 +532,14 @@ describe('Multi-member sync — integration-style scenarios', () => {
     expect(resultAgain.expenses).toHaveLength(14)
   })
 
-  it('conflict resolution — cloud always wins on expenses (local array completely replaced)', () => {
+  it('conflict resolution — same ID: cloud version kept; different IDs: both preserved', () => {
+    const sharedId = 'shared-expense-id'
     const cloudExpenses = [
-      makeExpense({ id: 'cloud-only-1', name: 'Cloud Rent', amount: 7000 }),
+      makeExpense({ id: sharedId, name: 'Cloud Rent', amount: 7000 }),
       makeExpense({ id: 'cloud-only-2', name: 'Cloud Groceries', amount: 3000 }),
     ]
     const localExpenses = [
-      makeExpense({ id: 'local-only-1', name: 'Local Rent', amount: 5000 }),
+      makeExpense({ id: sharedId, name: 'Local Rent', amount: 5000 }), // conflict — cloud wins
       makeExpense({ id: 'local-only-2', name: 'Local Groceries', amount: 2000 }),
       makeExpense({ id: 'local-only-3', name: 'Local Transport', amount: 1000 }),
     ]
@@ -523,12 +548,19 @@ describe('Multi-member sync — integration-style scenarios', () => {
 
     const result = mergeFinanceData(cloud, local)
 
-    // Cloud wins completely — no local-only entries survive
-    expect(result.expenses).toHaveLength(2)
-    expect(result.expenses.map((e) => e.name)).toContain('Cloud Rent')
+    // 2 cloud (one shared ID + one cloud-only) + 2 local-only = 4 total
+    expect(result.expenses).toHaveLength(4)
+    // Cloud version of the conflicting ID wins
+    const conflicting = result.expenses.find((e) => e.id === sharedId)
+    expect(conflicting?.name).toBe('Cloud Rent')
+    expect(conflicting?.amount).toBe(7000)
+    // Cloud-only item present
     expect(result.expenses.map((e) => e.name)).toContain('Cloud Groceries')
-    expect(result.expenses.map((e) => e.name)).not.toContain('Local Rent')
-    expect(result.expenses.map((e) => e.name)).not.toContain('Local Transport')
+    // Local-only items preserved
+    expect(result.expenses.map((e) => e.name)).toContain('Local Groceries')
+    expect(result.expenses.map((e) => e.name)).toContain('Local Transport')
+    // No duplicate for the shared ID
+    expect(result.expenses.filter((e) => e.id === sharedId)).toHaveLength(1)
   })
 
   it('UI prefs preserved across sync — local darkMode:true + language:he survive cloud overwrite', () => {
@@ -567,9 +599,10 @@ describe('Multi-member sync — integration-style scenarios', () => {
 // ─── 5. Race-condition: hasLocalEditRef guard — pure function contracts ───────
 
 describe('Race-condition guard — hasLocalEditRef logic via pure function contracts', () => {
-  it('without guard: auto-snapshot fires before pull, merge wipes local edit', () => {
-    // This documents the bug: auto-snapshot triggered setData → hasLocalEditRef = true
-    // → merge skipped on cloud response. Demonstration via mergeFinanceData behavior:
+  it('without guard: additive merge preserves local-only expense and auto-snapshot', () => {
+    // With additive mergeById, local-only items are preserved even without the guard.
+    // The hasLocalEditRef guard remains valuable for scalar fields (currency, etc.)
+    // where cloud could overwrite an in-flight local change.
     const localAfterAutoSnapshot = makeFinanceData({
       history: [makeSnapshot({ id: 'auto-snap', label: 'Auto May 2026', autoSnapshot: true })],
       expenses: [makeExpense({ id: 'user-expense', name: 'User added expense', amount: 999 })],
@@ -579,12 +612,13 @@ describe('Race-condition guard — hasLocalEditRef logic via pure function contr
       history: [],
     })
 
-    // Without guard — merge fires and cloud wins on financial fields
+    // Additive merge: local-only items are preserved
     const withoutGuard = mergeFinanceData(cloudBeforeSnapshot, localAfterAutoSnapshot)
 
-    // Cloud's empty arrays win — the user's expense and snapshot are gone
-    expect(withoutGuard.expenses).toHaveLength(0)
-    expect(withoutGuard.history).toHaveLength(0)
+    expect(withoutGuard.expenses).toHaveLength(1)
+    expect(withoutGuard.expenses[0].name).toBe('User added expense')
+    expect(withoutGuard.history).toHaveLength(1)
+    expect(withoutGuard.history[0].id).toBe('auto-snap')
   })
 
   it('with guard: hasLocalEdit=true → merge skipped → local data preserved', () => {
@@ -621,9 +655,9 @@ describe('Race-condition guard — hasLocalEditRef logic via pure function contr
     expect(result.expenses).toHaveLength(2)
   })
 
-  it('auto-snapshot marker (autoSnapshot:true) does not corrupt cloud merge result', () => {
+  it('auto-snapshot marker (autoSnapshot:true) from local is preserved in additive merge', () => {
     // Auto-snapshots have autoSnapshot:true; cloud has manually snapshotted data.
-    // The merge should always return cloud's history array unchanged.
+    // With additive merge, local-only snapshots (unique IDs) are preserved alongside cloud ones.
     const cloudHistory = [
       makeSnapshot({ id: 'manual-1', label: 'March 2026', autoSnapshot: false }),
       makeSnapshot({ id: 'manual-2', label: 'April 2026', autoSnapshot: false }),
@@ -636,10 +670,14 @@ describe('Race-condition guard — hasLocalEditRef logic via pure function contr
 
     const result = mergeFinanceData(cloud, local)
 
-    // Cloud's history wins — auto-snapshot from local is gone
-    expect(result.history).toHaveLength(2)
-    expect(result.history.every((s) => s.autoSnapshot === false)).toBe(true)
-    expect(result.history.find((s) => s.id === 'auto-snap')).toBeUndefined()
+    // Additive merge: 2 cloud + 1 local-only = 3 total
+    expect(result.history).toHaveLength(3)
+    // Cloud snapshots present
+    expect(result.history.find((s) => s.id === 'manual-1')).toBeDefined()
+    expect(result.history.find((s) => s.id === 'manual-2')).toBeDefined()
+    // Local-only auto-snapshot also preserved
+    expect(result.history.find((s) => s.id === 'auto-snap')).toBeDefined()
+    expect(result.history.find((s) => s.id === 'auto-snap')?.autoSnapshot).toBe(true)
   })
 
   it('locale field is synced from cloud (financial config, not per-device pref)', () => {
@@ -650,5 +688,102 @@ describe('Race-condition guard — hasLocalEditRef logic via pure function contr
 
     // locale is a financial config field — cloud wins (unlike language which is per-device)
     expect(result.locale).toBe('en-US')
+  })
+})
+
+// ─── 6. Additive merge — new tests ───────────────────────────────────────────
+
+describe('Additive merge — mergeById behaviour', () => {
+  it('additive merge: local-only expenses preserved — cloud has 3, local has 3+10 unique → 13 total', () => {
+    const cloudExpenses = Array.from({ length: 3 }, (_, i) =>
+      makeExpense({ id: `cloud-${i}`, name: `Cloud expense ${i}`, amount: 1000 })
+    )
+    const localOnlyExpenses = Array.from({ length: 10 }, (_, i) =>
+      makeExpense({ id: `local-only-${i}`, name: `Local expense ${i}`, amount: 500 })
+    )
+    // Local also has the 3 cloud ones (already synced) plus 10 new ones not yet pushed
+    const local = makeFinanceData({ expenses: [...cloudExpenses, ...localOnlyExpenses] })
+    const cloud = makeFinanceData({ expenses: cloudExpenses })
+
+    const result = mergeFinanceData(cloud, local)
+
+    // 3 cloud (deduplicated by ID) + 10 local-only = 13
+    expect(result.expenses).toHaveLength(13)
+    cloudExpenses.forEach((e) => {
+      expect(result.expenses.map((r) => r.name)).toContain(e.name)
+    })
+    localOnlyExpenses.forEach((e) => {
+      expect(result.expenses.map((r) => r.name)).toContain(e.name)
+    })
+  })
+
+  it('cloud wins on conflict — same expense ID in both, different amounts → cloud version kept', () => {
+    const sharedId = 'expense-conflict-id'
+    const cloudExpense = makeExpense({ id: sharedId, name: 'Rent (cloud)', amount: 7000 })
+    const localExpense = makeExpense({ id: sharedId, name: 'Rent (local)', amount: 5000 })
+
+    const cloud = makeFinanceData({ expenses: [cloudExpense] })
+    const local = makeFinanceData({ expenses: [localExpense] })
+
+    const result = mergeFinanceData(cloud, local)
+
+    // Only one item for the shared ID — no duplicate
+    expect(result.expenses).toHaveLength(1)
+    // Cloud version wins
+    expect(result.expenses[0].name).toBe('Rent (cloud)')
+    expect(result.expenses[0].amount).toBe(7000)
+  })
+
+  it('additive merge: accounts preserved — cloud has 2, local has 2+1 unique → 3 total', () => {
+    const sharedAccId = 'shared-account-id'
+    const cloudAccounts = [
+      makeAccount({ id: sharedAccId, name: 'Shared Account', balance: 50000 }),
+      makeAccount({ id: 'cloud-acc-2', name: 'Cloud Account 2', balance: 20000 }),
+    ]
+    const localAccounts = [
+      makeAccount({ id: sharedAccId, name: 'Shared Account (local)', balance: 45000 }), // conflict
+      makeAccount({ id: 'local-acc-new', name: 'New Savings', balance: 10000 }), // local-only
+    ]
+
+    const cloud = makeFinanceData({ accounts: cloudAccounts })
+    const local = makeFinanceData({ accounts: localAccounts })
+
+    const result = mergeFinanceData(cloud, local)
+
+    // 2 cloud (deduplicated) + 1 local-only = 3
+    expect(result.accounts).toHaveLength(3)
+    // Cloud version of conflicting account wins
+    const shared = result.accounts.find((a) => a.id === sharedAccId)
+    expect(shared?.name).toBe('Shared Account')
+    expect(shared?.balance).toBe(50000)
+    // Local-only account preserved
+    expect(result.accounts.map((a) => a.name)).toContain('New Savings')
+  })
+
+  it('additive merge: goals preserved — cloud has 1, local has 1+2 unique → 3 total', () => {
+    const sharedGoalId = 'shared-goal-id'
+    const cloudGoals = [
+      makeGoal({ id: sharedGoalId, name: 'Vacation (cloud)', targetAmount: 10000 }),
+    ]
+    const localGoals = [
+      makeGoal({ id: sharedGoalId, name: 'Vacation (local)', targetAmount: 8000 }), // conflict
+      makeGoal({ id: 'local-goal-2', name: 'Emergency Fund', targetAmount: 30000 }),
+      makeGoal({ id: 'local-goal-3', name: 'Car', targetAmount: 60000 }),
+    ]
+
+    const cloud = makeFinanceData({ goals: cloudGoals })
+    const local = makeFinanceData({ goals: localGoals })
+
+    const result = mergeFinanceData(cloud, local)
+
+    // 1 cloud (deduplicated) + 2 local-only = 3
+    expect(result.goals).toHaveLength(3)
+    // Cloud version wins on conflict
+    const shared = result.goals.find((g) => g.id === sharedGoalId)
+    expect(shared?.name).toBe('Vacation (cloud)')
+    expect(shared?.targetAmount).toBe(10000)
+    // Local-only goals preserved
+    expect(result.goals.map((g) => g.name)).toContain('Emergency Fund')
+    expect(result.goals.map((g) => g.name)).toContain('Car')
   })
 })

@@ -80,6 +80,25 @@ export async function pushCloudFinanceData(
   }
 }
 
+// ─── Merge helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Additive merge for arrays identified by `id`.
+ *
+ * Cloud wins on conflicts (same ID → cloud version kept).
+ * Local-only items (IDs not in cloud) are preserved so that writes made on this
+ * device between the last push and the current pull are never silently dropped.
+ */
+function mergeById<T extends { id: string }>(cloudItems: T[], localItems: T[]): T[] {
+  const result = new Map(cloudItems.map(item => [item.id, item]))
+  for (const localItem of localItems) {
+    if (!result.has(localItem.id)) {
+      result.set(localItem.id, localItem)
+    }
+  }
+  return Array.from(result.values())
+}
+
 // ─── Merge ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -88,9 +107,11 @@ export async function pushCloudFinanceData(
  * Strategy:
  *   - Start from FINANCE_DEFAULTS so any field missing from an older cloud blob
  *     (schema added after the blob was written) is filled with a safe default.
- *   - Cloud wins on ALL financial fields (members, expenses, accounts, goals, history,
- *     currency, locale, emergencyBufferMonths) so every household member sees the same
- *     numbers.
+ *   - Scalar financial fields (currency, locale, emergencyBufferMonths,
+ *     categoryBudgets): cloud wins outright.
+ *   - Array fields (expenses, accounts, goals, members, history): additive merge
+ *     via mergeById — cloud wins on conflicts (same ID), local-only items are
+ *     preserved so writes not yet pushed to cloud are never lost.
  *   - Local device keeps its OWN darkMode and language — these are UI preferences
  *     that differ per person and must never be overwritten by another member's device.
  *
@@ -99,11 +120,19 @@ export async function pushCloudFinanceData(
  */
 export function mergeFinanceData(cloudData: FinanceData, localData: FinanceData): FinanceData {
   return {
-    // Fill any missing fields from an older schema version
     ...FINANCE_DEFAULTS,
-    // Cloud wins on all financial fields
-    ...cloudData,
-    // Preserve per-device UI prefs — never overwrite from cloud
+    // Scalar fields: cloud wins
+    currency:              cloudData.currency              ?? FINANCE_DEFAULTS.currency,
+    locale:                cloudData.locale                ?? FINANCE_DEFAULTS.locale,
+    emergencyBufferMonths: cloudData.emergencyBufferMonths ?? FINANCE_DEFAULTS.emergencyBufferMonths,
+    categoryBudgets:       cloudData.categoryBudgets       ?? FINANCE_DEFAULTS.categoryBudgets,
+    // Array fields: additive merge (cloud wins on conflicts, local-only items preserved)
+    expenses: mergeById(cloudData.expenses ?? [], localData.expenses ?? []),
+    accounts: mergeById(cloudData.accounts ?? [], localData.accounts ?? []),
+    goals:    mergeById(cloudData.goals    ?? [], localData.goals    ?? []),
+    members:  mergeById(cloudData.members  ?? [], localData.members  ?? []),
+    history:  mergeById(cloudData.history  ?? [], localData.history  ?? []),
+    // Per-device prefs: local always wins
     darkMode: localData.darkMode,
     language: localData.language,
   }

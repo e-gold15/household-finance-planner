@@ -319,18 +319,21 @@ describe('Bootstrap seed — isLocalEmpty() gate', () => {
 // which is the operation that would be skipped when the guard fires.
 
 describe('Race-condition guard contract', () => {
-  it('without the guard: cloud fetch would overwrite a concurrent local edit', () => {
-    // Demonstrates the bug that existed before the hasLocalEditRef fix.
+  it('without the guard: additive merge still preserves local-only expense (demonstrates guard is belt-and-suspenders)', () => {
+    // With additive mergeById, local-only items are never dropped even without the guard.
+    // The hasLocalEditRef guard remains important for scalar field conflicts (currency,
+    // emergencyBufferMonths, etc.) where cloud would otherwise overwrite a local change.
     const localAfterUserEdit: FinanceData = {
       ...defaultData,
       expenses: [{ id: 'new', name: 'New expense added by user', amount: 999, category: 'other', recurring: false, period: 'monthly' }],
     }
     const cloudBeforeEdit: FinanceData = { ...defaultData, expenses: [] }
 
-    // If the guard were absent, this merge would fire and wipe the user's edit:
+    // With additive merge: local-only expense is preserved even without the guard
     const withoutGuard = mergeFinanceData(cloudBeforeEdit, localAfterUserEdit)
-    // Cloud wins on expenses → user's edit gone
-    expect(withoutGuard.expenses).toHaveLength(0)
+    // Local-only item survives — additive merge preserves it
+    expect(withoutGuard.expenses).toHaveLength(1)
+    expect(withoutGuard.expenses[0].name).toBe('New expense added by user')
   })
 
   it('with the guard: when hasLocalEdit=true, merge is skipped and local edit survives', () => {
