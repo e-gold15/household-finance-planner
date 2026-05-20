@@ -4,7 +4,7 @@ import { generateId } from '@/lib/utils'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
 import { applyMonthlyContributions } from '@/lib/contributionEngine'
-import { supabaseConfigured } from '@/lib/supabase'
+import { supabase, supabaseConfigured } from '@/lib/supabase'
 import { getRates } from '@/lib/fxRates'
 import type { FxRateCache } from '@/lib/fxRates'
 import { isDemoSession } from '@/lib/localAuth'
@@ -164,8 +164,12 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
   // Ref tracks whether the user has written anything since mount.
   // If true, the background cloud fetch must NOT overwrite their edits.
-  const hasLocalEditRef  = useRef(false)
-  const pushTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hasLocalEditRef       = useRef(false)
+  // Ref tracks whether the initial cloud pull has completed.
+  // Auto-snapshot / contribution engine calls setData before the pull resolves;
+  // we must not let those early writes block the cloud merge.
+  const cloudPullCompletedRef = useRef(false)
+  const pushTimerRef          = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── FX rates — fetched when any income source uses a foreign currency ──────
   const [fxRates, setFxRates] = useState<FxRateCache | null>(null)
@@ -202,20 +206,23 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
     if (isDemo) return
 
     let cancelled = false
-    hasLocalEditRef.current = false   // reset on household switch
+    hasLocalEditRef.current       = false   // reset on household switch
+    cloudPullCompletedRef.current = false   // reset on household switch
 
     fetchCloudFinanceData(householdId).then((cloudData) => {
       if (cancelled) return
 
       if (cloudData) {
-        // Case A: cloud has data — merge into local, but only if the user
-        // hasn't already started editing (race-condition guard).
-        if (!hasLocalEditRef.current) {
-          const current = load(householdId)
-          const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
-          save(householdId, merged)
-          setDataState(merged)
-        }
+        // Case A: cloud has data — always merge into local on initial load.
+        // Cloud is the source of truth for financial fields. We do NOT gate this
+        // on hasLocalEditRef because auto-snapshot / contribution engine effects
+        // call setData before this fetch resolves, which would have incorrectly
+        // set hasLocalEditRef=true and caused the cloud data to be silently
+        // discarded (the root cause of the "members see different data" bug).
+        const current = load(householdId)
+        const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
+        save(householdId, merged)
+        setDataState(merged)
       } else {
         // Case B: no cloud row yet — if local has data, seed the cloud now so
         // that any household member who joins will immediately see it.
@@ -226,14 +233,58 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
         // Case C falls through here: cloud empty + local empty → nothing to do.
       }
 
+      // Mark pull as done BEFORE clearing isLoading so that any setData calls
+      // triggered by the isLoading→false transition are correctly tagged as
+      // post-pull user edits.
+      cloudPullCompletedRef.current = true
       setIsLoading(false)
     }).catch(() => {
-      if (!cancelled) setIsLoading(false)
+      if (!cancelled) {
+        cloudPullCompletedRef.current = true
+        setIsLoading(false)
+      }
     })
 
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId])
+
+  // ── Realtime: listen for changes pushed by other household members ─────────
+  // When another device pushes a cloud update, Supabase broadcasts a postgres_changes
+  // event. We merge it in so changes appear live without a page reload.
+  useEffect(() => {
+    if (isDemo || !supabaseConfigured) return
+
+    const channel = supabase
+      .channel(`household_finance:${householdId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'household_finance',
+          filter: `household_id=eq.${householdId}`,
+        },
+        (payload) => {
+          // Only apply after our own initial pull is done — otherwise we risk
+          // interfering with the first merge which hasn't run yet.
+          if (!cloudPullCompletedRef.current) return
+          const cloudData = (payload.new as { data: FinanceData }).data
+          if (!cloudData) return
+          setDataState((prev) => {
+            const merged = repairSnapshotTotals(mergeFinanceData(cloudData, prev))
+            save(householdId, merged)
+            return merged
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId, isDemo])
 
   // ── Writes: localStorage immediately, cloud debounced ─────────────────────
   // Demo mode: mutations are in-memory only — no localStorage or Supabase I/O.
@@ -248,9 +299,12 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
       save(householdId, next)
 
-      // Mark that the user has made a local edit — the background cloud fetch
-      // must not overwrite this if it resolves after this write.
-      hasLocalEditRef.current = true
+      // Only mark as "user edited" after the cloud pull has completed.
+      // Calls that arrive before the pull resolves (auto-snapshot, contribution
+      // engine) must NOT block the cloud merge that is still in-flight.
+      if (cloudPullCompletedRef.current) {
+        hasLocalEditRef.current = true
+      }
 
       // Debounce cloud push — cancel the previous timer and schedule a new one.
       if (pushTimerRef.current) clearTimeout(pushTimerRef.current)
