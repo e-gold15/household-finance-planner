@@ -410,3 +410,23 @@ export function removeMember(householdId: string, targetUserId: string):
 
   return { household: h }
 }
+
+/**
+ * Set a member's role to 'owner' in the household memberships.
+ * If the member doesn't have a membership entry yet, one is added.
+ * This does NOT demote other owners — multiple owners are allowed.
+ */
+export function makeOwner(householdId: string, userId: string):
+  { household: Household } | { error: string } {
+  const h = getHouseholdById(householdId)
+  if (!h) return { error: 'Household not found.' }
+  const existing = h.memberships.find((m) => m.userId === userId)
+  if (existing) {
+    existing.role = 'owner'
+  } else {
+    h.memberships.push({ userId, role: 'owner', joinedAt: new Date().toISOString() })
+  }
+  h.createdBy = userId   // also update createdBy so owner guards work everywhere
+  upsertHousehold(h)
+  return { household: h }
+}

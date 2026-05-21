@@ -38,14 +38,18 @@ function MemberRow({
   role,
   isCurrentUser,
   canRemove,
+  canMakeOwner,
   onRemove,
+  onMakeOwner,
   lang,
 }: {
   member: LocalUser
   role: 'owner' | 'member'
   isCurrentUser: boolean
   canRemove: boolean
+  canMakeOwner: boolean
   onRemove: (id: string) => void
+  onMakeOwner: (id: string) => void
   lang: 'en' | 'he'
 }) {
   const displayName = member.name || member.email
@@ -71,6 +75,17 @@ function MemberRow({
           ? <Badge variant="secondary" className="gap-1 text-xs"><Crown className="h-3 w-3" />{t('Owner', 'בעלים', lang)}</Badge>
           : <Badge variant="outline"   className="gap-1 text-xs"><User  className="h-3 w-3" />{t('Member', 'חבר', lang)}</Badge>
         }
+        {canMakeOwner && (
+          <Button
+            variant="ghost" size="sm" className="min-h-[44px] text-xs text-muted-foreground hover:text-primary gap-1"
+            onClick={() => onMakeOwner(member.id)}
+            title={t('Make owner', 'הפוך לבעלים', lang)}
+            aria-label={t('Make owner', 'הפוך לבעלים', lang)}
+          >
+            <Crown className="h-3 w-3" />
+            {t('Make owner', 'הפוך לבעלים', lang)}
+          </Button>
+        )}
         {canRemove && (
           <Button
             variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
@@ -536,7 +551,7 @@ export function HouseholdSettings() {
   const {
     user, household, householdInvites,
     revokeInvite, refreshInvites,
-    renameHousehold, removeMember, getMembers,
+    renameHousehold, removeMember, makeOwner, getMembers,
   } = useAuth()
   const { data } = useFinance()
   const lang = data.language
@@ -577,6 +592,12 @@ export function HouseholdSettings() {
     const err = await removeMember(targetId)
     if (err) toast.error(err)
     else toast.success(t('Member removed.', 'חבר הוסר.', lang))
+  }
+
+  const handleMakeOwner = async (targetId: string) => {
+    const err = await makeOwner(targetId)
+    if (err) toast.error(err)
+    else toast.success(t('Member is now an owner.', 'החבר הפך לבעלים.', lang))
   }
 
   const pendingCount = householdInvites.length
@@ -660,7 +681,9 @@ export function HouseholdSettings() {
                   role={membershipMap[m.id] ?? 'member'}
                   isCurrentUser={m.id === user.id}
                   canRemove={isOwner && m.id !== user.id && membershipMap[m.id] !== 'owner'}
+                  canMakeOwner={isOwner && membershipMap[m.id] !== 'owner'}
                   onRemove={handleRemoveMember}
+                  onMakeOwner={handleMakeOwner}
                   lang={lang}
                 />
               </div>

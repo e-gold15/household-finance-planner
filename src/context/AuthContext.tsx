@@ -16,6 +16,7 @@ import {
   createDemoSession,
   DEMO_USER_ID,
   DEMO_HOUSEHOLD_ID,
+  makeOwner as localMakeOwner,
 } from '@/lib/localAuth'
 import { initGoogleAuth, promptGoogleSignIn } from '@/lib/googleAuth'
 import type { GoogleProfile } from '@/lib/googleAuth'
@@ -86,6 +87,8 @@ interface AuthContextType {
   renameHousehold: (name: string) => Promise<void>
   /** Remove a member (owner only). Returns error string or null. */
   removeMember: (targetUserId: string) => Promise<string | null>
+  /** Promote a member to owner. Returns error string or null. */
+  makeOwner: (targetUserId: string) => Promise<string | null>
   getMembers: () => LocalUser[]
 }
 
@@ -517,6 +520,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null
   }
 
+  const handleMakeOwner = async (targetUserId: string): Promise<string | null> => {
+    if (!user || !household) return 'Not signed in.'
+    const result = localMakeOwner(household.id, targetUserId)
+    if ('error' in result) return result.error
+    setHousehold(result.household)
+    return null
+  }
+
   const handleGetMembers = (): LocalUser[] => {
     if (!household) return []
     return household.memberships
@@ -546,6 +557,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       revokeInvite: handleRevokeInvite,
       renameHousehold: handleRenameHousehold,
       removeMember: handleRemoveMember,
+      makeOwner: handleMakeOwner,
       getMembers: handleGetMembers,
     }}>
       {children}
