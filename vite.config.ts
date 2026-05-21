@@ -8,7 +8,8 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
+      // Only list assets that actually exist in public/ — missing files cause SW install failures
+      includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg'],
       manifest: {
         name: 'Household Finance Planner',
         short_name: 'Finance',
@@ -18,8 +19,7 @@ export default defineConfig({
         display: 'standalone',
         start_url: '/',
         scope: '/',
-        lang: 'he',
-        dir: 'rtl',
+        // No lang/dir hardcoded — app is bilingual (EN + HE), let the OS choose
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
