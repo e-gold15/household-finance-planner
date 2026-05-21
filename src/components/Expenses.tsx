@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown, PencilLine } from 'lucide-react'
+import { Card, CardContent, CardHeader } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -9,12 +9,11 @@ import { Progress } from './ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
-import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
 import { scanReceipt, aiEnabled } from '@/lib/aiAdvisor'
-import type { Expense, ExpenseCategory, HistoricalExpense } from '@/types'
+import type { Expense, ExpenseCategory } from '@/types'
 
 const MONTHS: { value: number; en: string; he: string }[] = [
   { value: 1,  en: 'January',   he: 'ינואר' },
@@ -46,18 +45,24 @@ function monthsUntilDue(dueMonth: number): number {
 
 // ── ExpenseDialog ─────────────────────────────────────────────────────────────
 
-
 function ExpenseDialog({
   existing,
   onSave,
   lang,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   existing?: Expense
   onSave: (e: Expense) => void
   lang: 'en' | 'he'
+  open?: boolean
+  onOpenChange?: (o: boolean) => void
 }) {
   const { addExpenseToMonth, data } = useFinance()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+
   const [form, setForm] = useState<Expense>(
     existing ?? {
       id: generateId(),
@@ -120,7 +125,11 @@ function ExpenseDialog({
         setPastMonth(now.getMonth()); setPastYear(now.getFullYear())
       }
     }
-    setOpen(o)
+    if (isControlled) {
+      controlledOnOpenChange?.(o)
+    } else {
+      setInternalOpen(o)
+    }
   }
 
   const handleReceiptFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,318 +181,362 @@ function ExpenseDialog({
       setSavedLabel(`${monthName(pastMonth, lang)} ${pastYear}`)
       closeTimerRef.current = setTimeout(() => {
         closeTimerRef.current = null
-        setOpen(false)
+        handleOpen(false)
         setSavedLabel(null)
       }, 1200)
     } else {
       onSave(form)
-      setOpen(false)
+      handleOpen(false)
     }
+  }
+
+  const dialogContent = (
+    <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>
+          {existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 mt-2">
+
+        {/* Improvement E — Receipt scan zone (shown when aiEnabled and in budget/new mode) */}
+        {aiEnabled && !existing && mode === 'budget' && (
+          <>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              className="hidden"
+              aria-hidden="true"
+              onChange={handleReceiptFile}
+            />
+            <div
+              className="mx-1 mb-1 border-2 border-dashed border-primary rounded-xl p-5 flex flex-col items-center gap-2 bg-primary/5 cursor-pointer"
+              onClick={() => { setScanError(null); fileInputRef.current?.click() }}
+              role="button"
+              tabIndex={0}
+              aria-label={t('Scan a receipt', 'סרוק קבלה', lang)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setScanError(null); fileInputRef.current?.click() } }}
+            >
+              <div className="bg-primary/10 p-3 rounded-xl">
+                {scanning
+                  ? <Loader2 className="h-7 w-7 text-primary animate-spin" />
+                  : <Camera className="h-7 w-7 text-primary" />
+                }
+              </div>
+              <p className="text-sm font-semibold text-primary">
+                {scanning
+                  ? t('Scanning…', 'סורק…', lang)
+                  : t('📷 Scan a receipt', '📷 סרוק קבלה', lang)
+                }
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                {t("Take a photo and we'll fill in the form automatically", 'צלם קבלה ונמלא את הטופס אוטומטית', lang)}
+              </p>
+            </div>
+
+            {/* "or fill in manually" divider */}
+            <div className="flex items-center gap-2 mx-1 mb-1">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                {t('or fill in manually', 'או מלא ידנית', lang)}
+              </span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
+          </>
+        )}
+
+        {/* When aiEnabled but it's an existing expense edit, keep hidden file input accessible */}
+        {aiEnabled && existing && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            className="hidden"
+            aria-hidden="true"
+            onChange={handleReceiptFile}
+          />
+        )}
+
+        {/* Scan error */}
+        {scanError && (
+          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {scanError}
+          </div>
+        )}
+
+        {/* When? — only for new expenses, not editing existing ones */}
+        {!existing && (
+          <div>
+            <Label className="mb-2 block">{t('When?', 'מתי?', lang)}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('budget')}
+                aria-pressed={mode === 'budget'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  mode === 'budget'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <CalendarCheck className="h-3.5 w-3.5" />
+                {t('Current budget', 'תקציב שוטף', lang)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('past')}
+                aria-pressed={mode === 'past'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  mode === 'past'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <History className="h-3.5 w-3.5" />
+                {t('Past month', 'חודש קודם', lang)}
+              </button>
+            </div>
+
+            {/* Month + Year pickers — only in past mode */}
+            {mode === 'past' && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <Label htmlFor="past-month">{t('Month', 'חודש', lang)}</Label>
+                  <Select value={pastMonth.toString()} onValueChange={(v) => setPastMonth(+v)}>
+                    <SelectTrigger id="past-month" aria-label={t('Month', 'חודש', lang)}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTHS.filter((m) => {
+                        const now = new Date()
+                        const cur = now.getMonth() + 1
+                        const curY = now.getFullYear()
+                        // exclude current month and future months for the selected year
+                        if (pastYear === curY) return m.value < cur
+                        if (pastYear > curY) return false
+                        return true
+                      }).map((m) => (
+                        <SelectItem key={m.value} value={m.value.toString()}>
+                          {lang === 'he' ? m.he : m.en}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="past-year">{t('Year', 'שנה', lang)}</Label>
+                  <Select value={pastYear.toString()} onValueChange={(v) => handlePastYearChange(+v)}>
+                    <SelectTrigger id="past-year" aria-label={t('Year', 'שנה', lang)}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map((y) => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Name */}
+        <div>
+          <Label htmlFor="exp-name">{t('Name', 'שם', lang)}</Label>
+          <Input
+            id="exp-name"
+            value={form.name}
+            onChange={(e) => set('name', e.target.value)}
+            placeholder={t('e.g. Rent', 'למשל: שכ"ד', lang)}
+          />
+        </div>
+
+        {/* Amount + Period */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label htmlFor="exp-amount">{t('Amount', 'סכום', lang)}</Label>
+            <Input id="exp-amount" type="number" value={form.amount} onChange={(e) => set('amount', +e.target.value)} />
+          </div>
+          {mode === 'budget' && (
+            <div>
+              <Label>{t('Period', 'תדירות', lang)}</Label>
+              <Select value={form.period} onValueChange={(v) => set('period', v as 'monthly' | 'yearly')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">{t('Monthly', 'חודשי', lang)}</SelectItem>
+                  <SelectItem value="yearly">{t('Yearly', 'שנתי', lang)}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        {/* Due month — only for yearly expenses */}
+        {form.period === 'yearly' && (
+          <div>
+            <Label>{t('Due Month', 'חודש תשלום', lang)}</Label>
+            <Select
+              value={form.dueMonth?.toString() ?? ''}
+              onValueChange={(v) => set('dueMonth', v ? +v : undefined)}
+            >
+              <SelectTrigger><SelectValue placeholder={t('Select month…', 'בחר חודש…', lang)} /></SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m) => (
+                  <SelectItem key={m.value} value={m.value.toString()}>
+                    {lang === 'he' ? m.he : m.en}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Category */}
+        <div>
+          <Label>{t('Category', 'קטגוריה', lang)}</Label>
+          <Select
+            value={form.category}
+            onValueChange={(v) => {
+              const newCat = v as ExpenseCategory
+              setForm((f) => ({
+                ...f,
+                category: newCat,
+                // Clear the linked account when the category is no longer 'savings'
+                linkedAccountId: newCat === 'savings' ? f.linkedAccountId : undefined,
+              }))
+            }}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c.value} value={c.value}>{lang === 'he' ? c.he : c.en}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* When category is savings but no accounts have been created yet, show a hint */}
+        {form.category === 'savings' && data.accounts.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            {t(
+              'Add a savings account in the Accounts tab to link it here.',
+              'הוסף חשבון חיסכון בלשונית חשבונות כדי לקשר אותו כאן.',
+              lang
+            )}
+          </p>
+        )}
+
+        {/* Link to savings account — only visible when category is 'savings' and accounts exist */}
+        {form.category === 'savings' && data.accounts.length > 0 && (
+          <div>
+            <Label htmlFor="linked-account">
+              {t('Link to savings account', 'קשר לחשבון חיסכון', lang)}{' '}
+              <span className="text-muted-foreground text-xs">({t('optional', 'אופציונלי', lang)})</span>
+            </Label>
+            <Select
+              value={form.linkedAccountId ?? '__none__'}
+              onValueChange={(v) => set('linkedAccountId', v === '__none__' ? undefined : v)}
+            >
+              <SelectTrigger id="linked-account" aria-label={t('Link to savings account', 'קשר לחשבון חיסכון', lang)} className="min-h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t("None / Don't link", 'ללא קישור', lang)}</SelectItem>
+                {data.accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Fixed vs Variable — segmented toggle */}
+        {mode === 'budget' && (
+          <div>
+            <Label className="mb-2 block">{t('Expense Type', 'סוג הוצאה', lang)}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => set('expenseType', 'fixed')}
+                aria-pressed={(form.expenseType ?? 'fixed') === 'fixed'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  (form.expenseType ?? 'fixed') === 'fixed'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                {t('Fixed', 'קבוע', lang)}
+              </button>
+              <button
+                type="button"
+                onClick={() => set('expenseType', 'variable')}
+                aria-pressed={form.expenseType === 'variable'}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  form.expenseType === 'variable'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Waves className="h-3.5 w-3.5" />
+                {t('Variable', 'משתנה', lang)}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {(form.expenseType ?? 'fixed') === 'fixed'
+                ? t('Same amount every month — rent, subscriptions, insurance', 'אותו סכום כל חודש — שכ"ד, מנויים, ביטוח', lang)
+                : t('Amount changes month to month — food, dining, entertainment', 'הסכום משתנה — מזון, בילויים, בידור', lang)
+              }
+            </p>
+          </div>
+        )}
+
+        <Button className="w-full" onClick={handleSave}>
+          {t('Save', 'שמור', lang)}
+        </Button>
+
+        {savedLabel && (
+          <p className="text-xs text-primary text-center flex items-center justify-center gap-1">
+            <span>✓</span>
+            {t(`Added to ${savedLabel} in History`, `נוסף ל${savedLabel} בהיסטוריה`, lang)}
+          </p>
+        )}
+      </div>
+    </DialogContent>
+  )
+
+  // Controlled mode (FAB) — no trigger rendered
+  if (isControlled) {
+    return (
+      <Dialog open={open} onOpenChange={handleOpen}>
+        {dialogContent}
+      </Dialog>
+    )
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogTrigger asChild>
         {existing ? (
-          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
+          // Edit trigger — rendered as part of the vertical split button (no wrapper button here)
+          <button
+            className="flex-1 flex items-center justify-center w-10 min-h-[44px] hover:bg-muted/50 transition-colors"
             title={t('Edit expense', 'ערוך הוצאה', lang)}
-            aria-label={t('Edit expense', 'ערוך הוצאה', lang)}>
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
+            aria-label={t('Edit expense', 'ערוך הוצאה', lang)}
+          >
+            <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
         ) : (
-          <Button size="sm">
+          // Desktop Add button (hidden on mobile — FAB handles mobile)
+          <Button size="sm" className="hidden sm:inline-flex">
             <Plus className="h-4 w-4 me-1" />
             {t('Add Expense', 'הוסף הוצאה', lang)}
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between gap-2">
-            <DialogTitle>
-              {existing ? t('Edit Expense', 'ערוך הוצאה', lang) : t('Add Expense', 'הוסף הוצאה', lang)}
-            </DialogTitle>
-            {aiEnabled && (
-              <>
-                {/* Hidden file input — on mobile shows camera/gallery/files sheet; on desktop opens file picker */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  capture="environment"
-                  className="hidden"
-                  aria-hidden="true"
-                  onChange={handleReceiptFile}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={scanning}
-                  onClick={() => { setScanError(null); fileInputRef.current?.click() }}
-                  title={t('Scan receipt with AI', 'סרוק קבלה עם AI', lang)}
-                  aria-label={t('Scan receipt', 'סרוק קבלה', lang)}
-                  className="shrink-0 gap-1.5"
-                >
-                  {scanning
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <Camera className="h-3.5 w-3.5" />
-                  }
-                  {scanning
-                    ? t('Scanning…', 'סורק…', lang)
-                    : t('Scan Receipt', 'סרוק קבלה', lang)
-                  }
-                </Button>
-              </>
-            )}
-          </div>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          {/* Scan error */}
-          {scanError && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              {scanError}
-            </div>
-          )}
-
-          {/* When? — only for new expenses, not editing existing ones */}
-          {!existing && (
-            <div>
-              <Label className="mb-2 block">{t('When?', 'מתי?', lang)}</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMode('budget')}
-                  aria-pressed={mode === 'budget'}
-                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                    mode === 'budget'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-input text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <CalendarCheck className="h-3.5 w-3.5" />
-                  {t('Current budget', 'תקציב שוטף', lang)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMode('past')}
-                  aria-pressed={mode === 'past'}
-                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                    mode === 'past'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-input text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <History className="h-3.5 w-3.5" />
-                  {t('Past month', 'חודש קודם', lang)}
-                </button>
-              </div>
-
-              {/* Month + Year pickers — only in past mode */}
-              {mode === 'past' && (
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <Label htmlFor="past-month">{t('Month', 'חודש', lang)}</Label>
-                    <Select value={pastMonth.toString()} onValueChange={(v) => setPastMonth(+v)}>
-                      <SelectTrigger id="past-month" aria-label={t('Month', 'חודש', lang)}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {MONTHS.filter((m) => {
-                          const now = new Date()
-                          const cur = now.getMonth() + 1
-                          const curY = now.getFullYear()
-                          // exclude current month and future months for the selected year
-                          if (pastYear === curY) return m.value < cur
-                          if (pastYear > curY) return false
-                          return true
-                        }).map((m) => (
-                          <SelectItem key={m.value} value={m.value.toString()}>
-                            {lang === 'he' ? m.he : m.en}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="past-year">{t('Year', 'שנה', lang)}</Label>
-                    <Select value={pastYear.toString()} onValueChange={(v) => setPastYear(+v)}>
-                      <SelectTrigger id="past-year" aria-label={t('Year', 'שנה', lang)}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map((y) => (
-                          <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Name */}
-          <div>
-            <Label htmlFor="exp-name">{t('Name', 'שם', lang)}</Label>
-            <Input
-              id="exp-name"
-              value={form.name}
-              onChange={(e) => set('name', e.target.value)}
-              placeholder={t('e.g. Rent', 'למשל: שכ"ד', lang)}
-            />
-          </div>
-
-          {/* Amount + Period */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="exp-amount">{t('Amount', 'סכום', lang)}</Label>
-              <Input id="exp-amount" type="number" value={form.amount} onChange={(e) => set('amount', +e.target.value)} />
-            </div>
-            {mode === 'budget' && (
-              <div>
-                <Label>{t('Period', 'תדירות', lang)}</Label>
-                <Select value={form.period} onValueChange={(v) => set('period', v as 'monthly' | 'yearly')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">{t('Monthly', 'חודשי', lang)}</SelectItem>
-                    <SelectItem value="yearly">{t('Yearly', 'שנתי', lang)}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          {/* Due month — only for yearly expenses */}
-          {form.period === 'yearly' && (
-            <div>
-              <Label>{t('Due Month', 'חודש תשלום', lang)}</Label>
-              <Select
-                value={form.dueMonth?.toString() ?? ''}
-                onValueChange={(v) => set('dueMonth', v ? +v : undefined)}
-              >
-                <SelectTrigger><SelectValue placeholder={t('Select month…', 'בחר חודש…', lang)} /></SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m) => (
-                    <SelectItem key={m.value} value={m.value.toString()}>
-                      {lang === 'he' ? m.he : m.en}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Category */}
-          <div>
-            <Label>{t('Category', 'קטגוריה', lang)}</Label>
-            <Select
-              value={form.category}
-              onValueChange={(v) => {
-                const newCat = v as ExpenseCategory
-                setForm((f) => ({
-                  ...f,
-                  category: newCat,
-                  // Clear the linked account when the category is no longer 'savings'
-                  linkedAccountId: newCat === 'savings' ? f.linkedAccountId : undefined,
-                }))
-              }}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {CATEGORIES.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>{lang === 'he' ? c.he : c.en}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* When category is savings but no accounts have been created yet, show a hint */}
-          {form.category === 'savings' && data.accounts.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              {t(
-                'Add a savings account in the Accounts tab to link it here.',
-                'הוסף חשבון חיסכון בלשונית חשבונות כדי לקשר אותו כאן.',
-                lang
-              )}
-            </p>
-          )}
-
-          {/* Link to savings account — only visible when category is 'savings' and accounts exist */}
-          {form.category === 'savings' && data.accounts.length > 0 && (
-            <div>
-              <Label htmlFor="linked-account">
-                {t('Link to savings account', 'קשר לחשבון חיסכון', lang)}{' '}
-                <span className="text-muted-foreground text-xs">({t('optional', 'אופציונלי', lang)})</span>
-              </Label>
-              <Select
-                value={form.linkedAccountId ?? '__none__'}
-                onValueChange={(v) => set('linkedAccountId', v === '__none__' ? undefined : v)}
-              >
-                <SelectTrigger id="linked-account" aria-label={t('Link to savings account', 'קשר לחשבון חיסכון', lang)} className="min-h-[44px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t("None / Don't link", 'ללא קישור', lang)}</SelectItem>
-                  {data.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Fixed vs Variable — segmented toggle */}
-          {mode === 'budget' && (
-            <div>
-              <Label className="mb-2 block">{t('Expense Type', 'סוג הוצאה', lang)}</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => set('expenseType', 'fixed')}
-                  aria-pressed={(form.expenseType ?? 'fixed') === 'fixed'}
-                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                    (form.expenseType ?? 'fixed') === 'fixed'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-input text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <Lock className="h-3.5 w-3.5" />
-                  {t('Fixed', 'קבוע', lang)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => set('expenseType', 'variable')}
-                  aria-pressed={form.expenseType === 'variable'}
-                  className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
-                    form.expenseType === 'variable'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-input text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <Waves className="h-3.5 w-3.5" />
-                  {t('Variable', 'משתנה', lang)}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                {(form.expenseType ?? 'fixed') === 'fixed'
-                  ? t('Same amount every month — rent, subscriptions, insurance', 'אותו סכום כל חודש — שכ"ד, מנויים, ביטוח', lang)
-                  : t('Amount changes month to month — food, dining, entertainment', 'הסכום משתנה — מזון, בילויים, בידור', lang)
-                }
-              </p>
-            </div>
-          )}
-
-
-          <Button className="w-full" onClick={handleSave}>
-            {t('Save', 'שמור', lang)}
-          </Button>
-
-          {savedLabel && (
-            <p className="text-xs text-primary text-center flex items-center justify-center gap-1">
-              <span>✓</span>
-              {t(`Added to ${savedLabel} in History`, `נוסף ל${savedLabel} בהיסטוריה`, lang)}
-            </p>
-          )}
-        </div>
-      </DialogContent>
+      {dialogContent}
     </Dialog>
   )
 }
@@ -533,16 +586,17 @@ function BudgetEditor({
   return (
     <button
       onClick={startEdit}
-      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors min-h-[32px] px-1"
       title={t('Click to set budget limit', 'לחץ להגדרת תקציב', lang)}
       aria-label={budget
         ? t('Edit budget limit', 'ערוך תקציב', lang)
         : t('Set budget limit', 'הגדר תקציב', lang)
       }
     >
+      <PencilLine className="h-3 w-3 shrink-0" />
       {budget
-        ? `${t('Budget:', 'תקציב:', lang)} ${formatCurrency(budget, data.currency, data.locale)}`
-        : t('+ Set budget', '+ הגדר תקציב', lang)
+        ? `${formatCurrency(budget, data.currency, data.locale)}`
+        : t('Set budget', 'הגדר תקציב', lang)
       }
     </button>
   )
@@ -556,6 +610,8 @@ export function Expenses() {
   const [comparing, setComparing] = useState(false)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
+  // Improvement D — FAB state
+  const [fabOpen, setFabOpen] = useState(false)
 
   const toggleCategory = (cat: ExpenseCategory) => {
     setExpandedCategories(prev => {
@@ -620,85 +676,94 @@ export function Expenses() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24 sm:pb-4 relative">
 
-      {/* Header: totals + compare toggle + add button */}
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div className="space-y-0.5">
-          <p className="text-sm text-muted-foreground">
-            {t('Total monthly:', 'סה"כ חודשי:', lang)}{' '}
-            <span className="font-semibold text-destructive">{formatCurrency(total, data.currency, data.locale)}</span>
-          </p>
-          {data.expenses.length > 0 && (
-            <div className="flex gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Lock className="h-3 w-3" />
-                {t('Fixed:', 'קבוע:', lang)} <span className="font-medium text-foreground">{formatCurrency(fixedTotal, data.currency, data.locale)}</span>
+      {/* ── Improvement A: KPI Summary Banner ─────────────────────────────── */}
+      {data.expenses.length > 0 && (
+        <Card className="border-0 shadow-none bg-card">
+          <div className="px-4 pt-4 pb-3">
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-sm text-muted-foreground font-medium">
+                {t('Monthly budget', 'תקציב חודשי', lang)}
               </span>
-              <span className="flex items-center gap-1">
-                <Waves className="h-3 w-3" />
-                {t('Variable:', 'משתנה:', lang)} <span className="font-medium text-foreground">{formatCurrency(variableTotal, data.currency, data.locale)}</span>
+              <span className="text-2xl font-bold text-destructive tabular-nums">
+                {formatCurrency(total, data.currency, data.locale)}
               </span>
             </div>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {lastSnapshot && (
-            <Button
-              variant={comparing ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setComparing((v) => !v)}
-              title={t('Compare to last month', 'השווה לחודש קודם', lang)}
-              aria-label={t('Compare to last month', 'השווה לחודש קודם', lang)}
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5 me-1" />
-              {t('Compare', 'השווה', lang)}
-            </Button>
-          )}
-          {hasVariableExpenses && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-[44px] gap-1.5 text-destructive hover:bg-destructive/10 border-destructive/30"
-              onClick={() => setClearConfirmOpen(true)}
-            >
-              <Trash2 className="h-4 w-4" />
-              {t('Clear Variable', 'נקה משתנות', lang)}
-            </Button>
-          )}
-          <ExpenseDialog onSave={(e) => addExpense(e)} lang={lang} />
-        </div>
+            <div className="flex gap-3 flex-wrap">
+              {/* Fixed pill */}
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-muted text-muted-foreground">
+                <Lock className="h-3 w-3 shrink-0" />
+                {t('Fixed', 'קבוע', lang)} {formatCurrency(fixedTotal, data.currency, data.locale)}
+              </span>
+              {/* Variable pill */}
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-warning/10 text-warning">
+                <Waves className="h-3 w-3 shrink-0" />
+                {t('Variable', 'משתנה', lang)} {formatCurrency(variableTotal, data.currency, data.locale)}
+              </span>
+            </div>
+          </div>
+        </Card>
+      )}
 
-        {/* Clear variable expenses confirmation dialog */}
-        <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t('Clear all variable expenses?', 'לנקות את כל ההוצאות המשתנות?', lang)}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t(
-                  'This removes all variable expenses from your budget. Fixed expenses are kept.',
-                  'פעולה זו מסירה את כל ההוצאות המשתנות מהתקציב. הוצאות קבועות נשמרות.',
-                  lang
-                )}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => {
-                  clearVariableExpenses()
-                  setClearConfirmOpen(false)
-                }}
-              >
-                {t('Clear', 'נקה', lang)}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      {/* ── Toolbar row (Compare + Clear variable + Desktop Add) ─────────── */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {lastSnapshot && (
+          <Button
+            variant={comparing ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setComparing((v) => !v)}
+            title={t('Compare to last month', 'השווה לחודש קודם', lang)}
+            aria-label={t('Compare to last month', 'השווה לחודש קודם', lang)}
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5 me-1" />
+            {t('Compare', 'השווה', lang)}
+          </Button>
+        )}
+        {hasVariableExpenses && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] gap-1.5 text-destructive hover:bg-destructive/10 border-destructive/30"
+            onClick={() => setClearConfirmOpen(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            {t('Clear Variable', 'נקה משתנות', lang)}
+          </Button>
+        )}
+        {/* Desktop Add Expense button — hidden on mobile (FAB handles that) */}
+        <ExpenseDialog onSave={(e) => addExpense(e)} lang={lang} />
       </div>
+
+      {/* Clear variable expenses confirmation dialog */}
+      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('Clear all variable expenses?', 'לנקות את כל ההוצאות המשתנות?', lang)}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'This removes all variable expenses from your budget. Fixed expenses are kept.',
+                'פעולה זו מסירה את כל ההוצאות המשתנות מהתקציב. הוצאות קבועות נשמרות.',
+                lang
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                clearVariableExpenses()
+                setClearConfirmOpen(false)
+              }}
+            >
+              {t('Clear', 'נקה', lang)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Compare context label */}
       {comparing && lastSnapshot && (
@@ -739,161 +804,200 @@ export function Expenses() {
             budgetPct >= 80  ? 'bg-warning' :
             'bg-primary'
 
+          // Status dot colour
+          const dotColor =
+            budget === undefined ? '' :
+            budgetPct !== null && budgetPct >= 100 ? 'bg-destructive' :
+            budgetPct !== null && budgetPct >= 80  ? 'bg-warning' :
+            'bg-primary'
+
           const isExpanded = expandedCategories.has(cat.value)
           const catExpenses = grouped[cat.value]
 
           return (
-            <Card key={cat.value}>
+            <Card key={cat.value} className="overflow-hidden">
+              {/* ── Improvement B: Category Card Header ───────────────────── */}
               <CardHeader
-                className="pb-2 cursor-pointer min-h-[44px]"
+                className="pb-2 cursor-pointer min-h-[44px] px-4 pt-3"
                 onClick={() => toggleCategory(cat.value)}
                 aria-expanded={isExpanded}
               >
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <CardTitle className="text-sm">{lang === 'he' ? cat.he : cat.en}</CardTitle>
-                    {/* Item count badge */}
-                    <Badge variant="secondary">
+                {/* Top row: [dot] name [count] · · · total [chevron] */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {/* Status dot — only shown when budget is set */}
+                    {budget !== undefined && (
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="text-sm font-semibold">
+                      {lang === 'he' ? cat.he : cat.en}
+                    </span>
+                    <Badge variant="secondary" className="text-xs py-0 px-1.5">
                       {catExpenses.length === 1
                         ? t('1 item', 'פריט אחד', lang)
                         : t(`${catExpenses.length} items`, `${catExpenses.length} פריטים`, lang)
                       }
                     </Badge>
-                    {/* Month-over-month delta badge */}
-                    {delta !== null && (
-                      <span className={`text-xs font-medium flex items-center gap-0.5 ${
-                        delta > 0 ? 'text-destructive' : delta < 0 ? 'text-primary' : 'text-muted-foreground'
-                      }`}>
-                        {delta > 0 ? '▲' : delta < 0 ? '▼' : '='}{' '}
-                        {delta !== 0 && formatCurrency(Math.abs(delta), data.currency, data.locale)}
-                        {delta === 0 && t('unchanged', 'ללא שינוי', lang)}
-                      </span>
-                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <BudgetEditor category={cat.value} lang={lang} />
-                    <Badge variant="outline" onClick={(e) => e.stopPropagation()}>
-                      {formatCurrency(catTotal, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}
-                    </Badge>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-base font-bold tabular-nums">
+                      {formatCurrency(catTotal, data.currency, data.locale)}
+                    </span>
                     <ChevronDown
-                      className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ms-auto shrink-0 ${
+                      className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ${
                         isExpanded ? 'rotate-180' : ''
                       }`}
                     />
                   </div>
                 </div>
 
+                {/* Sub-row: budget info + delta + pencil editor */}
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                  {budget !== undefined ? (
+                    <>
+                      <span className="text-xs text-muted-foreground">
+                        {t('Budget', 'תקציב', lang)} {formatCurrency(budget, data.currency, data.locale)} ·
+                      </span>
+                      {catTotal > budget ? (
+                        <span className="text-xs font-semibold text-destructive">
+                          {formatCurrency(catTotal - budget, data.currency, data.locale)} {t('over', 'מעל', lang)}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-primary">
+                          {formatCurrency(budget - catTotal, data.currency, data.locale)} {t('remaining', 'נותר', lang)}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">
+                      {t('No budget set', 'לא הוגדר תקציב', lang)}
+                    </span>
+                  )}
+
+                  {/* Month-over-month delta */}
+                  {delta !== null && (
+                    <span className={`text-xs font-medium flex items-center gap-0.5 ms-auto ${
+                      delta > 0 ? 'text-destructive' : delta < 0 ? 'text-primary' : 'text-muted-foreground'
+                    }`}>
+                      {delta > 0 ? '▲' : delta < 0 ? '▼' : '='}{' '}
+                      {delta !== 0 && formatCurrency(Math.abs(delta), data.currency, data.locale)}
+                      {delta === 0 && t('unchanged', 'ללא שינוי', lang)}
+                    </span>
+                  )}
+
+                  {/* Budget editor icon button */}
+                  <BudgetEditor category={cat.value} lang={lang} />
+                </div>
+
                 {/* Budget progress bar */}
                 {budgetPct !== null && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2">
                     <Progress
                       value={budgetPct}
                       indicatorClassName={budgetColor}
                       aria-label={`${lang === 'he' ? cat.he : cat.en} ${t('budget', 'תקציב', lang)} ${budgetPct.toFixed(0)}%`}
                     />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{budgetPct.toFixed(0)}% {t('used', 'בשימוש', lang)}</span>
-                      {budget && catTotal > budget && (
-                        <span className="text-destructive font-medium">
-                          {formatCurrency(catTotal - budget, data.currency, data.locale)} {t('over budget', 'מעל התקציב', lang)}
-                        </span>
-                      )}
-                      {budget && catTotal <= budget && (
-                        <span className="text-primary">
-                          {formatCurrency(budget - catTotal, data.currency, data.locale)} {t('remaining', 'נותר', lang)}
-                        </span>
-                      )}
-                    </div>
                   </div>
                 )}
               </CardHeader>
 
               {isExpanded && (
-              <CardContent className="space-y-0">
+              <CardContent className="p-0">
                 {catExpenses.map((expense) => {
                   const isFixed = (expense.expenseType ?? 'fixed') === 'fixed'
                   const dueIn = expense.period === 'yearly' && expense.dueMonth != null
                     ? monthsUntilDue(expense.dueMonth)
                     : null
+                  const linkedAccount = expense.linkedAccountId
+                    ? data.accounts.find((a) => a.id === expense.linkedAccountId)
+                    : null
 
+                  // Build meta string for the item row
+                  const metaParts: string[] = []
+                  if (isFixed) {
+                    metaParts.push(t('Fixed', 'קבוע', lang))
+                  } else {
+                    metaParts.push(t('Variable', 'משתנה', lang))
+                  }
+                  if (expense.period === 'monthly') {
+                    metaParts.push(t('monthly', 'חודשי', lang))
+                  }
+                  if (linkedAccount) {
+                    metaParts.push(`${t('linked:', 'מקושר:', lang)} ${linkedAccount.name}`)
+                  }
+                  if (expense.period === 'yearly') {
+                    const provisionStr = `${formatCurrency(expense.amount / 12, data.currency, data.locale)}${t('/mo', '/חו׳', lang)}`
+                    metaParts.push(provisionStr)
+                    if (expense.dueMonth != null) {
+                      if (dueIn === 0) {
+                        metaParts.push(t('Due this month!', 'פג החודש!', lang))
+                      } else if (dueIn === 1) {
+                        metaParts.push(t(`Due next month (${monthName(expense.dueMonth, lang)})`, `פג בחודש הבא (${monthName(expense.dueMonth, lang)})`, lang))
+                      } else if (dueIn != null) {
+                        metaParts.push(t(`Due in ${dueIn}mo`, `פג בעוד ${dueIn} חו׳`, lang))
+                      }
+                    }
+                  }
+
+                  // ── Improvement C: Expense item row ──────────────────────
                   return (
-                    <div key={expense.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-sm font-medium">
-                            {expense.name}
-                            {expense.expenseType === 'variable' && expense.createdAt && (
-                              <span className="text-xs text-muted-foreground ms-1">
-                                · {new Date(expense.createdAt).toLocaleDateString(data.locale)}
-                              </span>
+                    <div key={expense.id} className="flex items-stretch border-b last:border-0">
+                      {/* Left colour strip */}
+                      <div
+                        className={`w-1 self-stretch rounded-sm ms-0 shrink-0 ${
+                          isFixed ? 'bg-muted' : 'bg-warning/50'
+                        }`}
+                        aria-hidden="true"
+                      />
+
+                      {/* Main content */}
+                      <div className="flex items-center flex-1 min-w-0 gap-2 px-3 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{expense.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
+                            {isFixed
+                              ? <Lock className="h-2.5 w-2.5 shrink-0" />
+                              : <Waves className="h-2.5 w-2.5 shrink-0" />
+                            }
+                            {metaParts.join(' · ')}
+                            {/* Due date colouring hint */}
+                            {expense.period === 'yearly' && expense.dueMonth != null && dueIn !== null && dueIn <= 2 && (
+                              <CalendarDays className={`h-2.5 w-2.5 shrink-0 ${dueIn === 0 ? 'text-destructive' : 'text-warning'}`} />
+                            )}
+                            {expense.linkedAccountId && linkedAccount && (
+                              <Link2 className="h-2.5 w-2.5 shrink-0" />
                             )}
                           </p>
-                          {/* Fixed / Variable badge */}
-                          <Badge
-                            variant={isFixed ? 'secondary' : 'outline'}
-                            className="text-xs py-0 flex items-center gap-0.5"
-                          >
-                            {isFixed
-                              ? <><Lock className="h-2.5 w-2.5" />{t('Fixed', 'קבוע', lang)}</>
-                              : <><Waves className="h-2.5 w-2.5" />{t('Variable', 'משתנה', lang)}</>
-                            }
-                          </Badge>
                         </div>
 
-                        {/* Linked savings account badge */}
-                        {expense.linkedAccountId && (() => {
-                          const linkedAccount = data.accounts.find((a) => a.id === expense.linkedAccountId)
-                          return linkedAccount ? (
-                            <div className="mt-0.5">
-                              <Badge variant="secondary" className="text-xs max-w-[160px] truncate inline-flex items-center gap-0.5">
-                                <Link2 className="h-2.5 w-2.5 shrink-0" />
-                                {linkedAccount.name}
-                              </Badge>
-                            </div>
-                          ) : null
-                        })()}
-
-                        {/* Annual smoothing row */}
-                        {expense.period === 'yearly' && (
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <Badge variant="outline" className="text-xs py-0">
-                              {formatCurrency(expense.amount / 12, data.currency, data.locale)}{t('/mo', '/חו׳', lang)}
-                            </Badge>
-                            {expense.dueMonth != null && (
-                              <span className={`text-xs flex items-center gap-0.5 ${
-                                dueIn === 0 ? 'text-destructive font-medium' :
-                                dueIn != null && dueIn <= 2 ? 'text-warning' :
-                                'text-muted-foreground'
-                              }`}>
-                                <CalendarDays className="h-3 w-3" />
-                                {dueIn === 0
-                                  ? t('Due this month!', 'פג החודש!', lang)
-                                  : dueIn === 1
-                                  ? t(`Due next month (${monthName(expense.dueMonth, lang)})`, `פג בחודש הבא (${monthName(expense.dueMonth, lang)})`, lang)
-                                  : t(`Due in ${dueIn}mo (${monthName(expense.dueMonth, lang)})`, `פג בעוד ${dueIn} חודשים (${monthName(expense.dueMonth, lang)})`, lang)
-                                }
-                              </span>
-                            )}
-                          </div>
-                        )}
+                        {/* Amount block */}
+                        <div className="text-end shrink-0 pe-1">
+                          <p className="text-sm font-bold tabular-nums">
+                            {formatCurrency(expense.amount, data.currency, data.locale)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {expense.period === 'yearly' ? t('/year', '/שנה', lang) : t('/month', '/חודש', lang)}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-sm font-semibold tabular-nums">
-                          {formatCurrency(expense.amount, data.currency, data.locale)}
-                          {expense.period === 'yearly' ? t('/yr', '/שנה', lang) : t('/mo', '/חו׳', lang)}
-                        </span>
+                      {/* Vertical split action buttons */}
+                      <div className="flex flex-col border-s border-border shrink-0">
+                        {/* Edit — top half */}
                         <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
+                        {/* Delete — bottom half */}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost" size="icon"
-                              className="min-h-[44px] min-w-[44px] text-destructive"
+                            <button
+                              className="flex-1 flex items-center justify-center w-10 min-h-[44px] hover:bg-destructive/10 transition-colors text-destructive"
                               title={t('Delete expense', 'מחק הוצאה', lang)}
                               aria-label={t('Delete expense', 'מחק הוצאה', lang)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            </button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
@@ -921,6 +1025,26 @@ export function Expenses() {
           )
         })
       )}
+
+      {/* ── Improvement D: FAB — mobile only ──────────────────────────────── */}
+      <div className="fixed bottom-6 end-4 z-40 sm:hidden">
+        <Button
+          size="icon"
+          className="h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground"
+          onClick={() => setFabOpen(true)}
+          aria-label={t('Add expense', 'הוסף הוצאה', lang)}
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
+
+      {/* FAB-controlled dialog (no trigger rendered) */}
+      <ExpenseDialog
+        onSave={(e) => addExpense(e)}
+        lang={lang}
+        open={fabOpen}
+        onOpenChange={setFabOpen}
+      />
     </div>
   )
 }
