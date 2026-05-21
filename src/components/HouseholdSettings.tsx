@@ -626,26 +626,24 @@ export function HouseholdSettings() {
             <span className="text-sm font-medium">{t('Members', 'חברים', lang)}</span>
             <Badge variant="secondary">{members.length}</Badge>
           </div>
-          {isOwner && (
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={handleRefresh}
-                title={t('Refresh', 'רענן', lang)}
-                aria-label={t('Refresh', 'רענן', lang)}
-                disabled={refreshing}>
-                <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-              </Button>
-              <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs min-h-[44px]"
-                onClick={() => setInviteOpen(true)}>
-                <UserPlus className="h-3.5 w-3.5" />
-                {t('Invite', 'הזמן', lang)}
-                {pendingCount > 0 && (
-                  <Badge variant="warning" className="min-w-[1.25rem] h-5 px-1 flex items-center justify-center text-[10px]">
-                    {pendingCount}
-                  </Badge>
-                )}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]" onClick={handleRefresh}
+              title={t('Refresh', 'רענן', lang)}
+              aria-label={t('Refresh', 'רענן', lang)}
+              disabled={refreshing}>
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs min-h-[44px]"
+              onClick={() => setInviteOpen(true)}>
+              <UserPlus className="h-3.5 w-3.5" />
+              {t('Invite', 'הזמן', lang)}
+              {pendingCount > 0 && (
+                <Badge variant="warning" className="min-w-[1.25rem] h-5 px-1 flex items-center justify-center text-[10px]">
+                  {pendingCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
         </div>
 
         <div className="rounded-lg border divide-y">
