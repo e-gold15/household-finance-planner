@@ -550,7 +550,7 @@ function InviteModal({
 export function HouseholdSettings() {
   const {
     user, household, householdInvites,
-    revokeInvite, refreshInvites,
+    revokeInvite, refreshInvites, refreshMembers,
     renameHousehold, removeMember, makeOwner, getMembers,
   } = useAuth()
   const { data } = useFinance()
@@ -576,9 +576,9 @@ export function HouseholdSettings() {
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    await refreshInvites()
+    await Promise.all([refreshMembers(), refreshInvites()])
     setRefreshing(false)
-    toast.success(t('Invitations refreshed.', 'הזמנות רועננו.', lang))
+    toast.success(t('Members and invitations refreshed.', 'חברים והזמנות רועננו.', lang))
   }
 
   const handleRename = async () => {

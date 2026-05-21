@@ -75,6 +75,7 @@ interface AuthContextType {
   cancelInvite: (inviteId: string) => Promise<void>
   /** Refresh pending invites from the cloud (both tables). */
   refreshInvites: () => Promise<void>
+  refreshMembers: () => Promise<void>
   /**
    * v2.1 — Create a token-based invite.
    * Returns CreatedHouseholdInvite (contains raw token) on success,
@@ -111,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const cloudMembers = await fetchHouseholdMembers(householdId)
     if (!cloudMembers.length) return
 
-    // Store each member's LocalUser record locally so getUserById() finds them
+    // Upsert each cloud member's LocalUser record so getUserById() finds them
     cloudMembers.forEach((m) => {
       upsertUserPublic({
         id:           m.userId,
@@ -124,7 +125,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
     })
 
-    // Rebuild memberships with correct roles from Supabase
+    // Rebuild memberships EXACTLY from Supabase — removes any stale local entries
+    const cloudUserIds = new Set(cloudMembers.map((m) => m.userId))
     const memberships: HouseholdMembership[] = cloudMembers.map((m) => ({
       userId:   m.userId,
       role:     m.role,
@@ -138,6 +140,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     upsertHouseholdPublic(updatedHousehold)
     setHousehold(updatedHousehold)
+
+    // Also remove stale LocalUser records that are no longer in this household
+    // (e.g. members deleted from Supabase) so they don't appear in the list
+    currentHousehold.memberships
+      .filter((m) => !cloudUserIds.has(m.userId))
+      .forEach((m) => {
+        const stale = getUserById(m.userId)
+        if (stale && stale.householdId === householdId) {
+          // Mark as removed by clearing their householdId reference
+          upsertUserPublic({ ...stale, householdId: '' })
+        }
+      })
   }
 
   // ── Boot: migrate + restore session ──────────────────────────────────────
@@ -334,7 +348,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if ('householdId' in result) {
         return applyHouseholdJoin(authedUser, result.householdId, result.householdName)
       }
-      // If the token is invalid, fall through and use the user's own household
+      // Invite already accepted (email invite used twice) — check if user is
+      // already a member of the target household and recover silently.
+      if ('error' in result) {
+        const allMemberships = await fetchUserMemberships(authedUser.id)
+        const alreadyMember = allMemberships.find(m => m.householdId !== authedHousehold.id)
+        if (alreadyMember) {
+          const cloudH = await getCloudHousehold(alreadyMember.householdId)
+          return applyHouseholdJoin(
+            authedUser,
+            alreadyMember.householdId,
+            cloudH?.name ?? 'Shared Household',
+            false
+          )
+        }
+        // Token truly invalid — log for debugging
+        console.warn('[AuthContext] Invite token rejected:', result.error)
+      }
     }
 
     // ── Legacy: Check for a pending invite ID (?invite= captured by main.tsx) ─
@@ -465,14 +495,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [household?.id])
 
+  const handleRefreshMembers = useCallback(async () => {
+    if (!household) return
+    await refreshMembersFromCloud(household.id, household)
+  }, [household?.id])
+
   // ── Invite management v2.1 ────────────────────────────────────────────────
   const handleCreateInvite = async (
     method: InviteMethod,
     email?: string
   ): Promise<CreatedHouseholdInvite | string> => {
     if (!user || !household) return 'Not signed in.'
-    const isOwner = household.memberships.find((m) => m.userId === user.id)?.role === 'owner'
-    if (!isOwner) return 'Only the household owner can invite members.'
     if (method === 'email' && !email?.trim()) return 'Email address is required.'
     try {
       const inv = await createHouseholdInvite(household.id, user.id, method, email)
@@ -553,6 +586,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       inviteMember: handleInviteMember,
       cancelInvite: handleCancelInvite,
       refreshInvites: handleRefreshInvites,
+      refreshMembers: handleRefreshMembers,
       createInvite: handleCreateInvite,
       revokeInvite: handleRevokeInvite,
       renameHousehold: handleRenameHousehold,
