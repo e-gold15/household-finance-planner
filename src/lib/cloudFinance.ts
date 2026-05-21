@@ -125,7 +125,11 @@ export function mergeFinanceData(cloudData: FinanceData, localData: FinanceData)
     currency:              cloudData.currency              ?? FINANCE_DEFAULTS.currency,
     locale:                cloudData.locale                ?? FINANCE_DEFAULTS.locale,
     emergencyBufferMonths: cloudData.emergencyBufferMonths ?? FINANCE_DEFAULTS.emergencyBufferMonths,
-    categoryBudgets:       cloudData.categoryBudgets       ?? FINANCE_DEFAULTS.categoryBudgets,
+    // categoryBudgets: union merge — cloud wins on conflicts, local-only entries preserved
+    categoryBudgets: {
+      ...(localData.categoryBudgets  ?? {}),
+      ...(cloudData.categoryBudgets  ?? {}),
+    },
     // Array fields: additive merge (cloud wins on conflicts, local-only items preserved)
     expenses: mergeById(cloudData.expenses ?? [], localData.expenses ?? []),
     accounts: mergeById(cloudData.accounts ?? [], localData.accounts ?? []),
