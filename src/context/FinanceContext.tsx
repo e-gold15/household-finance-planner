@@ -272,7 +272,16 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
           const cloudData = (payload.new as { data: FinanceData }).data
           if (!cloudData) return
           setDataState((prev) => {
-            const merged = repairSnapshotTotals(mergeFinanceData(cloudData, prev))
+            // Realtime updates use cloud-wins for ALL financial data — this ensures
+            // deletions (expenses, goals, accounts, history items) propagate to all
+            // devices immediately. Additive merge is only used on initial load to
+            // protect offline edits; for live updates the cloud is authoritative.
+            const merged = repairSnapshotTotals({
+              ...cloudData,
+              // Per-device prefs always stay local — never overwritten by another member
+              darkMode: prev.darkMode,
+              language: prev.language,
+            })
             save(householdId, merged)
             return merged
           })
