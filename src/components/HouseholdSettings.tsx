@@ -669,16 +669,14 @@ export function HouseholdSettings() {
         </div>
       </div>
 
-      {/* Invite modal (two-tab) */}
-      {isOwner && (
-        <InviteModal
-          open={inviteOpen}
-          onOpenChange={setInviteOpen}
-          invites={householdInvites}
-          onRevoke={handleRevoke}
-          lang={lang}
-        />
-      )}
+      {/* Invite modal (two-tab) — available to all members */}
+      <InviteModal
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        invites={householdInvites}
+        onRevoke={handleRevoke}
+        lang={lang}
+      />
     </div>
   )
 }
