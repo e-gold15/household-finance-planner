@@ -213,14 +213,21 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       if (cancelled) return
 
       if (cloudData) {
-        // Case A: cloud has data — always merge into local on initial load.
-        // Cloud is the source of truth for financial fields. We do NOT gate this
-        // on hasLocalEditRef because auto-snapshot / contribution engine effects
-        // call setData before this fetch resolves, which would have incorrectly
-        // set hasLocalEditRef=true and caused the cloud data to be silently
-        // discarded (the root cause of the "members see different data" bug).
+        // Case A: cloud has data — cloud-wins for all financial fields on initial load.
+        // Using the same strategy as the Realtime handler ensures that deletions
+        // (expenses, goals, accounts, history items) made on another device are
+        // respected when this device refreshes. Additive mergeFinanceData was the
+        // root cause of "deleted items coming back" — the local copy kept restored
+        // deleted entries which then got pushed back to the cloud on the next edit.
+        //
+        // Per-device prefs (darkMode, language) are preserved from local storage —
+        // they are never shared between members.
         const current = load(householdId)
-        const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
+        const merged  = repairSnapshotTotals({
+          ...cloudData,
+          darkMode: current.darkMode,
+          language: current.language,
+        })
         save(householdId, merged)
         setDataState(merged)
       } else {
