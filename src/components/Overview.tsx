@@ -79,7 +79,7 @@ function KpiCard({
     if (Math.abs(pct) < 0.05) {
       // neutral
       trendEl = (
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground mt-1">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
           — {t('No change', 'אין שינוי', lang)}
         </span>
       )
@@ -87,7 +87,7 @@ function KpiCard({
       const isGood = positiveIsGood ? pct > 0 : pct < 0
       const arrow = pct > 0 ? '▲' : '▼'
       trendEl = (
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full mt-1 ${isGood ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-destructive/10 text-destructive'}`}>
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${isGood ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'}`}>
           {arrow} {Math.abs(pct).toFixed(1)}%
         </span>
       )
@@ -95,19 +95,21 @@ function KpiCard({
   }
 
   return (
-    <Card>
-      <CardContent className="p-4 flex items-start gap-3">
-        <div className="rounded-lg bg-primary/10 p-2 mt-0.5">
-          <Icon className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-2xl font-bold tracking-tight text-primary">{value}</p>
-          {sub && (
-            <p className={`text-xs ${positive ? 'text-primary' : 'text-destructive'}`}>{sub}</p>
-          )}
+    <Card className="h-full">
+      <CardContent className="p-4 flex flex-col h-full">
+        {/* Icon + trend pill in one row */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="rounded-lg bg-primary/10 p-2">
+            <Icon className="h-5 w-5 text-primary" />
+          </div>
           {trendEl}
         </div>
+        {/* Label + value stacked */}
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-xl sm:text-2xl font-bold tracking-tight text-primary leading-tight">{value}</p>
+        {sub && (
+          <p className={`text-xs mt-0.5 ${positive ? 'text-primary' : 'text-destructive'}`}>{sub}</p>
+        )}
       </CardContent>
     </Card>
   )
@@ -123,10 +125,10 @@ const BULLET_ICON: Record<string, string> = {
 }
 
 const BULLET_BORDER: Record<string, string> = {
-  positive: 'border-l-4 border-green-500',
-  warning:  'border-l-4 border-yellow-500',
-  urgent:   'border-l-4 border-red-500',
-  neutral:  'border-l-4 border-muted',
+  positive: 'border-s-4 border-primary',
+  warning:  'border-s-4 border-warning',
+  urgent:   'border-s-4 border-destructive',
+  neutral:  'border-s-4 border-muted',
 }
 
 interface MonthlyBriefingCardProps {

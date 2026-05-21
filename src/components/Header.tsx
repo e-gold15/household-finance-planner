@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
-import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users, FlaskConical, ArrowRight } from 'lucide-react'
+import { useRef, useState, useEffect } from 'react'
+import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users, FlaskConical, ArrowRight, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 import { Label } from './ui/label'
 import { Switch } from './ui/switch'
@@ -66,6 +66,25 @@ export function Header() {
 
   const userName = user?.name ?? user?.email ?? ''
   const userInitial = userName.slice(0, 1).toUpperCase()
+  const firstName = userName.split(' ')[0] ?? userName
+
+  // Mobile avatar dropdown state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [householdDialogOpen, setHouseholdDialogOpen] = useState(false)
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+        setMobileMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [mobileMenuOpen])
 
   // ── CSV helpers ──────────────────────────────────────────────────────────
   function downloadCsv(filename: string, rows: (string | number)[][]): void {
@@ -138,7 +157,68 @@ export function Header() {
           {user && (
             <>
               <div className="w-px h-5 bg-border" />
-              <div className="flex items-center gap-2">
+
+              {/* ── Mobile avatar chip (< sm) ── */}
+              <div className="sm:hidden relative" ref={mobileMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen((o) => !o)}
+                  className="flex items-center gap-1.5 rounded-full border bg-muted/50 px-2 py-1 min-h-[44px] min-w-[44px]"
+                  aria-label={t('Account menu', 'תפריט חשבון', lang)}
+                  aria-expanded={mobileMenuOpen}
+                  aria-haspopup="true"
+                >
+                  {user.avatar
+                    ? <img src={user.avatar} className="h-6 w-6 rounded-full object-cover shrink-0" alt={userName} />
+                    : (
+                      <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                        {userInitial}
+                      </div>
+                    )
+                  }
+                  <span className="text-sm font-medium max-w-[60px] truncate">{firstName}</span>
+                  <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${mobileMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown panel */}
+                {mobileMenuOpen && (
+                  <div className="absolute end-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border bg-card shadow-lg py-1">
+                    {/* Household settings row */}
+                    {household && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px]"
+                        onClick={() => { setMobileMenuOpen(false); setHouseholdDialogOpen(true) }}
+                      >
+                        <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                        {t('Household settings', 'הגדרות משק הבית', lang)}
+                      </button>
+                    )}
+                    {/* App settings row */}
+                    <button
+                      type="button"
+                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px]"
+                      onClick={() => { setMobileMenuOpen(false); setSettingsDialogOpen(true) }}
+                    >
+                      <Settings className="h-4 w-4 text-muted-foreground shrink-0" />
+                      {t('App settings', 'הגדרות אפליקציה', lang)}
+                    </button>
+                    <div className="h-px bg-border mx-2 my-1" />
+                    {/* Sign out row */}
+                    <button
+                      type="button"
+                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px] text-destructive"
+                      onClick={() => { setMobileMenuOpen(false); setSignOutDialogOpen(true) }}
+                    >
+                      <LogOut className="h-4 w-4 shrink-0" />
+                      {t('Sign out', 'התנתק', lang)}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Desktop layout (sm+) — unchanged ── */}
+              <div className="hidden sm:flex items-center gap-2">
                 {/* Avatar */}
                 {user.avatar
                   ? <img src={user.avatar} className="h-7 w-7 rounded-full object-cover shrink-0" alt={userName} />
@@ -149,120 +229,135 @@ export function Header() {
                   )
                 }
                 {/* Name + household */}
-                <div className="hidden sm:flex flex-col leading-none max-w-[120px]">
+                <div className="flex flex-col leading-none max-w-[120px]">
                   <span className="text-sm font-medium truncate">{userName}</span>
                   {household && (
                     <span className="text-[10px] text-muted-foreground truncate">{household.name}</span>
                   )}
                 </div>
 
-                {/* Household settings dialog */}
+                {/* Household settings dialog trigger (desktop) */}
                 {household && (
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground"
-                        title={t('Household settings', 'הגדרות משק הבית', lang)}
-                        aria-label={t('Household settings', 'הגדרות משק הבית', lang)}>
-                        <Users className="h-4 w-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                          <Users className="h-5 w-5" />
-                          {t('Household', 'משק הבית', lang)}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <HouseholdSettings />
-                    </DialogContent>
-                  </Dialog>
+                  <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground"
+                    title={t('Household settings', 'הגדרות משק הבית', lang)}
+                    aria-label={t('Household settings', 'הגדרות משק הבית', lang)}
+                    onClick={() => setHouseholdDialogOpen(true)}>
+                    <Users className="h-4 w-4" />
+                  </Button>
                 )}
 
-                {/* Sign out — with confirmation */}
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
-                      title={t('Sign out', 'התנתק', lang)}
-                      aria-label={t('Sign out', 'התנתק', lang)}
-                    >
-                      <LogOut className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>{t('Sign out?', 'להתנתק?', lang)}</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        {t('You will need to sign in again to access your data.', 'תצטרך להתחבר שוב כדי לגשת לנתונים שלך.', lang)}
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={signOut}
-                      >
-                        {t('Sign out', 'התנתק', lang)}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                {/* Sign out (desktop) */}
+                <Button
+                  variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
+                  title={t('Sign out', 'התנתק', lang)}
+                  aria-label={t('Sign out', 'התנתק', lang)}
+                  onClick={() => setSignOutDialogOpen(true)}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
             </>
           )}
 
-          {/* Settings gear */}
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon"
-                title={t('Settings', 'הגדרות', lang)}
-                aria-label={t('Settings', 'הגדרות', lang)}>
-                <Settings className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
+          {/* Settings gear (desktop only — mobile uses avatar dropdown) */}
+          <Button variant="ghost" size="icon"
+            className="hidden sm:inline-flex min-h-[44px] min-w-[44px]"
+            title={t('Settings', 'הגדרות', lang)}
+            aria-label={t('Settings', 'הגדרות', lang)}
+            onClick={() => setSettingsDialogOpen(true)}>
+            <Settings className="h-4 w-4" />
+          </Button>
+
+          {/* ── Shared dialogs (triggered from both mobile dropdown and desktop buttons) ── */}
+
+          {/* Household settings dialog */}
+          {household && (
+            <Dialog open={householdDialogOpen} onOpenChange={setHouseholdDialogOpen}>
+              <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    {t('Household', 'משק הבית', lang)}
+                  </DialogTitle>
+                </DialogHeader>
+                <HouseholdSettings />
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {/* Sign out confirmation dialog */}
+          <AlertDialog open={signOutDialogOpen} onOpenChange={setSignOutDialogOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('Sign out?', 'להתנתק?', lang)}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('You will need to sign in again to access your data.', 'תצטרך להתחבר שוב כדי לגשת לנתונים שלך.', lang)}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={signOut}
+                >
+                  {t('Sign out', 'התנתק', lang)}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Settings dialog */}
+          <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>
             <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('Settings', 'הגדרות', lang)}</DialogTitle>
               </DialogHeader>
               <div className="space-y-5 mt-2">
+                {/* Change 5: grouped Preferences label */}
                 <div>
-                  <Label>{t('Currency', 'מטבע', lang)}</Label>
-                  <Select
-                    value={data.currency}
-                    onValueChange={(v) => {
-                      const opt = CURRENCY_OPTIONS.find((o) => o.value === v)!
-                      setData((d) => ({ ...d, currency: opt.value, locale: opt.locale }))
-                    }}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CURRENCY_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Switch checked={data.darkMode} onCheckedChange={toggleDark} />
-                  <Label>{t('Dark Mode', 'מצב לילה', lang)}</Label>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                    {t('Preferences', 'העדפות', lang)}
+                  </p>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>{t('Currency', 'מטבע', lang)}</Label>
+                      <Select
+                        value={data.currency}
+                        onValueChange={(v) => {
+                          const opt = CURRENCY_OPTIONS.find((o) => o.value === v)!
+                          setData((d) => ({ ...d, currency: opt.value, locale: opt.locale }))
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {CURRENCY_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Switch checked={data.darkMode} onCheckedChange={toggleDark} />
+                      <Label>{t('Dark Mode', 'מצב לילה', lang)}</Label>
+                    </div>
+                  </div>
                 </div>
                 <div className="border-t pt-4 space-y-2">
                   <p className="text-sm font-medium">{t('Data', 'נתונים', lang)}</p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1" onClick={exportData}>
+                  {/* Change 5: grid layout for export/import buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" className="w-full justify-center min-h-[44px]" onClick={exportData}>
                       <Download className="h-4 w-4 me-1" />
                       {t('Export JSON', 'ייצא JSON', lang)}
                     </Button>
-                    <Button variant="outline" size="sm" className="flex-1" onClick={() => fileRef.current?.click()}>
+                    <Button variant="outline" size="sm" className="w-full justify-center min-h-[44px]" onClick={() => fileRef.current?.click()}>
                       <Upload className="h-4 w-4 me-1" />
                       {t('Import JSON', 'ייבא JSON', lang)}
                     </Button>
                     <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={handleExportExpensesCsv} className="flex-1 gap-1.5 min-h-[44px]">
+                    <Button variant="outline" size="sm" onClick={handleExportExpensesCsv} className="w-full justify-center gap-1.5 min-h-[44px]">
                       <Download className="h-4 w-4" />
                       {t('Expenses CSV', 'הוצאות CSV', lang)}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleExportHistoryCsv} className="flex-1 gap-1.5 min-h-[44px]">
+                    <Button variant="outline" size="sm" onClick={handleExportHistoryCsv} className="w-full justify-center gap-1.5 min-h-[44px]">
                       <Download className="h-4 w-4" />
                       {t('History CSV', 'היסטוריה CSV', lang)}
                     </Button>

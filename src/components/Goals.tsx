@@ -410,9 +410,15 @@ export function Goals() {
       )}
 
       {data.goals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-          <Target className="h-10 w-10" />
-          <p>{t('Set a financial goal to get started', 'הגדר יעד פיננסי כדי להתחיל', lang)}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <div className="rounded-full bg-primary/10 p-4">
+            <Target className="h-8 w-8 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">{t('No savings goals yet', 'אין יעדי חיסכון עדיין', lang)}</p>
+            <p className="text-sm text-muted-foreground">{t('Set a target and track when you\'ll reach it.', 'הגדר יעד ועקוב מתי תגיע אליו.', lang)}</p>
+          </div>
+          <GoalDialog onSave={(g) => addGoal(g)} lang={lang} />
         </div>
       ) : (
         displayAllocations.map((goal, idx) => {

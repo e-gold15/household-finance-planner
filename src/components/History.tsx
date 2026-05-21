@@ -482,9 +482,18 @@ export function History() {
       </div>
 
       {data.history.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-          <HistoryIcon className="h-10 w-10" />
-          <p>{t('Take your first monthly snapshot to start tracking trends', 'צלם את תמונת המצב החודשית הראשונה כדי להתחיל לעקוב', lang)}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <div className="rounded-full bg-primary/10 p-4">
+            <HistoryIcon className="h-8 w-8 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">{t('No history yet', 'אין היסטוריה עדיין', lang)}</p>
+            <p className="text-sm text-muted-foreground">{t('Snapshot this month to start tracking trends.', 'צלם תמונת מצב לחודש זה כדי להתחיל לעקוב אחר מגמות.', lang)}</p>
+          </div>
+          <Button size="sm" onClick={handleSnapshot} className="min-h-[44px]">
+            <Camera className="h-4 w-4 me-1" />
+            {t('Snapshot this month', 'צלם חודש זה', lang)}
+          </Button>
         </div>
       ) : (
         <>
@@ -519,8 +528,8 @@ export function History() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold truncate">{snap.label}</p>
                           {snap.autoSnapshot && isCurrentMonth(snap) && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                               {t('Live', 'חי', lang)}
                             </span>
                           )}

@@ -258,7 +258,7 @@ export function Savings() {
               {formatCurrency(lastMonthBalance, data.currency, data.locale)}
             </span>
             {delta > 0 && (
-              <span className="font-medium text-green-600 dark:text-green-400">
+              <span className="font-medium text-primary">
                 ▲ +{formatCurrency(delta, data.currency, data.locale)}
               </span>
             )}
@@ -323,9 +323,15 @@ export function Savings() {
       </div>
 
       {data.accounts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
-          <PiggyBank className="h-10 w-10" />
-          <p>{t('Add your savings accounts and assets', 'הוסף חשבונות חיסכון ונכסים', lang)}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+          <div className="rounded-full bg-primary/10 p-4">
+            <PiggyBank className="h-8 w-8 text-primary" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">{t('No savings accounts yet', 'אין חשבונות חיסכון עדיין', lang)}</p>
+            <p className="text-sm text-muted-foreground">{t('Add an account to track your balance and contributions.', 'הוסף חשבון כדי לעקוב אחר היתרה וההפקדות.', lang)}</p>
+          </div>
+          <AccountDialog onSave={(a) => addAccount(a)} lang={lang} />
         </div>
       ) : (
         <>
