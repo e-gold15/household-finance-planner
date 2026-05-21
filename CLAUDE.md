@@ -21,6 +21,39 @@ This rule applies to all agents. If an agent receives an implementation request 
 
 ---
 
+## 🔴 Data Safety Protocol — NEVER skip these steps
+
+**This protocol is mandatory for any change touching `cloudFinance.ts`, `FinanceContext.tsx` sync logic, or any merge/push/pull function. Violating it caused real user data loss in May 2026.**
+
+### Before touching any sync code
+1. **Snapshot the merge contract in writing** — state exactly which fields are cloud-wins, which are additive, and which are local-only. Put it in the PR description.
+2. **Prove item counts never decrease** — for every array field, the merged result must have `length >= max(cloudItems.length, localItems.length)`. Write a test that asserts this before shipping.
+3. **Test the empty-cloud case** — what happens when the cloud row is empty/missing? Local data must survive intact.
+4. **Test the empty-local case** — what happens when a new device has no localStorage yet? Cloud data must be adopted in full.
+5. **Test the diverged case** — local has items A+B, cloud has items B+C. Result must contain A+B+C (never just B+C).
+
+### Merge strategy reference (current — do not change without a spec)
+| Field | Strategy | Reason |
+|-------|----------|--------|
+| `expenses` | additive `mergeById` | each device may add items offline |
+| `accounts` | additive `mergeById` | same |
+| `goals` | additive `mergeById` | same |
+| `members` | additive `mergeById` | same |
+| `history` | additive `mergeById` | snapshots are append-only |
+| `categoryBudgets` | union spread (local base, cloud wins on conflict) | both devices may set different categories |
+| `currency` | cloud wins | shared household preference |
+| `locale` | cloud wins | shared household preference |
+| `emergencyBufferMonths` | cloud wins | shared household preference |
+| `darkMode` | local wins | per-device UI preference |
+| `language` | local wins | per-device UI preference |
+
+### Golden rule
+> **A merge function must NEVER reduce the number of items in any array field compared to what either input contained.**
+
+If a proposed change cannot satisfy this rule, reject it and redesign.
+
+---
+
 ## Project Context
 
 - **Stack:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui + Recharts
@@ -79,11 +112,16 @@ get_household_members_with_profiles(p_household_id text)
 
 ### Finance sync rules
 - `household_finance.data` is the shared source of truth for all financial fields
-- Cloud wins on: members, expenses, accounts, goals, history, currency, locale, emergencyBufferMonths
-- Local device keeps: darkMode, language (per-device UI prefs, never overwritten by cloud)
+- **Array fields use additive `mergeById`** — cloud wins on ID conflicts, local-only items are always preserved. Applies to: `expenses`, `accounts`, `goals`, `members`, `history`.
+- **`categoryBudgets` uses union spread** — `{ ...local, ...cloud }`. Both devices contribute; cloud wins when the same category key is set on both.
+- **Scalar financial fields**: cloud wins on `currency`, `locale`, `emergencyBufferMonths`.
+- **Per-device prefs**: local always wins on `darkMode`, `language` — never overwritten by another member's device.
 - Push is debounced 1.5 s after every `setData` call (FinanceContext owns the timer)
 - Pull happens on FinanceProvider mount — if local is empty, shows loading spinner until cloud responds
 - If cloud has no row yet and local has data, seeds the cloud immediately (owner bootstrap)
+- Supabase Realtime subscription on `household_finance` — live updates pushed to all connected devices without page reload
+- `cloudPullCompletedRef` guards auto-snapshot: the ref must be `true` before any local edit is flagged as "has local edit" — prevents the auto-snapshot race that caused member data to diverge
+- **See the 🔴 Data Safety Protocol section above before changing any of this**
 
 ### Commit style
 `fix(auth): ...` / `feat(auth): ...` / `feat(supabase): ...`
@@ -205,10 +243,19 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 - [ ] `FinanceProvider` has `key={household.id}`
 
 **Tests**
-- [ ] `npm test` passes (all 375 tests green)
+- [ ] `npm test` passes (all tests green — check actual count in test run output)
 - [ ] `npm run build` passes — no TypeScript errors
 - [ ] New logic has corresponding unit tests
 - [ ] Edge cases covered (empty arrays, zero values, expired invites)
+
+**Sync / Data safety (required when `cloudFinance.ts` or `FinanceContext` sync logic is touched)**
+- [ ] Merge contract documented: which fields are additive, cloud-wins, or local-wins
+- [ ] Test exists proving merged array lengths ≥ max(cloud length, local length) for every array field
+- [ ] Empty-cloud case tested — local data survives
+- [ ] Empty-local case tested — cloud data adopted
+- [ ] Diverged case tested — A+B local, B+C cloud → A+B+C result
+- [ ] `cloudPullCompletedRef` guard is intact — auto-snapshot cannot fire before cloud merge completes
+- [ ] Realtime subscription cleanup (`removeChannel`) present in `useEffect` return
 
 **i18n**
 - [ ] No hardcoded English strings in JSX
@@ -258,10 +305,12 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `overviewUtils.test.ts` | 31 | upcoming bills, budget health, savings projection, MoM trend |
 | `surplusAction.test.ts` | 24 | snapshot detection, markSurplusActioned, goal top-up, savings deposit |
 | `receiptScan.test.ts`   | 20 | JSON parsing, category validation, amount clamping, malformed input |
-| **Total** | **375** | |
+| `cloudSync.test.ts`     | 32 | additive merge, empty-cloud, empty-local, diverged devices, realtime |
+| `monthlyBriefing.test.ts` | 23 | briefing parser, score clamping, bullet validation, API integration |
+| **Total** | **1752** (as of v3.2 — run `npm test` for live count) | |
 
 ### Rules
-- All 261 existing tests must pass before any commit
+- All existing tests must pass before any commit — run `npm test` and check the "Tests" line in the output
 - Run `npm run build` before committing — not just `npm test`
 - New business logic functions require tests before merging
 - Test file mirrors lib file: `src/lib/foo.ts` → `src/test/foo.test.ts`
@@ -452,11 +501,23 @@ How will we know this feature is working?
 - ✅ Spinner + "Scanning…" label during AI call; inline error banner on failure
 - ✅ Images are ephemeral — never stored, only base64-encoded and sent to API
 - ✅ Markdown fence stripping + safe defaults for all fields in API response parser
-- ✅ 20 new unit tests (355 → 375 total) in `src/test/receiptScan.test.ts`
+- ✅ 20 new unit tests in `src/test/receiptScan.test.ts`
 
-**Next (v3.2)**
+**v3.2 — shipped**
+- ✅ Monthly AI Financial Briefing card on Overview tab — score + color-coded bullets, cached per snapshot
+- ✅ Savings tab month-over-month progress — "Last month: ₪X ▲ +₪Y" row per account
+- ✅ Demo Mode — "Try Demo" button on login, ephemeral Dana + Yossi Cohen data, yellow banner with Exit
+- ✅ Cross-device sync critical fix — `cloudPullCompletedRef` prevents auto-snapshot race condition
+- ✅ Additive merge for all array fields — `mergeById` preserves local-only items (cloud no longer clobbers)
+- ✅ `categoryBudgets` union merge — locally-set budget limits never overwritten by cloud
+- ✅ Supabase Realtime subscription — live cross-device updates without page reload
+- ✅ Payslip scan: 18-field `PayslipScanResult`, study fund extraction, net pinned from payslip
+- ✅ 32 sync tests + 23 briefing tests added
+
+**Next (v3.3)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
 - [ ] Push notifications for monthly snapshot reminder
+- [ ] Data export / backup — let users download a JSON snapshot they can restore from
 
 **Later (v4)**
 - [ ] Bank statement CSV import
@@ -525,7 +586,38 @@ Before any major release, trigger all 6:
 - After any schema change: update `.claude/docs/database.md`
 - Never use Supabase Auth — auth is always local
 - All Supabase functions must silently no-op if `!supabaseConfigured`
-- Finance data sync: cloud wins on financial fields; local wins on `darkMode` + `language`
+- Finance data sync: array fields use additive `mergeById`; `categoryBudgets` uses union spread; scalars (`currency`, `locale`, `emergencyBufferMonths`) are cloud-wins; `darkMode` + `language` are local-wins. See 🔴 Data Safety Protocol and the merge strategy table.
 
 ### Commit style
 `feat(db): ...` / `fix(db): ...` / `feat(supabase): ...`
+
+---
+
+## 📖 Lessons Learned — Real Incidents
+
+These are documented so every agent knows what went wrong and never repeats it.
+
+### May 2026 — Sync fix caused data loss for all household members
+
+**What happened:**
+A race condition in `FinanceContext` caused `hasLocalEditRef` to be set to `true` by the auto-snapshot routine before the cloud fetch had completed. This made the cloud merge guard skip the merge on first load, so each device kept only its own local data and pushed it to cloud — overwriting the other member's data.
+
+**The fix (good):**
+Added `cloudPullCompletedRef`. The auto-snapshot guard now waits for `cloudPullCompletedRef.current === true` before flagging a local edit. Cloud merge always runs on first load regardless of the local edit flag.
+
+**The second problem:**
+The original merge used "cloud wins" for all array fields. When the fix caused each device to push its reduced local data to cloud, the other device then fetched that and replaced its own items too. Result: items present only on one device were permanently lost.
+
+**The fix (good):**
+Switched all array fields to additive `mergeById` — union of cloud + local, cloud wins on ID conflicts. `categoryBudgets` uses union spread for the same reason.
+
+**What could not be recovered:**
+Data that was overwritten in both localStorage AND Supabase before the fixes landed is permanently gone. There is no undo. The user had to manually re-enter lost items.
+
+**Rules added because of this:**
+- 🔴 Data Safety Protocol section (see above) — mandatory checklist before any sync code change
+- Sync / Data safety block added to Code Reviewer checklist
+- Merge strategy table documented and locked — changes require a spec + QA sign-off
+
+**Key lesson:**
+> A sync change that looks like a "guard fix" can silently change what gets pushed to cloud. Always simulate the full sequence: (1) Device A loads → (2) Device B loads → (3) A edits → (4) B fetches. Verify nothing is lost at each step.
