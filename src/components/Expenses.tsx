@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown, PencilLine } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown, ChevronLeft, ChevronRight, PencilLine, Receipt, ExternalLink } from 'lucide-react'
 import { Card, CardContent, CardHeader } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -13,7 +13,7 @@ import { useFinance } from '@/context/FinanceContext'
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
 import { scanReceipt, aiEnabled } from '@/lib/aiAdvisor'
-import type { Expense, ExpenseCategory } from '@/types'
+import type { Expense, ExpenseCategory, MonthSnapshot } from '@/types'
 
 const MONTHS: { value: number; en: string; he: string }[] = [
   { value: 1,  en: 'January',   he: 'ינואר' },
@@ -602,9 +602,232 @@ function BudgetEditor({
   )
 }
 
+// ── PastMonthView ─────────────────────────────────────────────────────────────
+// Read-only view of a past month's actuals, rendered inside the Expenses tab.
+
+function PastMonthView({
+  snapshot,
+  lang,
+  onGoToHistory,
+}: {
+  snapshot: MonthSnapshot
+  lang: 'en' | 'he'
+  onGoToHistory?: () => void
+}) {
+  const { data } = useFinance()
+  const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
+
+  const toggleCategory = (cat: ExpenseCategory) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev)
+      next.has(cat) ? next.delete(cat) : next.add(cat)
+      return next
+    })
+  }
+
+  const hasActuals = snapshot.categoryActuals && Object.keys(snapshot.categoryActuals).length > 0
+  const hasItems   = (snapshot.historicalExpenses ?? []).length > 0
+
+  // Build list of categories that have actuals or line items
+  const categoriesWithData = CATEGORIES.filter((cat) => {
+    const hasActual = (snapshot.categoryActuals?.[cat.value] ?? 0) > 0
+    const hasLineItems = (snapshot.historicalExpenses ?? []).some((i) => i.category === cat.value)
+    return hasActual || hasLineItems
+  })
+
+  return (
+    <div className="space-y-4">
+      {/* Read-only notice */}
+      <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary">
+        <Receipt className="h-4 w-4 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <span className="font-medium">
+            {t(`Viewing actuals for ${snapshot.label}`, `צפייה בנתוני ${snapshot.label}`, lang)}
+          </span>
+          <span className="text-muted-foreground ms-1">
+            · {t('Read only', 'קריאה בלבד', lang)}
+          </span>
+          {onGoToHistory && (
+            <button
+              onClick={onGoToHistory}
+              className="flex items-center gap-1 text-xs text-primary underline underline-offset-2 mt-1 hover:opacity-80"
+            >
+              <ExternalLink className="h-3 w-3" />
+              {t('Edit in History tab', 'ערוך בלשונית היסטוריה', lang)}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* KPI banner */}
+      <Card className="border-0 shadow-none bg-card">
+        <div className="px-4 pt-4 pb-3">
+          <div className="flex items-baseline justify-between mb-3">
+            <span className="text-sm text-muted-foreground font-medium">
+              {t('Actual spending', 'הוצאות בפועל', lang)}
+            </span>
+            <span className="text-2xl font-bold text-destructive tabular-nums">
+              {formatCurrency(snapshot.totalExpenses, data.currency, data.locale)}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-muted/50 px-2 py-2">
+              <p className="text-xs text-muted-foreground">{t('Income', 'הכנסה', lang)}</p>
+              <p className="text-sm font-bold text-primary tabular-nums">
+                {formatCurrency(snapshot.totalIncome, data.currency, data.locale)}
+              </p>
+            </div>
+            <div className="rounded-lg bg-muted/50 px-2 py-2">
+              <p className="text-xs text-muted-foreground">{t('Savings', 'חסכון', lang)}</p>
+              <p className="text-sm font-bold tabular-nums">
+                {formatCurrency(snapshot.totalSavings, data.currency, data.locale)}
+              </p>
+            </div>
+            <div className="rounded-lg bg-muted/50 px-2 py-2">
+              <p className="text-xs text-muted-foreground">{t('FCF', 'תזרים חופשי', lang)}</p>
+              <p className={`text-sm font-bold tabular-nums ${snapshot.freeCashFlow >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                {formatCurrency(snapshot.freeCashFlow, data.currency, data.locale)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* No actuals state */}
+      {!hasActuals && !hasItems ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+          <CalendarCheck className="h-10 w-10 opacity-40" />
+          <p className="text-sm font-medium">{t('No actuals recorded for this month', 'לא נרשמו נתונים לחודש זה', lang)}</p>
+          {onGoToHistory && (
+            <button
+              onClick={onGoToHistory}
+              className="flex items-center gap-1.5 text-sm text-primary underline underline-offset-2 hover:opacity-80"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              {t('Record expenses in History', 'רשום הוצאות בהיסטוריה', lang)}
+            </button>
+          )}
+        </div>
+      ) : (
+        categoriesWithData.map((cat) => {
+          const actual  = snapshot.categoryActuals?.[cat.value] ?? 0
+          const budget  = data.categoryBudgets[cat.value]
+          const items   = (snapshot.historicalExpenses ?? []).filter((i) => i.category === cat.value)
+          const budgetPct = budget ? Math.min(100, (actual / budget) * 100) : null
+          const isExpanded = expandedCategories.has(cat.value)
+
+          const budgetColor =
+            budgetPct === null ? '' :
+            budgetPct >= 100 ? 'bg-destructive' :
+            budgetPct >= 80  ? 'bg-warning' :
+            'bg-primary'
+
+          const dotColor =
+            budget === undefined ? '' :
+            budgetPct !== null && budgetPct >= 100 ? 'bg-destructive' :
+            budgetPct !== null && budgetPct >= 80  ? 'bg-warning' :
+            'bg-primary'
+
+          return (
+            <Card key={cat.value} className="overflow-hidden">
+              <CardHeader
+                className="pb-2 cursor-pointer min-h-[44px] px-4 pt-3"
+                onClick={() => items.length > 0 ? toggleCategory(cat.value) : undefined}
+                aria-expanded={isExpanded}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {budget !== undefined && (
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} aria-hidden="true" />
+                    )}
+                    <span className="text-sm font-semibold">
+                      {lang === 'he' ? cat.he : cat.en}
+                    </span>
+                    {items.length > 0 && (
+                      <Badge variant="secondary" className="text-xs py-0 px-1.5">
+                        {items.length === 1
+                          ? t('1 item', 'פריט אחד', lang)
+                          : t(`${items.length} items`, `${items.length} פריטים`, lang)
+                        }
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-base font-bold tabular-nums">
+                      {formatCurrency(actual, data.currency, data.locale)}
+                    </span>
+                    {items.length > 0 && (
+                      <ChevronDown
+                        className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Budget vs actual sub-row */}
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {budget !== undefined ? (
+                    <>
+                      <span className="text-xs text-muted-foreground">
+                        {t('Budget', 'תקציב', lang)} {formatCurrency(budget, data.currency, data.locale)} ·
+                      </span>
+                      {actual > budget ? (
+                        <span className="text-xs font-semibold text-destructive">
+                          {formatCurrency(actual - budget, data.currency, data.locale)} {t('over', 'מעל', lang)}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-primary">
+                          {formatCurrency(budget - actual, data.currency, data.locale)} {t('remaining', 'נותר', lang)}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">
+                      {t('No budget set', 'לא הוגדר תקציב', lang)}
+                    </span>
+                  )}
+                </div>
+
+                {budgetPct !== null && (
+                  <div className="mt-2">
+                    <Progress
+                      value={budgetPct}
+                      indicatorClassName={budgetColor}
+                      aria-label={`${lang === 'he' ? cat.he : cat.en} ${t('budget', 'תקציב', lang)} ${budgetPct.toFixed(0)}%`}
+                    />
+                  </div>
+                )}
+              </CardHeader>
+
+              {/* Line items */}
+              {isExpanded && items.length > 0 && (
+                <CardContent className="p-0">
+                  {items.map((item) => (
+                    <div key={item.id} className="flex items-center border-b last:border-0 px-4 py-3 gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{item.name}</p>
+                        {item.note && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{item.note}</p>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold tabular-nums shrink-0">
+                        {formatCurrency(item.amount, data.currency, data.locale)}
+                      </span>
+                    </div>
+                  ))}
+                </CardContent>
+              )}
+            </Card>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
 // ── Main Expenses component ───────────────────────────────────────────────────
 
-export function Expenses() {
+export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => void } = {}) {
   const { data, addExpense, updateExpense, deleteExpense, clearVariableExpenses } = useFinance()
   const lang = data.language
   const [comparing, setComparing] = useState(false)
@@ -612,6 +835,59 @@ export function Expenses() {
   const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
   // Improvement D — FAB state
   const [fabOpen, setFabOpen] = useState(false)
+
+  // ── Month selector state ───────────────────────────────────────────────────
+  // null = current budget plan; a snapshot id = viewing that past month
+  const [viewingSnapshotId, setViewingSnapshotId] = useState<string | null>(null)
+
+  // Snapshots sorted newest → oldest (excludes current-month auto-snapshots so
+  // "past months" truly means a completed, snapshotted month)
+  const pastSnapshots = useMemo(() => {
+    const now = new Date()
+    const curYear  = now.getFullYear()
+    const curMonth = now.getMonth() + 1
+    return [...data.history]
+      .filter((h) => {
+        const d = new Date(h.date)
+        return d.getFullYear() < curYear || (d.getFullYear() === curYear && d.getMonth() + 1 < curMonth)
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [data.history])
+
+  const viewingSnapshot = viewingSnapshotId
+    ? (pastSnapshots.find((s) => s.id === viewingSnapshotId) ?? null)
+    : null
+
+  const currentIndex = viewingSnapshotId
+    ? pastSnapshots.findIndex((s) => s.id === viewingSnapshotId)
+    : -1 // -1 means "current budget"
+
+  // Navigate: 'older' goes further back, 'newer' goes forward (toward current)
+  const navigateMonth = (direction: 'older' | 'newer') => {
+    if (direction === 'newer') {
+      if (currentIndex <= 0) {
+        // Already at the newest past month or on current budget — go to current budget
+        setViewingSnapshotId(null)
+      } else {
+        setViewingSnapshotId(pastSnapshots[currentIndex - 1].id)
+      }
+    } else {
+      // older
+      if (currentIndex === -1) {
+        // On current budget — step into the first (most recent) past month
+        if (pastSnapshots.length > 0) setViewingSnapshotId(pastSnapshots[0].id)
+      } else if (currentIndex < pastSnapshots.length - 1) {
+        setViewingSnapshotId(pastSnapshots[currentIndex + 1].id)
+      }
+    }
+  }
+
+  const canGoOlder = currentIndex === -1 ? pastSnapshots.length > 0 : currentIndex < pastSnapshots.length - 1
+  const canGoNewer = currentIndex !== -1  // there is a newer month (or current budget) to go to
+
+  const selectorLabel = viewingSnapshot
+    ? viewingSnapshot.label
+    : t('Current Budget', 'תקציב נוכחי', lang)
 
   const toggleCategory = (cat: ExpenseCategory) => {
     setExpandedCategories(prev => {
@@ -677,6 +953,55 @@ export function Expenses() {
 
   return (
     <div className="space-y-4 pb-24 sm:pb-4 relative">
+
+      {/* ── Month selector ────────────────────────────────────────────────── */}
+      {pastSnapshots.length > 0 && (
+        <div className="flex items-center justify-between gap-2 bg-muted/40 rounded-xl px-3 py-2">
+          <button
+            onClick={() => navigateMonth('older')}
+            disabled={!canGoOlder}
+            className="flex items-center justify-center h-9 w-9 rounded-lg hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            aria-label={t('Previous month', 'חודש קודם', lang)}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-center gap-2 flex-1 justify-center">
+            {viewingSnapshotId && (
+              <button
+                onClick={() => setViewingSnapshotId(null)}
+                className="flex items-center gap-1 text-xs font-medium text-primary hover:opacity-80 transition-opacity shrink-0"
+                aria-label={t('Back to current budget', 'חזרה לתקציב הנוכחי', lang)}
+              >
+                <History className="h-3 w-3" />
+                {t('Current', 'נוכחי', lang)}
+              </button>
+            )}
+            <span className="text-sm font-semibold truncate">
+              {selectorLabel}
+            </span>
+          </div>
+
+          <button
+            onClick={() => navigateMonth('newer')}
+            disabled={!canGoNewer}
+            className="flex items-center justify-center h-9 w-9 rounded-lg hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            aria-label={t('Next month', 'חודש הבא', lang)}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── Past month read-only view ──────────────────────────────────────── */}
+      {viewingSnapshot ? (
+        <PastMonthView
+          snapshot={viewingSnapshot}
+          lang={lang}
+          onGoToHistory={onNavigateToHistory}
+        />
+      ) : (
+      <>
 
       {/* ── Improvement A: KPI Summary Banner ─────────────────────────────── */}
       {data.expenses.length > 0 && (
@@ -1045,6 +1370,9 @@ export function Expenses() {
         open={fabOpen}
         onOpenChange={setFabOpen}
       />
+
+      </> /* end current-budget view */
+      )}
     </div>
   )
 }

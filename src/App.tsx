@@ -226,7 +226,7 @@ function AppShell() {
           <>
             {tab === 'overview'  && <Overview />}
             {tab === 'income'    && <Income />}
-            {tab === 'expenses'  && <Expenses />}
+            {tab === 'expenses'  && <Expenses onNavigateToHistory={() => setTab('history')} />}
             {tab === 'savings'   && <Savings />}
             {tab === 'goals'     && <Goals />}
             {tab === 'history'   && <HistoryTab />}
