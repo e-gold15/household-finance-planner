@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Plus, Trash2, ChevronDown, ChevronUp, UserPlus, Users,
   ArrowRight, BadgeCheck, Pencil, CalendarCheck, History, Info,
-  Camera, Loader2, AlertTriangle, CheckCircle2,
+  Camera, Loader2, AlertTriangle, CheckCircle2, Lock, Waves,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
@@ -78,6 +78,7 @@ const DEFAULT_SOURCE: Omit<IncomeSource, 'id'> = {
   useManualNet: false,
   country: 'IL',
   taxCreditPoints: 2.25,
+  incomeType: 'fixed',
   insuredSalaryRatio: 100,
   useContributions: false,
   pensionEmployee: 6,
@@ -680,6 +681,43 @@ function SourceDialog({
             </FieldRow>
           </div>
 
+          {/* ── Fixed / Variable toggle ───────────────────────────────── */}
+          <div>
+            <Label className="mb-2 block text-sm text-muted-foreground">
+              {t('Income type', 'סוג הכנסה', lang)}
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                aria-pressed={(form.incomeType ?? 'fixed') === 'fixed'}
+                onClick={() => set('incomeType', 'fixed')}
+                title={t('Fixed income — predictable every month', 'הכנסה קבועה — צפויה כל חודש', lang)}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  (form.incomeType ?? 'fixed') === 'fixed'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                {t('Fixed', 'קבוע', lang)}
+              </button>
+              <button
+                type="button"
+                aria-pressed={form.incomeType === 'variable'}
+                onClick={() => set('incomeType', 'variable')}
+                title={t('Variable income — freelance, bonus, commission', 'הכנסה משתנה — פרילנס, בונוס, עמלה', lang)}
+                className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  form.incomeType === 'variable'
+                    ? 'bg-warning text-warning-foreground border-warning'
+                    : 'border-input text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Waves className="h-3.5 w-3.5 shrink-0" />
+                {t('Variable', 'משתנה', lang)}
+              </button>
+            </div>
+          </div>
+
           {/* ── Simple / Advanced toggle (IL salary only) ─────────────── */}
           {isILSalary && (
             <div>
@@ -1002,14 +1040,34 @@ function SourceCard({
   const fmt = (v: number) => formatCurrency(v, currency as any, locale as any)
   const typeLabel = SOURCE_TYPES.find((s) => s.value === (source.type ?? 'salary'))
 
+  const isFixed = (source.incomeType ?? 'fixed') === 'fixed'
+
   return (
-    <div className="rounded-lg border p-3 space-y-2.5 bg-card">
+    <div className="rounded-lg border overflow-hidden bg-card">
+      <div className="flex items-stretch">
+        {/* Left colour strip — muted for fixed, warning for variable */}
+        <div
+          className={`w-1 shrink-0 ${isFixed ? 'bg-muted' : 'bg-warning/60'}`}
+          aria-hidden="true"
+        />
+        <div className="flex-1 p-3 space-y-2.5">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium text-sm truncate">{source.name}</p>
           {/* Badges */}
           <div className="flex flex-wrap gap-1 mt-1">
+            {/* Fixed / Variable badge */}
+            <Badge
+              variant={isFixed ? 'secondary' : 'warning'}
+              className="text-xs py-0 flex items-center gap-0.5"
+            >
+              {isFixed
+                ? <Lock className="h-2.5 w-2.5" />
+                : <Waves className="h-2.5 w-2.5" />
+              }
+              {isFixed ? t('Fixed', 'קבוע', lang) : t('Variable', 'משתנה', lang)}
+            </Badge>
             <Badge variant="outline" className="text-xs py-0">
               {lang === 'he' ? typeLabel?.he : typeLabel?.en}
             </Badge>
@@ -1104,6 +1162,7 @@ function SourceCard({
               <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
               <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
             </AlertDialogHeader>
+
             <AlertDialogFooter>
               <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
               <AlertDialogAction
@@ -1116,6 +1175,8 @@ function SourceCard({
           </AlertDialogContent>
         </AlertDialog>
       </div>
+        </div>{/* end inner padding div */}
+      </div>{/* end flex strip wrapper */}
     </div>
   )
 }
@@ -1438,16 +1499,55 @@ export function Income() {
     [data.members]
   )
 
+  const fixedIncome = useMemo(
+    () => data.members.reduce((sum, m) =>
+      sum + m.sources
+        .filter((src) => (src.incomeType ?? 'fixed') === 'fixed')
+        .reduce((s, src) => s + getNetMonthly(src), 0), 0),
+    [data.members]
+  )
+
+  const variableIncome = useMemo(
+    () => data.members.reduce((sum, m) =>
+      sum + m.sources
+        .filter((src) => src.incomeType === 'variable')
+        .reduce((s, src) => s + getNetMonthly(src), 0), 0),
+    [data.members]
+  )
+
+  const hasFixedAndVariable = fixedIncome > 0 && variableIncome > 0
+
   return (
     <div className="space-y-4">
+      {/* KPI banner — total + fixed/variable pills */}
+      {data.members.some((m) => m.sources.length > 0) && (
+        <div className="px-1 pt-1 pb-0">
+          <div className="flex items-baseline justify-between mb-2">
+            <span className="text-sm text-muted-foreground font-medium">
+              {t('Total net monthly', 'סה"כ נטו חודשי', lang)}
+            </span>
+            <span className="text-2xl font-bold text-primary tabular-nums">
+              {formatCurrency(totalIncome, data.currency, data.locale)}
+            </span>
+          </div>
+          {hasFixedAndVariable && (
+            <div className="flex gap-3 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-muted text-muted-foreground">
+                <Lock className="h-3 w-3 shrink-0" />
+                {t('Fixed', 'קבוע', lang)} {formatCurrency(fixedIncome, data.currency, data.locale)}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-warning/10 text-warning">
+                <Waves className="h-3 w-3 shrink-0" />
+                {t('Variable', 'משתנה', lang)} {formatCurrency(variableIncome, data.currency, data.locale)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-sm text-muted-foreground">
-          {t('Total net monthly:', 'סה"כ נטו חודשי:', lang)}{' '}
-          <span className="font-semibold text-primary">
-            {formatCurrency(totalIncome, data.currency, data.locale)}
-          </span>
-        </p>
+        <div />{/* spacer */}
 
         <div className="flex items-center gap-2">
           <AddIncomeDialog

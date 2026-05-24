@@ -68,6 +68,12 @@ export interface IncomeSource {
    * amount is always stored in sourceCurrency — never converted at write time.
    */
   sourceCurrency?: Currency
+  /**
+   * Whether this income source is predictable (salary, rent) or irregular
+   * (freelance, bonus, commission). Defaults to 'fixed' when absent —
+   * backward-compatible with existing data.
+   */
+  incomeType?: 'fixed' | 'variable'
 }
 
 export interface HouseholdMember {
