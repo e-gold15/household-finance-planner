@@ -35,6 +35,25 @@ function monthName(m: number, lang: 'en' | 'he'): string {
   return found ? (lang === 'he' ? found.he : found.en) : ''
 }
 
+/** Format a createdAt ISO string as a short human date, e.g. "28 May" or "28 May 2024". */
+function formatAddedDate(iso: string, lang: 'en' | 'he'): string {
+  try {
+    const d = new Date(iso)
+    const now = new Date()
+    const sameYear = d.getFullYear() === now.getFullYear()
+    if (lang === 'he') {
+      const heMonths = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+      const m = heMonths[d.getMonth()]
+      return sameYear ? `${d.getDate()} ב${m}` : `${d.getDate()} ב${m} ${d.getFullYear()}`
+    }
+    const enMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    const m = enMonths[d.getMonth()]
+    return sameYear ? `${d.getDate()} ${m}` : `${d.getDate()} ${m} ${d.getFullYear()}`
+  } catch {
+    return ''
+  }
+}
+
 /** Months until the next occurrence of a due month (0 = this month). */
 function monthsUntilDue(dueMonth: number): number {
   const current = new Date().getMonth() + 1
@@ -72,6 +91,7 @@ function ExpenseDialog({
       recurring: true,
       period: 'monthly',
       expenseType: 'variable',
+      createdAt: new Date().toISOString(),
     }
   )
   const [mode, setMode] = useState<'budget' | 'past'>('budget')
@@ -1267,6 +1287,9 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
                     }
                   }
 
+                  // Added-on date (only if present)
+                  const addedDate = expense.createdAt ? formatAddedDate(expense.createdAt, lang) : null
+
                   // ── Improvement C: Expense item row ──────────────────────
                   return (
                     <div key={expense.id} className="flex items-stretch border-b last:border-0">
@@ -1296,6 +1319,11 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
                               <Link2 className="h-2.5 w-2.5 shrink-0" />
                             )}
                           </p>
+                          {addedDate && (
+                            <p className="text-xs text-muted-foreground/60 mt-0.5">
+                              {t(`Added ${addedDate}`, `נוסף ${addedDate}`, lang)}
+                            </p>
+                          )}
                         </div>
 
                         {/* Amount block */}
