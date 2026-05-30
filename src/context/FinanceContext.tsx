@@ -213,21 +213,14 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       if (cancelled) return
 
       if (cloudData) {
-        // Case A: cloud has data — cloud-wins for all financial fields on initial load.
-        // Using the same strategy as the Realtime handler ensures that deletions
-        // (expenses, goals, accounts, history items) made on another device are
-        // respected when this device refreshes. Additive mergeFinanceData was the
-        // root cause of "deleted items coming back" — the local copy kept restored
-        // deleted entries which then got pushed back to the cloud on the next edit.
+        // Case A: cloud has data — additive merge (cloud wins on conflicts, local
+        // items preserved). This protects locally-added data that hasn't synced yet.
+        // Cloud-wins on initial load caused data loss when cloud had an older snapshot
+        // and local had newer expenses — the local data was discarded.
         //
-        // Per-device prefs (darkMode, language) are preserved from local storage —
-        // they are never shared between members.
+        // Per-device prefs (darkMode, language) are always kept from local storage.
         const current = load(householdId)
-        const merged  = repairSnapshotTotals({
-          ...cloudData,
-          darkMode: current.darkMode,
-          language: current.language,
-        })
+        const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
         save(householdId, merged)
         setDataState(merged)
       } else {
