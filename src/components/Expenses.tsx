@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown, ChevronLeft, ChevronRight, PencilLine, Receipt, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Edit2, Lock, Waves, ArrowLeftRight, CalendarDays, AlertTriangle, CalendarCheck, History, Link2, Camera, Loader2, ChevronDown, ChevronLeft, ChevronRight, PencilLine, Receipt, ExternalLink, LayoutList } from 'lucide-react'
 import { Card, CardContent, CardHeader } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -622,6 +622,181 @@ function BudgetEditor({
   )
 }
 
+// ── Date separator helper ────────────────────────────────────────────────────
+
+function dateSeparatorLabel(iso: string, lang: 'en' | 'he'): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000)
+  if (diffDays === 0) return t('Today', 'היום', lang)
+  if (diffDays === 1) return t('Yesterday', 'אתמול', lang)
+  const heMonths = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר']
+  const enMonths = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const sameYear = d.getFullYear() === now.getFullYear()
+  if (lang === 'he') {
+    return sameYear
+      ? `${d.getDate()} ב${heMonths[d.getMonth()]}`
+      : `${d.getDate()} ב${heMonths[d.getMonth()]} ${d.getFullYear()}`
+  }
+  return sameYear
+    ? `${d.getDate()} ${enMonths[d.getMonth()]}`
+    : `${d.getDate()} ${enMonths[d.getMonth()]} ${d.getFullYear()}`
+}
+
+// ── DateView ──────────────────────────────────────────────────────────────────
+// Flat list of all expenses sorted newest-first, with day separators.
+
+function DateView({
+  lang,
+}: {
+  lang: 'en' | 'he'
+}) {
+  const { data, updateExpense, deleteExpense } = useFinance()
+
+  const sorted = useMemo(() => {
+    return [...data.expenses].sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0
+      if (!a.createdAt) return 1   // no date → bottom
+      if (!b.createdAt) return -1
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }, [data.expenses])
+
+  // Group by calendar day key "YYYY-MM-DD"
+  const dayKey = (iso?: string) => iso ? iso.slice(0, 10) : '__none__'
+
+  if (sorted.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+        <ShoppingCart className="h-10 w-10" />
+        <p>{t('No expenses yet.', 'אין הוצאות עדיין.', lang)}</p>
+      </div>
+    )
+  }
+
+  let lastDay = ''
+  return (
+    <div className="space-y-1">
+      {sorted.map((expense) => {
+        const isFixed = (expense.expenseType ?? 'fixed') === 'fixed'
+        const key = dayKey(expense.createdAt)
+        const showSeparator = key !== lastDay
+        lastDay = key
+
+        const catDef = CATEGORIES.find((c) => c.value === expense.category)
+        const addedDate = expense.createdAt ? formatAddedDate(expense.createdAt, lang) : null
+        const linkedAccount = expense.linkedAccountId
+          ? data.accounts.find((a) => a.id === expense.linkedAccountId)
+          : null
+
+        const separatorLabel = expense.createdAt
+          ? dateSeparatorLabel(expense.createdAt, lang)
+          : t('No date', 'ללא תאריך', lang)
+
+        return (
+          <div key={expense.id}>
+            {showSeparator && (
+              <div className="flex items-center gap-2 py-2 mt-2 first:mt-0">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  {separatorLabel}
+                </span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+            )}
+
+            <Card className="overflow-hidden">
+              <div className="flex items-stretch">
+                {/* Left colour strip */}
+                <div
+                  className={`w-1 shrink-0 ${isFixed ? 'bg-muted' : 'bg-warning/50'}`}
+                  aria-hidden="true"
+                />
+
+                {/* Content */}
+                <div className="flex items-center flex-1 min-w-0 gap-2 px-3 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">{expense.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {/* Category badge */}
+                      {catDef && (
+                        <Badge variant="secondary" className="text-xs py-0 px-1.5">
+                          {lang === 'he' ? catDef.he : catDef.en}
+                        </Badge>
+                      )}
+                      {/* Fixed / variable */}
+                      <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                        {isFixed
+                          ? <Lock className="h-2.5 w-2.5" />
+                          : <Waves className="h-2.5 w-2.5" />
+                        }
+                        {isFixed ? t('Fixed', 'קבוע', lang) : t('Variable', 'משתנה', lang)}
+                      </span>
+                      {linkedAccount && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+                          <Link2 className="h-2.5 w-2.5" />
+                          {linkedAccount.name}
+                        </span>
+                      )}
+                    </div>
+                    {addedDate && (
+                      <p className="text-xs text-muted-foreground/60 mt-0.5">
+                        {t(`Added ${addedDate}`, `נוסף ${addedDate}`, lang)}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Amount */}
+                  <div className="text-end shrink-0 pe-1">
+                    <p className="text-sm font-bold tabular-nums">
+                      {formatCurrency(expense.amount, data.currency, data.locale)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {expense.period === 'yearly' ? t('/year', '/שנה', lang) : t('/month', '/חודש', lang)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col border-s border-border shrink-0">
+                  <ExpenseDialog existing={expense} onSave={(e) => updateExpense(e)} lang={lang} />
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        className="flex-1 flex items-center justify-center w-10 min-h-[44px] hover:bg-destructive/10 transition-colors text-destructive"
+                        title={t('Delete expense', 'מחק הוצאה', lang)}
+                        aria-label={t('Delete expense', 'מחק הוצאה', lang)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
+                        <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => deleteExpense(expense.id)}
+                        >
+                          {t('Delete', 'מחק', lang)}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── PastMonthView ─────────────────────────────────────────────────────────────
 // Read-only view of a past month's actuals, rendered inside the Expenses tab.
 
@@ -853,6 +1028,7 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
   const [comparing, setComparing] = useState(false)
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
+  const [viewMode, setViewMode] = useState<'category' | 'date'>('category')
   // Improvement D — FAB state
   const [fabOpen, setFabOpen] = useState(false)
 
@@ -1051,9 +1227,44 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
         </Card>
       )}
 
-      {/* ── Toolbar row (Compare + Clear variable + Desktop Add) ─────────── */}
+      {/* ── Toolbar row ──────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
-        {lastSnapshot && (
+        {/* View toggle — Category / Date */}
+        {data.expenses.length > 0 && (
+          <div className="flex rounded-lg border border-input overflow-hidden shrink-0">
+            <button
+              onClick={() => setViewMode('category')}
+              aria-pressed={viewMode === 'category'}
+              title={t('View by category', 'תצוגה לפי קטגוריה', lang)}
+              aria-label={t('View by category', 'תצוגה לפי קטגוריה', lang)}
+              className={`flex items-center gap-1.5 px-3 min-h-[36px] text-xs font-medium transition-colors ${
+                viewMode === 'category'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <LayoutList className="h-3.5 w-3.5 shrink-0" />
+              {t('Category', 'קטגוריה', lang)}
+            </button>
+            <button
+              onClick={() => { setViewMode('date'); setComparing(false) }}
+              aria-pressed={viewMode === 'date'}
+              title={t('View by date added', 'תצוגה לפי תאריך הוספה', lang)}
+              aria-label={t('View by date added', 'תצוגה לפי תאריך הוספה', lang)}
+              className={`flex items-center gap-1.5 px-3 min-h-[36px] text-xs font-medium transition-colors border-s border-input ${
+                viewMode === 'date'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+              {t('By Date', 'לפי תאריך', lang)}
+            </button>
+          </div>
+        )}
+
+        {/* Compare — hidden in date view */}
+        {viewMode === 'category' && lastSnapshot && (
           <Button
             variant={comparing ? 'default' : 'outline'}
             size="sm"
@@ -1065,7 +1276,7 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
             {t('Compare', 'השווה', lang)}
           </Button>
         )}
-        {hasVariableExpenses && (
+        {hasVariableExpenses && viewMode === 'category' && (
           <Button
             variant="outline"
             size="sm"
@@ -1130,8 +1341,10 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
         </div>
       )}
 
-      {/* Empty state */}
-      {data.expenses.length === 0 ? (
+      {/* ── Date view ────────────────────────────────────────────────────── */}
+      {viewMode === 'date' ? (
+        <DateView lang={lang} />
+      ) : data.expenses.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
           <ShoppingCart className="h-10 w-10" />
           <p>{t('No expenses yet. Add your first one!', 'אין הוצאות עדיין. הוסף את הראשונה!', lang)}</p>
