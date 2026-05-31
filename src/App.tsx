@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2, Users } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
@@ -252,9 +253,36 @@ function AppOrAuth() {
   )
 }
 
+// ── SW update notifier ───────────────────────────────────────────────────────
+// Shows a Sonner toast with a "Refresh" button whenever a new app version is
+// detected. Prevents users from being stuck on a cached old bundle.
+
+function SWUpdateNotifier() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+
+  const handleUpdate = useCallback(() => {
+    updateServiceWorker(true)
+  }, [updateServiceWorker])
+
+  useEffect(() => {
+    if (!needRefresh) return
+    toast('New version available', {
+      description: 'Tap Refresh to get the latest update.',
+      duration: Infinity,
+      action: {
+        label: 'Refresh',
+        onClick: handleUpdate,
+      },
+    })
+  }, [needRefresh, handleUpdate])
+
+  return null
+}
+
 export default function Root() {
   return (
     <AuthProvider>
+      <SWUpdateNotifier />
       <AppOrAuth />
     </AuthProvider>
   )
