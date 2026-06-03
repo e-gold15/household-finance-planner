@@ -84,20 +84,30 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    const stored   = localStorage.getItem(LAST_SEEN_KEY)
-    const current  = currentMonthKey()
+    const stored  = localStorage.getItem(LAST_SEEN_KEY)
+    const current = currentMonthKey()
 
-    // Always update the last-seen key regardless of whether we show the prompt
+    // Always update the last-seen key so next visit can detect a month change.
     localStorage.setItem(LAST_SEEN_KEY, current)
 
-    if (stored && stored !== current) {
-      // First open of a new month — always clear variable expenses immediately,
-      // unconditionally. This happens whether or not the snapshot prompt is shown
-      // and regardless of whether the user clicks "Snapshot" or "Skip".
+    // Rollover triggers when:
+    //   a) stored is non-null and differs from current (normal month change), OR
+    //   b) stored is null (new device / cleared storage / reinstalled PWA) AND
+    //      variable expenses exist — meaning the user has been using the app but
+    //      the device-local key was lost. Without this guard, the rollover would
+    //      silently skip on every fresh install.
+    const hasVariables = data.expenses.some(
+      (e) => (e.expenseType ?? 'fixed') === 'variable'
+    )
+    const isMonthChange = stored !== null && stored !== current
+    const isNullWithVariables = stored === null && hasVariables
+
+    if (isMonthChange || isNullWithVariables) {
+      // Clear variable expenses so the new month starts fresh.
+      // Fixed expenses (recurring budget plan) are always kept.
       clearVariableExpenses()
 
-      // Show the snapshot prompt only when there is no snapshot for the previous
-      // month yet — the user can still skip it without affecting the clearing.
+      // Show snapshot prompt only when the previous month has no snapshot yet.
       if (!hasPrevMonthSnapshot(data.history)) {
         setOpen(true)
       }

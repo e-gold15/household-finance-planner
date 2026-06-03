@@ -1095,6 +1095,21 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
 
   const hasVariableExpenses = data.expenses.some((e) => (e.expenseType ?? 'fixed') === 'variable')
 
+  // Detect stale variable expenses — any variable expense whose createdAt is
+  // from a month before the current one. These should have been cleared on
+  // month rollover but weren't (e.g. new device, cleared storage, or cache issue).
+  const hasStaleVariables = useMemo(() => {
+    const now = new Date()
+    const curYear  = now.getFullYear()
+    const curMonth = now.getMonth() + 1
+    return data.expenses.some((e) => {
+      if ((e.expenseType ?? 'fixed') !== 'variable') return false
+      if (!e.createdAt) return false
+      const d = new Date(e.createdAt)
+      return d.getFullYear() < curYear || (d.getFullYear() === curYear && d.getMonth() + 1 < curMonth)
+    })
+  }, [data.expenses])
+
   // Stable current month value — avoids stale-capture if the tab is left open overnight
   const currentMonth = useMemo(() => new Date().getMonth() + 1, [])
 
@@ -1225,6 +1240,29 @@ export function Expenses({ onNavigateToHistory }: { onNavigateToHistory?: () => 
             </div>
           </div>
         </Card>
+      )}
+
+      {/* ── Stale variable expenses banner ───────────────────────────────── */}
+      {hasStaleVariables && (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-warning" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {t('These are last month\'s variable expenses', 'אלו הוצאות משתנות מהחודש שעבר', lang)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t('A new month started but variable expenses weren\'t cleared automatically. Clear them to start fresh.', 'החודש החדש התחיל אך ההוצאות המשתנות לא נמחקו אוטומטית. נקה אותן כדי להתחיל מחדש.', lang)}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 min-h-[44px] border-warning/40 text-warning hover:bg-warning/10"
+            onClick={() => { clearVariableExpenses(); setClearConfirmOpen(false) }}
+          >
+            {t('Clear now', 'נקה עכשיו', lang)}
+          </Button>
+        </div>
       )}
 
       {/* ── Toolbar row ──────────────────────────────────────────────────── */}
