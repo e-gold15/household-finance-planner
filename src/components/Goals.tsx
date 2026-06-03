@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2, Bot, RefreshCw } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2, Bot, RefreshCw, CirclePlus } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -16,7 +16,8 @@ import { allocateGoals, autoAllocateSavings } from '@/lib/savingsEngine'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { formatCurrency, generateId, t } from '@/lib/utils'
 import { explainGoalPlan, aiEnabled } from '@/lib/aiAdvisor'
-import type { Goal, GoalAllocation, GoalPriority, GoalStatus } from '@/types'
+import { toast } from 'sonner'
+import type { Currency, Locale, Goal, GoalAllocation, GoalPriority, GoalStatus, SavingsAccount } from '@/types'
 
 function GoalDialog({
   existing,
@@ -115,6 +116,190 @@ function GoalDialog({
   )
 }
 
+function FundGoalDialog({
+  goal,
+  accounts,
+  currency,
+  locale,
+  lang,
+  onFund,
+}: {
+  goal: Goal
+  accounts: SavingsAccount[]
+  currency: Currency
+  locale: Locale
+  lang: 'en' | 'he'
+  onFund: (accountId: string, amount: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
+  const [amountStr, setAmountStr] = useState('')
+
+  const hasAccounts = accounts.length > 0
+
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null
+  const parsedAmount = parseFloat(amountStr) || 0
+
+  const isOverBalance = selectedAccount !== null && parsedAmount > selectedAccount.balance
+  const isValid =
+    selectedAccount !== null && parsedAmount > 0 && !isOverBalance
+
+  const newGoalAmount = goal.currentAmount + parsedAmount
+  const newGoalPct = goal.targetAmount > 0
+    ? Math.min(100, (newGoalAmount / goal.targetAmount) * 100)
+    : 0
+  const newAccountBalance = selectedAccount
+    ? Math.max(0, selectedAccount.balance - parsedAmount)
+    : 0
+
+  const showPreview = selectedAccount !== null && parsedAmount > 0 && !isOverBalance
+
+  const handleConfirm = () => {
+    if (!isValid || !selectedAccount) return
+    onFund(selectedAccount.id, parsedAmount)
+    const amountFmt = formatCurrency(parsedAmount, currency, locale)
+    toast.success(
+      t(
+        `${amountFmt} transferred from "${selectedAccount.name}" to "${goal.name}" ✓`,
+        `${amountFmt} הועבר מ-"${selectedAccount.name}" ל-"${goal.name}" ✓`,
+        lang
+      )
+    )
+    setOpen(false)
+    setSelectedAccountId('')
+    setAmountStr('')
+  }
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next)
+    if (!next) {
+      setSelectedAccountId('')
+      setAmountStr('')
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          size="sm"
+          className="flex-1 min-h-[44px]"
+          disabled={!hasAccounts}
+          title={
+            !hasAccounts
+              ? t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)
+              : undefined
+          }
+          aria-label={t('Add Funds to Goal', 'הוסף כסף ליעד', lang)}
+        >
+          <CirclePlus className="h-4 w-4 me-1" />
+          {t('Add Funds', 'הוסף כסף', lang)}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('Add Funds to Goal', 'הוסף כסף ליעד', lang)}</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            {goal.name} · {formatCurrency(goal.currentAmount, currency, locale)} / {formatCurrency(goal.targetAmount, currency, locale)}
+          </p>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          {/* Account selector */}
+          <div>
+            <Label htmlFor="fund-account">{t('Source — Savings Account', 'מקור — חשבון חיסכון', lang)}</Label>
+            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <SelectTrigger id="fund-account" className="min-h-[44px]">
+                <SelectValue placeholder={t('Select account…', 'בחר חשבון...', lang)} />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name} · {formatCurrency(a.balance, currency, locale)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedAccount && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('Available:', 'זמין:', lang)}{' '}
+                <span className="font-medium">{formatCurrency(selectedAccount.balance, currency, locale)}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Amount input */}
+          <div>
+            <Label htmlFor="fund-amount">{t('Amount', 'סכום', lang)}</Label>
+            <Input
+              id="fund-amount"
+              type="number"
+              min={0}
+              max={selectedAccount?.balance ?? undefined}
+              step={100}
+              value={amountStr}
+              onChange={(e) => setAmountStr(e.target.value)}
+              className="min-h-[44px]"
+              placeholder="0"
+            />
+            {isOverBalance && (
+              <p className="text-xs text-destructive mt-1">
+                {t('Amount exceeds available balance.', 'הסכום עולה על היתרה הזמינה.', lang)}
+              </p>
+            )}
+          </div>
+
+          {/* Live preview */}
+          {showPreview && (
+            <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-3">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wide">
+                {t('Preview', 'תצוגה מקדימה', lang)} — {t('after transfer', 'אחרי ההעברה', lang)}
+              </p>
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">{goal.name}</span>
+                  <span className="text-primary font-semibold">
+                    {formatCurrency(newGoalAmount, currency, locale)} ({newGoalPct.toFixed(0)}%)
+                  </span>
+                </div>
+                <Progress value={newGoalPct} className="h-2" aria-label={`${goal.name} – ${newGoalPct.toFixed(0)}%`} />
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{selectedAccount!.name} {t('balance after', 'יתרה אחרי', lang)}</span>
+                <span className="font-medium text-foreground">{formatCurrency(newAccountBalance, currency, locale)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <Button
+              variant="outline"
+              className="flex-1 min-h-[44px]"
+              onClick={() => handleOpenChange(false)}
+            >
+              {t('Cancel', 'ביטול', lang)}
+            </Button>
+            <Button
+              className="flex-1 min-h-[44px]"
+              disabled={!isValid}
+              onClick={handleConfirm}
+            >
+              {t('Confirm', 'אישור', lang)}
+            </Button>
+          </div>
+
+          {/* No-accounts hint */}
+          {!hasAccounts && (
+            <p className="text-xs text-muted-foreground text-center">
+              {t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)}
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const STATUS_ICONS: Record<GoalStatus, React.ElementType> = {
   realistic: CheckCircle,
   tight: AlertTriangle,
@@ -143,7 +328,7 @@ const PRIORITY_BADGE: Record<GoalPriority, 'default' | 'secondary' | 'outline'> 
 }
 
 export function Goals() {
-  const { data, addGoal, updateGoal, deleteGoal, moveGoal, setData } = useFinance()
+  const { data, addGoal, updateGoal, deleteGoal, moveGoal, setData, fundGoalFromSavings } = useFinance()
   const lang = data.language
 
   const [aiLoading, setAiLoading] = useState(false)
@@ -484,6 +669,24 @@ export function Goals() {
                   )}
                 </div>
                 {goal.notes && <p className="text-xs text-muted-foreground">{goal.notes}</p>}
+
+                {/* Add Funds row */}
+                <div className="flex gap-2">
+                  <FundGoalDialog
+                    goal={goal}
+                    accounts={data.accounts}
+                    currency={data.currency}
+                    locale={data.locale}
+                    lang={lang}
+                    onFund={(accountId, amount) => fundGoalFromSavings(goal.id, accountId, amount)}
+                  />
+                  {data.accounts.length === 0 && (
+                    <p className="text-xs text-muted-foreground self-center">
+                      {t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)}
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between pt-1">
                   <div className="flex gap-1">
                     <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
