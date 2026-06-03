@@ -134,62 +134,47 @@ export function SurplusBanner() {
     closeDialog()
   }
 
-  // ── Shared dialog content ─────────────────────────────────────────────────
-  function AllocationFields({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-      <div className="space-y-4 py-2">
-        <div className="space-y-1.5">
-          <Label>{label}</Label>
-          {children}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>{t('Amount', 'סכום', lang)}</Label>
-          <Input
-            type="number"
-            min={0}
-            max={remaining}
-            step={100}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={t('Amount', 'סכום', lang)}
-          />
-
-          {/* Remaining balance info */}
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{t('Remaining surplus:', 'עודף שנותר:', lang)}</span>
-            <span className="font-semibold text-primary">
-              {formatCurrency(remaining, data.currency, data.locale)}
-            </span>
-          </div>
-
-          {/* Progress bar showing how much has been allocated */}
-          {alreadyAllocated > 0 && (
-            <div className="space-y-1">
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${Math.min(100, (alreadyAllocated / totalSurplus) * 100)}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {formatCurrency(alreadyAllocated, data.currency, data.locale)}{' '}
-                {t('already allocated of', 'כבר חולק מתוך', lang)}{' '}
-                {formatCurrency(totalSurplus, data.currency, data.locale)}
-              </p>
-            </div>
-          )}
-
-          {isNaN(parsedAmount) || parsedAmount <= 0 ? null : parsedAmount > remaining ? (
-            <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-              <AlertTriangle className="h-3 w-3" />
-              {t('Amount exceeds remaining surplus.', 'הסכום עולה על העודף שנותר.', lang)}
-            </p>
-          ) : null}
-        </div>
+  // ── Shared amount field (inlined — never define components inside render) ──
+  const amountFields = (
+    <div className="space-y-1.5">
+      <Label>{t('Amount', 'סכום', lang)}</Label>
+      <Input
+        type="number"
+        min={0}
+        step={100}
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder={t('Amount', 'סכום', lang)}
+      />
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{t('Remaining surplus:', 'עודף שנותר:', lang)}</span>
+        <span className="font-semibold text-primary">
+          {formatCurrency(remaining, data.currency, data.locale)}
+        </span>
       </div>
-    )
-  }
+      {alreadyAllocated > 0 && (
+        <div className="space-y-1">
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all"
+              style={{ width: `${Math.min(100, (alreadyAllocated / totalSurplus) * 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {formatCurrency(alreadyAllocated, data.currency, data.locale)}{' '}
+            {t('already allocated of', 'כבר חולק מתוך', lang)}{' '}
+            {formatCurrency(totalSurplus, data.currency, data.locale)}
+          </p>
+        </div>
+      )}
+      {!isNaN(parsedAmount) && parsedAmount > remaining && (
+        <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+          <AlertTriangle className="h-3 w-3" />
+          {t('Amount exceeds remaining surplus.', 'הסכום עולה על העודף שנותר.', lang)}
+        </p>
+      )}
+    </div>
+  )
 
   // ── Banner ────────────────────────────────────────────────────────────────
   return (
@@ -271,23 +256,27 @@ export function SurplusBanner() {
           <DialogHeader>
             <DialogTitle>{t('Add surplus to a Goal', 'הוסף עודף ליעד', lang)}</DialogTitle>
           </DialogHeader>
-          <AllocationFields label={t('Choose a goal', 'בחר יעד', lang)}>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger><SelectValue placeholder={t('Select goal…', 'בחר יעד...', lang)} /></SelectTrigger>
-              <SelectContent>
-                {data.goals.map((g) => {
-                  const pct = g.targetAmount > 0
-                    ? Math.min(100, (g.currentAmount / g.targetAmount) * 100).toFixed(0)
-                    : '0'
-                  return (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.name} · {pct}%
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
-          </AllocationFields>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t('Choose a goal', 'בחר יעד', lang)}</Label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger><SelectValue placeholder={t('Select goal…', 'בחר יעד...', lang)} /></SelectTrigger>
+                <SelectContent>
+                  {data.goals.map((g) => {
+                    const pct = g.targetAmount > 0
+                      ? Math.min(100, (g.currentAmount / g.targetAmount) * 100).toFixed(0)
+                      : '0'
+                    return (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name} · {pct}%
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            {amountFields}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={closeDialog}>{t('Cancel', 'ביטול', lang)}</Button>
             <Button onClick={handleConfirm} disabled={!selectedId || !isValidAmount}>
@@ -303,18 +292,22 @@ export function SurplusBanner() {
           <DialogHeader>
             <DialogTitle>{t('Deposit to a Savings Account', 'הפקד לחיסכון', lang)}</DialogTitle>
           </DialogHeader>
-          <AllocationFields label={t('Choose an account', 'בחר חשבון', lang)}>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger><SelectValue placeholder={t('Select account…', 'בחר חשבון...', lang)} /></SelectTrigger>
-              <SelectContent>
-                {data.accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} · {formatCurrency(a.balance, data.currency, data.locale)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </AllocationFields>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t('Choose an account', 'בחר חשבון', lang)}</Label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger><SelectValue placeholder={t('Select account…', 'בחר חשבון...', lang)} /></SelectTrigger>
+                <SelectContent>
+                  {data.accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name} · {formatCurrency(a.balance, data.currency, data.locale)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {amountFields}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={closeDialog}>{t('Cancel', 'ביטול', lang)}</Button>
             <Button onClick={handleConfirm} disabled={!selectedId || !isValidAmount}>
