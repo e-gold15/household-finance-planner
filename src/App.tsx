@@ -80,7 +80,7 @@ function hasPrevMonthSnapshot(history: import('./types').MonthSnapshot[]): boole
 }
 
 function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
-  const { data, snapshotPreviousMonth, clearVariableExpenses } = useFinance()
+  const { data, snapshotPreviousMonth } = useFinance()
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -90,27 +90,12 @@ function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
     // Always update the last-seen key so next visit can detect a month change.
     localStorage.setItem(LAST_SEEN_KEY, current)
 
-    // Rollover triggers when:
-    //   a) stored is non-null and differs from current (normal month change), OR
-    //   b) stored is null (new device / cleared storage / reinstalled PWA) AND
-    //      variable expenses exist — meaning the user has been using the app but
-    //      the device-local key was lost. Without this guard, the rollover would
-    //      silently skip on every fresh install.
-    const hasVariables = data.expenses.some(
-      (e) => (e.expenseType ?? 'fixed') === 'variable'
-    )
-    const isMonthChange = stored !== null && stored !== current
-    const isNullWithVariables = stored === null && hasVariables
-
-    if (isMonthChange || isNullWithVariables) {
-      // Clear variable expenses so the new month starts fresh.
-      // Fixed expenses (recurring budget plan) are always kept.
-      clearVariableExpenses()
-
-      // Show snapshot prompt only when the previous month has no snapshot yet.
-      if (!hasPrevMonthSnapshot(data.history)) {
-        setOpen(true)
-      }
+    // The actual variable-expense clearing now happens inside FinanceContext's
+    // cloud pull (after the additive merge), so the cleared state can't be
+    // restored by cloud data arriving after this effect runs.
+    // Here we only handle the snapshot prompt UI.
+    if (stored && stored !== current && !hasPrevMonthSnapshot(data.history)) {
+      setOpen(true)
     }
   // Run only once on mount — data.history checked at mount time intentionally
   // eslint-disable-next-line react-hooks/exhaustive-deps

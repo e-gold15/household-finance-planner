@@ -217,12 +217,40 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       if (cloudData) {
         // Case A: cloud has data — additive merge (cloud wins on conflicts, local
         // items preserved). This protects locally-added data that hasn't synced yet.
-        // Cloud-wins on initial load caused data loss when cloud had an older snapshot
-        // and local had newer expenses — the local data was discarded.
         //
         // Per-device prefs (darkMode, language) are always kept from local storage.
         const current = load(householdId)
-        const merged  = repairSnapshotTotals(mergeFinanceData(cloudData, current))
+        let merged = repairSnapshotTotals(mergeFinanceData(cloudData, current))
+
+        // ── Month rollover (runs AFTER merge so cloud can't restore cleared items) ──
+        // We check here rather than in App.tsx so that the rollover always happens
+        // AFTER the additive merge. Previously, clearVariableExpenses() fired before
+        // the cloud pull resolved, so the merge brought the variable expenses back.
+        const MONTH_KEY = 'hf-last-seen-month'
+        const now = new Date()
+        const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        const storedKey  = localStorage.getItem(MONTH_KEY)
+        localStorage.setItem(MONTH_KEY, currentKey)
+
+        const hasVariables = merged.expenses.some(
+          (e) => (e.expenseType ?? 'fixed') === 'variable'
+        )
+        const needsRollover =
+          (storedKey !== null && storedKey !== currentKey) ||   // normal month change
+          (storedKey === null && hasVariables)                  // new device / cleared storage
+
+        if (needsRollover) {
+          merged = {
+            ...merged,
+            expenses: merged.expenses.filter(
+              (e) => (e.expenseType ?? 'fixed') === 'fixed'
+            ),
+          }
+          // Push immediately (no debounce) so cloud is updated before any
+          // subsequent Realtime event can restore the old variable expenses.
+          pushCloudFinanceData(householdId, merged)
+        }
+
         save(householdId, merged)
         setDataState(merged)
       } else {
