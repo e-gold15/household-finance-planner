@@ -250,6 +250,13 @@ export interface MonthSnapshot {
    */
   surplusActioned?: boolean
   /**
+   * Running total of surplus already allocated across all allocation actions.
+   * Remaining surplus = freeCashFlow − (surplusAllocated ?? 0).
+   * When remaining reaches 0 the banner auto-dismisses.
+   * Absent / undefined is treated as 0 (backward-compatible).
+   */
+  surplusAllocated?: number
+  /**
    * Record of where the surplus was allocated.
    * Each entry represents one allocation action the user confirmed.
    * Displayed in the History tab below the summary grid.

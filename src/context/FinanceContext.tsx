@@ -869,19 +869,22 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
   ) =>
     setData((d) => ({
       ...d,
-      history: d.history.map((h) =>
-        h.id === snapshotId
-          ? {
-              ...h,
-              freeCashFlow: h.freeCashFlow - allocation.amount,
-              surplusActioned: true,
-              surplusAllocations: [
-                ...(h.surplusAllocations ?? []),
-                allocation,
-              ],
-            }
-          : h
-      ),
+      history: d.history.map((h) => {
+        if (h.id !== snapshotId) return h
+        const newAllocated = (h.surplusAllocated ?? 0) + allocation.amount
+        const remaining = h.freeCashFlow - newAllocated
+        return {
+          ...h,
+          // Track running total — never mutate freeCashFlow (it's the real FCF)
+          surplusAllocated: newAllocated,
+          // Auto-dismiss when fully allocated; "Don't ask again" sets this manually
+          surplusActioned: remaining <= 0 ? true : h.surplusActioned,
+          surplusAllocations: [
+            ...(h.surplusAllocations ?? []),
+            allocation,
+          ],
+        }
+      }),
     }))
 
   const exportData = () => {
