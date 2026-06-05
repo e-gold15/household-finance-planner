@@ -131,6 +131,8 @@ interface FinanceContextType {
   addIncomeToMonth: (year: number, month: number, item: Omit<HistoricalIncome, 'id'>) => void
   /** Transfer money from a savings account balance into a goal's currentAmount atomically. */
   fundGoalFromSavings: (goalId: string, accountId: string, amount: number) => void
+  /** Transfer an amount between two savings accounts atomically. Source balance is clamped to 0. */
+  transferBetweenAccounts: (fromId: string, toId: string, amount: number) => void
   /** Mark the end-of-month surplus for a snapshot as actioned — hides the banner permanently. */
   markSurplusActioned: (snapshotId: string) => void
   /** Persist an AI-generated briefing onto a snapshot by id. */
@@ -877,6 +879,16 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       }
     })
 
+  const transferBetweenAccounts = (fromId: string, toId: string, amount: number) =>
+    setData((d) => ({
+      ...d,
+      accounts: d.accounts.map((a) => {
+        if (a.id === fromId) return { ...a, balance: Math.max(0, a.balance - amount) }
+        if (a.id === toId)   return { ...a, balance: a.balance + amount }
+        return a
+      }),
+    }))
+
   const fundGoalFromSavings = (goalId: string, accountId: string, amount: number) =>
     setData((d) => ({
       ...d,
@@ -976,6 +988,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       addHistoricalIncome, deleteHistoricalIncome, updateHistoricalIncome,
       addIncomeToMonth,
       fundGoalFromSavings,
+      transferBetweenAccounts,
       markSurplusActioned,
       saveBriefing,
       recordSurplusAllocation,
