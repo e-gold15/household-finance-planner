@@ -522,7 +522,8 @@ export function Goals() {
                   {displayAllocations.map((goal) => {
                     const goalUsed = goal.usedAmount ?? 0
                     const goalAvailable = goal.currentAmount - goalUsed
-                    const pct = Math.min(100, goal.targetAmount > 0 ? (goalAvailable / goal.targetAmount) * 100 : 0)
+                    const goalEffectiveTarget = goal.targetAmount - goalUsed
+                    const pct = Math.min(100, goalEffectiveTarget > 0 ? (goalAvailable / goalEffectiveTarget) * 100 : 100)
                     const allocated = goal.monthlyAllocated ?? goal.monthlyRecommended
                     const statusLabel = {
                       realistic: t('Realistic', 'ריאלי', lang),
@@ -560,7 +561,7 @@ export function Goals() {
                           />
                           <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
                           <span className="text-muted-foreground ms-1">
-                            ({formatCurrency(goalAvailable, data.currency, data.locale)} / {formatCurrency(goal.targetAmount, data.currency, data.locale)})
+                            ({formatCurrency(goalAvailable, data.currency, data.locale)} / {formatCurrency(goalEffectiveTarget, data.currency, data.locale)})
                           </span>
                         </td>
                       </tr>
@@ -634,8 +635,9 @@ export function Goals() {
         displayAllocations.map((goal, idx) => {
           const usedAmt = goal.usedAmount ?? 0
           const available = goal.currentAmount - usedAmt
-          const pct = Math.min(100, goal.targetAmount > 0 ? (available / goal.targetAmount) * 100 : 0)
-          const stillNeeded = goal.targetAmount - available
+          const effectiveTarget = goal.targetAmount - usedAmt
+          const pct = Math.min(100, effectiveTarget > 0 ? (available / effectiveTarget) * 100 : 100)
+          const stillNeeded = effectiveTarget - available
           const StatusIcon = STATUS_ICONS[goal.status]
           const statusLabel = {
             realistic: t('Realistic', 'ריאלי', lang),
@@ -683,7 +685,7 @@ export function Goals() {
                 {/* Progress bar based on available / targetAmount */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">{formatCurrency(available, data.currency, data.locale)} / {formatCurrency(goal.targetAmount, data.currency, data.locale)}</span>
+                    <span className="text-muted-foreground">{formatCurrency(available, data.currency, data.locale)} / {formatCurrency(effectiveTarget, data.currency, data.locale)}</span>
                     <span>{pct.toFixed(0)}%</span>
                   </div>
                   <Progress
