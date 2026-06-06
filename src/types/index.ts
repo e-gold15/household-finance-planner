@@ -178,6 +178,8 @@ export interface Goal {
   name: string
   targetAmount: number
   currentAmount: number
+  /** Amount already spent/withdrawn from this goal. Optional for backward compat — treat absence as 0. */
+  usedAmount?: number
   deadline: string
   priority: GoalPriority
   notes: string

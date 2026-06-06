@@ -35,6 +35,7 @@ function GoalDialog({
       name: '',
       targetAmount: 0,
       currentAmount: 0,
+      usedAmount: 0,
       deadline: '',
       priority: 'medium',
       notes: '',
@@ -43,9 +44,14 @@ function GoalDialog({
   )
   const set = <K extends keyof Goal>(k: K, v: Goal[K]) => setForm((f) => ({ ...f, [k]: v }))
 
+  const usedAmountError =
+    (form.usedAmount ?? 0) > form.currentAmount
+      ? t('Cannot exceed amount already saved', 'לא יכול לעלות על הסכום שנחסך', lang)
+      : null
+
   useEffect(() => {
     if (open && !existing) {
-      setForm({ id: generateId(), name: '', targetAmount: 0, currentAmount: 0, deadline: '', priority: 'medium', notes: '', useLiquidSavings: false })
+      setForm({ id: generateId(), name: '', targetAmount: 0, currentAmount: 0, usedAmount: 0, deadline: '', priority: 'medium', notes: '', useLiquidSavings: false })
     }
   }, [open, existing])
 
@@ -85,6 +91,20 @@ function GoalDialog({
             </div>
           </div>
           <div>
+            <Label htmlFor="goal-used">{t('Amount Used', 'סכום שנוצל', lang)}</Label>
+            <Input
+              id="goal-used"
+              type="number"
+              min={0}
+              value={form.usedAmount ?? 0}
+              onChange={(e) => set('usedAmount', +e.target.value)}
+              className={usedAmountError ? 'border-destructive' : ''}
+            />
+            {usedAmountError && (
+              <p className="text-xs text-destructive mt-1">{usedAmountError}</p>
+            )}
+          </div>
+          <div>
             <Label htmlFor="goal-deadline">{t('Deadline', 'תאריך יעד', lang)}</Label>
             <Input id="goal-deadline" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
           </div>
@@ -107,7 +127,7 @@ function GoalDialog({
             <Switch checked={form.useLiquidSavings} onCheckedChange={(v) => set('useLiquidSavings', v)} />
             <Label>{t('Use liquid savings toward this goal', 'השתמש בחסכונות נזילים לעבר יעד זה', lang)}</Label>
           </div>
-          <Button className="w-full" onClick={() => { onSave(form); setOpen(false) }}>
+          <Button className="w-full" disabled={!!usedAmountError} onClick={() => { onSave(form); setOpen(false) }}>
             {t('Save', 'שמור', lang)}
           </Button>
         </div>
@@ -500,7 +520,9 @@ export function Goals() {
                 </thead>
                 <tbody>
                   {displayAllocations.map((goal) => {
-                    const pct = Math.min(100, goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0)
+                    const goalUsed = goal.usedAmount ?? 0
+                    const goalAvailable = goal.currentAmount - goalUsed
+                    const pct = Math.min(100, goal.targetAmount > 0 ? (goalAvailable / goal.targetAmount) * 100 : 0)
                     const allocated = goal.monthlyAllocated ?? goal.monthlyRecommended
                     const statusLabel = {
                       realistic: t('Realistic', 'ריאלי', lang),
@@ -527,7 +549,7 @@ export function Goals() {
                             {statusLabel}
                           </Badge>
                         </td>
-                        <td className="py-2 min-w-[80px]">
+                        <td className="py-2 min-w-[100px]">
                           <Progress
                             value={pct}
                             indicatorClassName={
@@ -537,6 +559,9 @@ export function Goals() {
                             aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
                           />
                           <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
+                          <span className="text-muted-foreground ms-1">
+                            ({formatCurrency(goalAvailable, data.currency, data.locale)} / {formatCurrency(goal.targetAmount, data.currency, data.locale)})
+                          </span>
                         </td>
                       </tr>
                     )
@@ -607,7 +632,10 @@ export function Goals() {
         </div>
       ) : (
         displayAllocations.map((goal, idx) => {
-          const pct = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100)
+          const usedAmt = goal.usedAmount ?? 0
+          const available = goal.currentAmount - usedAmt
+          const pct = Math.min(100, goal.targetAmount > 0 ? (available / goal.targetAmount) * 100 : 0)
+          const stillNeeded = goal.targetAmount - available
           const StatusIcon = STATUS_ICONS[goal.status]
           const statusLabel = {
             realistic: t('Realistic', 'ריאלי', lang),
@@ -633,9 +661,29 @@ export function Goals() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {/* Three-metric amount display */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <span className="text-muted-foreground">{t('Saved', 'חסכנו', lang)}</span>
+                  <span className="font-medium text-end">{formatCurrency(goal.currentAmount, data.currency, data.locale)}</span>
+                  {usedAmt > 0 && (
+                    <>
+                      <span className="text-muted-foreground">{t('Used', 'נוצל', lang)}</span>
+                      <span className="font-medium text-destructive text-end">{formatCurrency(usedAmt, data.currency, data.locale)}</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">{t('Available', 'זמין', lang)}</span>
+                  <span className="font-semibold text-primary text-end">{formatCurrency(available, data.currency, data.locale)}</span>
+                  {stillNeeded > 0 && (
+                    <>
+                      <span className="text-muted-foreground">{t('Still needed', 'נשאר לחסוך', lang)}</span>
+                      <span className="font-medium text-end">{formatCurrency(stillNeeded, data.currency, data.locale)}</span>
+                    </>
+                  )}
+                </div>
+                {/* Progress bar based on available / targetAmount */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">{formatCurrency(goal.currentAmount, data.currency, data.locale)} / {formatCurrency(goal.targetAmount, data.currency, data.locale)}</span>
+                    <span className="text-muted-foreground">{formatCurrency(available, data.currency, data.locale)} / {formatCurrency(goal.targetAmount, data.currency, data.locale)}</span>
                     <span>{pct.toFixed(0)}%</span>
                   </div>
                   <Progress
