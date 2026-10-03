@@ -184,6 +184,8 @@ export interface Goal {
   priority: GoalPriority
   notes: string
   useLiquidSavings: boolean
+  /** v4.1 — ISO date the user marked this goal done. Absent = active. Optional for backward compat. */
+  completedAt?: string
 }
 
 export interface GoalAllocation extends Goal {

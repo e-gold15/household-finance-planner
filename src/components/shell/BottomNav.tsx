@@ -115,7 +115,7 @@ export function BottomNav({ lang }: { lang: Lang }) {
             </span>
           </button>
 
-          {tabLink('goals')}
+          {tabLink('income')}
 
           <button
             type="button"

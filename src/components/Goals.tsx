@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { toast } from 'sonner'
 import { Plus, ShieldCheck, Target } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
@@ -10,10 +11,12 @@ import { allocateGoals, autoAllocateSavings } from '@/lib/savingsEngine'
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { t } from '@/lib/utils'
 import { explainGoalPlan, aiEnabled } from '@/lib/aiAdvisor'
-import type { GoalAllocation } from '@/types'
+import { activeGoals, completedGoals, markGoalDone, moveStepsPastHidden, reopenGoal } from '@/lib/goals'
+import type { Goal, GoalAllocation } from '@/types'
 import { GoalDialog } from './goals/GoalDialog'
 import { GoalCard } from './goals/GoalCard'
 import { AllocationPlan } from './goals/AllocationPlan'
+import { CompletedGoals } from './goals/CompletedGoals'
 
 export function Goals() {
   const { data, addGoal, updateGoal, deleteGoal, moveGoal, setData, fundGoalFromSavings } = useFinance()
@@ -25,6 +28,10 @@ export function Goals() {
   const [aiExplanation, setAiExplanation] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
   const [showAiCard, setShowAiCard] = useState(false)
+
+  // v4.1 — done goals (completedAt set) never take part in allocation / AI / Recalculate.
+  const active = useMemo(() => activeGoals(data.goals), [data.goals])
+  const done = useMemo(() => completedGoals(data.goals), [data.goals])
 
   const totalIncome = useMemo(
     () => data.members.reduce((sum, m) => sum + m.sources.reduce((s, src) => s + getNetMonthly(src), 0), 0),
@@ -54,17 +61,40 @@ export function Goals() {
   const allocations: GoalAllocation[] = useMemo(
     () =>
       allocateGoals({
-        goals: data.goals,
+        goals: active,
         monthlySurplus: Math.max(0, surplus),
         accounts: data.accounts,
         emergencyBufferMonths: data.emergencyBufferMonths,
         monthlyExpenses: totalExpenses,
       }),
-    [data.goals, data.accounts, data.emergencyBufferMonths, surplus, totalExpenses]
+    [active, data.accounts, data.emergencyBufferMonths, surplus, totalExpenses]
   )
 
   const [autoAllocations, setAutoAllocations] = useState<GoalAllocation[] | null>(null)
-  const displayAllocations = autoAllocations ?? allocations
+  // A Recalculate result is dropped as soon as a goal is marked done / reopened.
+  const displayAllocations = (autoAllocations ?? allocations).filter((a) => active.some((g) => g.id === a.id))
+
+  /** Always operates on the stored goal from `data.goals` — only `completedAt` changes. */
+  const handleMarkDone = (stored: Goal) => {
+    updateGoal(markGoalDone(stored))
+    setAutoAllocations(null)
+    const name = stored.name || t('Goal', 'יעד', lang)
+    toast.success(t(`'${name}' marked as done ✓`, `'${name}' סומן כהושלם ✓`, lang))
+  }
+
+  const handleReopen = (stored: Goal) => {
+    updateGoal(reopenGoal(stored))
+    setAutoAllocations(null)
+    const name = stored.name || t('Goal', 'יעד', lang)
+    toast.success(t(`'${name}' reopened`, `'${name}' נפתח מחדש`, lang))
+  }
+
+  // Move within the *visible* (active) order: skip over hidden done goals in the
+  // stored array so Up / Down always swaps with the adjacent active goal.
+  const handleMove = (id: string, direction: 'up' | 'down') => {
+    const steps = moveStepsPastHidden(data.goals, id, direction)
+    for (let i = 0; i < steps; i++) moveGoal(id, direction)
+  }
 
   const handleRecalculate = () => {
     setAutoAllocations(autoAllocateSavings(allocations, Math.max(0, freeCashFlow)))
@@ -121,7 +151,7 @@ export function Goals() {
             className="font-semibold text-foreground"
           />
         </p>
-        {data.goals.length > 0 && (
+        {active.length > 0 && (
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             {t('Add Goal', 'הוסף יעד', lang)}
@@ -156,7 +186,7 @@ export function Goals() {
         </CardContent>
       </Card>
 
-      {data.goals.length > 0 && (
+      {active.length > 0 && (
         <AllocationPlan
           allocations={displayAllocations}
           totalAllocated={totalAllocated}
@@ -175,11 +205,15 @@ export function Goals() {
         />
       )}
 
-      {data.goals.length === 0 ? (
+      {active.length === 0 ? (
         <Card>
           <EmptyState
             icon={Target}
-            title={t('No savings goals yet', 'אין יעדי חיסכון עדיין', lang)}
+            title={
+              done.length > 0
+                ? t('No active goals', 'אין יעדים פעילים', lang)
+                : t('No savings goals yet', 'אין יעדי חיסכון עדיין', lang)
+            }
             description={t("Set a target and track when you'll reach it.", 'הגדר יעד ועקוב מתי תגיע אליו.', lang)}
             actionLabel={t('Add Goal', 'הוסף יעד', lang)}
             actionIcon={Plus}
@@ -200,11 +234,22 @@ export function Goals() {
             lang={lang}
             onUpdate={updateGoal}
             onDelete={deleteGoal}
-            onMove={moveGoal}
+            onMove={handleMove}
             onFund={fundGoalFromSavings}
+            onMarkDone={handleMarkDone}
           />
         ))
       )}
+
+      <CompletedGoals
+        goals={done}
+        currency={currency}
+        locale={locale}
+        lang={lang}
+        onReopen={handleReopen}
+        onUpdate={updateGoal}
+        onDelete={deleteGoal}
+      />
 
       <GoalDialog
         open={addOpen}

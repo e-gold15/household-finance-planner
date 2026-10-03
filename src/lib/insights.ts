@@ -6,6 +6,7 @@
  */
 import { getNetMonthly } from '@/lib/taxEstimation'
 import { CATEGORY_META } from '@/lib/categories'
+import { activeGoals } from '@/lib/goals'
 import type {
   Expense,
   ExpenseCategory,
@@ -262,7 +263,7 @@ export function buildInsights(data: FinanceData, plan: MonthlyPlan, today: Date)
 
   // 2 — surplus (exact SurplusBanner rule: actionable snapshot AND somewhere to put it)
   const surplus = findActionableSurplus(data.history, today)
-  if (surplus && (data.goals.length > 0 || data.accounts.length > 0)) {
+  if (surplus && (activeGoals(data.goals).length > 0 || data.accounts.length > 0)) {
     out.push({
       id: 'surplus',
       tone: 'success',

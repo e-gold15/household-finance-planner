@@ -81,10 +81,10 @@ export interface NavItem {
 
 export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'overview', icon: LayoutDashboard, en: 'Overview', he: 'סקירה', shortEn: 'Home', shortHe: 'בית', placement: 'primary' },
-  { id: 'income',   icon: TrendingUp,      en: 'Income',   he: 'הכנסות',   placement: 'more' },
+  { id: 'income',   icon: TrendingUp,      en: 'Income',   he: 'הכנסות',   placement: 'primary' },
   { id: 'expenses', icon: ShoppingCart,    en: 'Expenses', he: 'הוצאות',   placement: 'primary' },
   { id: 'savings',  icon: PiggyBank,       en: 'Savings',  he: 'חיסכון',   placement: 'more' },
-  { id: 'goals',    icon: Target,          en: 'Goals',    he: 'יעדים',    placement: 'primary' },
+  { id: 'goals',    icon: Target,          en: 'Goals',    he: 'יעדים',    placement: 'more' },
   { id: 'history',  icon: History,         en: 'History',  he: 'היסטוריה', placement: 'more' },
   { id: 'members',  icon: Users,           en: 'Members',  he: 'חברים',    placement: 'more' },
 ] as const

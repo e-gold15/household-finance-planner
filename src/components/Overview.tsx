@@ -12,6 +12,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useFinance } from '@/context/FinanceContext'
 import { useNav } from '@/context/NavContext'
 import { allocateGoals } from '@/lib/savingsEngine'
+import { activeGoals } from '@/lib/goals'
 import { aiEnabled } from '@/lib/aiAdvisor'
 import type { BriefingPayload } from '@/lib/aiAdvisor'
 import {
@@ -72,10 +73,12 @@ export function Overview() {
   const onboarding = useMemo(() => getOnboardingState(data, plan.income), [data, plan.income])
   const surplusSnapshot = useMemo(() => findActionableSurplus(data.history, today), [data.history, today])
 
+  // v4.1 — done goals are excluded from the Home goal donut, top-priority list and briefing.
   const goalAllocations = useMemo(() => {
-    if (data.goals.length === 0) return []
+    const goals = activeGoals(data.goals)
+    if (goals.length === 0) return []
     return allocateGoals({
-      goals: data.goals,
+      goals,
       monthlySurplus: plan.leftToSpend,
       accounts: data.accounts,
       emergencyBufferMonths: data.emergencyBufferMonths,

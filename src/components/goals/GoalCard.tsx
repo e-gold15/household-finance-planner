@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowDown, ArrowUp, CirclePlus, Edit2, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, CheckCircle2, CirclePlus, Edit2, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -36,6 +36,8 @@ export interface GoalCardProps {
   onDelete: (id: string) => void
   onMove: (id: string, direction: 'up' | 'down') => void
   onFund: (goalId: string, accountId: string, amount: number) => void
+  /** v4.1 — mark the stored goal as done (sets `completedAt` only). */
+  onMarkDone: (storedGoal: Goal) => void
 }
 
 function Stat({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
@@ -60,6 +62,7 @@ export function GoalCard({
   onDelete,
   onMove,
   onFund,
+  onMarkDone,
 }: GoalCardProps) {
   const [editOpen, setEditOpen] = useState(false)
   const [fundOpen, setFundOpen] = useState(false)
@@ -68,11 +71,14 @@ export function GoalCard({
   const { used, available, effectiveTarget, pct, stillNeeded } = computeGoalProgress(goal)
   const hasAccounts = accounts.length > 0
   const name = goal.name || t('this goal', 'היעד הזה', lang)
+  // Reached = saved at least the target (the user still decides — never auto-done).
+  const reached = storedGoal.targetAmount > 0 && storedGoal.currentAmount >= storedGoal.targetAmount
 
   const menuItems: ActionMenuEntry[] = [
     { key: 'edit', label: t('Edit goal', 'ערוך יעד', lang), icon: Edit2, onSelect: () => setEditOpen(true) },
     { key: 'up', label: t('Move up', 'הזז למעלה', lang), icon: ArrowUp, disabled: isFirst, onSelect: () => onMove(goal.id, 'up') },
     { key: 'down', label: t('Move down', 'הזז למטה', lang), icon: ArrowDown, disabled: isLast, onSelect: () => onMove(goal.id, 'down') },
+    { key: 'done', label: t('Mark as done', 'סמן כהושלם', lang), icon: CheckCircle2, onSelect: () => onMarkDone(storedGoal) },
     'separator',
     { key: 'delete', label: t('Delete goal', 'מחק יעד', lang), icon: Trash2, destructive: true, onSelect: () => setDeleteOpen(true) },
   ]
@@ -151,8 +157,20 @@ export function GoalCard({
         </div>
         {goal.notes && <p className="text-xs text-muted-foreground" dir="auto">{goal.notes}</p>}
 
-        {/* Add funds from savings */}
+        {/* Add funds from savings (+ inline "Mark as done" once the target is reached) */}
         <div className="flex flex-wrap items-center gap-2">
+          {reached && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-w-0 flex-1"
+              onClick={() => onMarkDone(storedGoal)}
+              aria-label={t(`Mark ${goal.name} as done`, `סמן את ${goal.name} כהושלם`, lang)}
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              {t('Mark as done', 'סמן כהושלם', lang)}
+            </Button>
+          )}
           <Button
             size="sm"
             className="min-w-0 flex-1"

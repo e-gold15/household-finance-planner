@@ -110,12 +110,12 @@ describe('NAV_ITEMS', () => {
   })
 
   it('puts Home, Expenses, Goals in the mobile bottom nav (in that order)', () => {
-    expect(PRIMARY_MOBILE_TABS).toEqual(['overview', 'expenses', 'goals'])
+    expect(PRIMARY_MOBILE_TABS).toEqual(['overview', 'income', 'expenses'])
     expect(getNavItem('overview').shortEn).toBe('Home')
   })
 
   it('puts Income, Savings, History, Members in the More sheet', () => {
-    expect(MORE_TABS).toEqual(['income', 'savings', 'history', 'members'])
+    expect(MORE_TABS).toEqual(['savings', 'goals', 'history', 'members'])
   })
 
   it('primary and More tabs partition the full tab set', () => {
@@ -125,8 +125,8 @@ describe('NAV_ITEMS', () => {
 
   it('isMoreTab() is true only for tabs in the More sheet', () => {
     const expected: Record<Tab, boolean> = {
-      overview: false, income: true, expenses: false, savings: true,
-      goals: false, history: true, members: true,
+      overview: false, income: false, expenses: false, savings: true,
+      goals: true, history: true, members: true,
     }
     for (const tab of TABS) expect(isMoreTab(tab)).toBe(expected[tab])
   })

@@ -525,6 +525,11 @@ How will we know this feature is working?
 - ✅ All tabs refactored into focused components; zero horizontal overflow at 375px
 - ✅ Zero data-model / storage / sync changes — enforced by `v4DataFreeze.test.ts`
 
+**v4.1 — shipped (Oct 2026)** (spec: `docs/v4/spec-v4.1-goal-done-and-nav.md`)
+- ✅ Mark goal as done / Reopen — optional `Goal.completedAt` (additive; merge unchanged); done goals in a collapsed "Completed" section, excluded from allocation, Home donut, surplus targets
+- ✅ Mobile bottom nav: Home · Expenses · + · Income · More (Goals moved into More)
+- ✅ `goalDone.test.tsx` (28 tests) — counts never change, merge preserves `completedAt`, edits preserve it
+
 **Follow-ups (need a Data Safety spec):**
 - [ ] FinanceContext: cancel/replace the pending debounced push when the first cloud pull completes (pre-existing stale-push race for any pre-pull write)
 - [ ] cloudInvites.test.ts hits the live Supabase when `.env.local` is present — mock `@/lib/supabase` in that test

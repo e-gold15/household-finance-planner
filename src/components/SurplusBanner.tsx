@@ -18,6 +18,7 @@
 import { useState } from 'react'
 import { ArrowLeft, AlertTriangle, ChevronRight, PiggyBank, Sparkles, Target, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { activeGoals } from '@/lib/goals'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
@@ -130,7 +131,7 @@ function SurplusAllocationForm({ snapshot, mode, onCancel, onDone }: AllocationF
             </SelectTrigger>
             <SelectContent>
               {mode === 'goal'
-                ? data.goals.map((g) => {
+                ? activeGoals(data.goals).map((g) => {
                     const pct = g.targetAmount > 0
                       ? Math.min(100, (g.currentAmount / g.targetAmount) * 100).toFixed(0)
                       : '0'
@@ -229,7 +230,7 @@ export function SurplusAllocationSheet({ open, onOpenChange, snapshot }: Surplus
     setStep('choose')
   }
 
-  const hasGoals = data.goals.length > 0
+  const hasGoals = activeGoals(data.goals).length > 0
   const hasAccounts = data.accounts.length > 0
   const isOpen = open && snapshot !== null
 
@@ -338,7 +339,7 @@ export function SurplusBanner() {
   const alreadyAllocated = snapshot.surplusAllocated ?? 0
   const remaining = remainingSurplus(snapshot)
 
-  const hasGoals    = data.goals.length > 0
+  const hasGoals    = activeGoals(data.goals).length > 0
   const hasAccounts = data.accounts.length > 0
   if (!hasGoals && !hasAccounts) return null
 
