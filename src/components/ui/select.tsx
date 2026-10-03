@@ -1,9 +1,18 @@
 import * as React from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
+import { useDirection } from '@radix-ui/react-direction'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const Select = SelectPrimitive.Root
+/**
+ * `@radix-ui/react-select` ships its own nested copy of `react-direction`
+ * (a separate React context), so the app-level DirectionProvider never reaches
+ * it. Read the direction from the app's copy and pass it explicitly.
+ */
+function Select({ dir, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) {
+  const appDir = useDirection()
+  return <SelectPrimitive.Root dir={dir ?? appDir} {...props} />
+}
 const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
 

@@ -1,6 +1,7 @@
 import { useState, type MouseEvent, type ReactNode } from 'react'
 import { MoreHorizontal, Plus, type LucideIcon } from 'lucide-react'
 import { useNav } from '@/context/NavContext'
+import { useFinance } from '@/context/FinanceContext'
 import { getNavItem, isMoreTab, tabToHash, type Tab } from '@/lib/navigation'
 import { cn, t } from '@/lib/utils'
 import { MoreSheet } from './MoreSheet'
@@ -56,6 +57,8 @@ const slotClass =
  */
 export function BottomNav({ lang }: { lang: Lang }) {
   const { tab, navigate, openQuickAdd } = useNav()
+  // Quick Add is disabled until household data has loaded (see AppQuickAdd).
+  const { isLoading } = useFinance()
   const [moreOpen, setMoreOpen] = useState(false)
 
   const tabLink = (id: Tab) => {
@@ -96,9 +99,10 @@ export function BottomNav({ lang }: { lang: Lang }) {
           <button
             type="button"
             onClick={openQuickAdd}
+            disabled={isLoading}
             aria-label={addLabel}
             title={addLabel}
-            className="group flex flex-1 min-w-0 flex-col items-center justify-end gap-1 pb-1.5 focus-visible:outline-none"
+            className="group flex flex-1 min-w-0 flex-col items-center justify-end gap-1 pb-1.5 focus-visible:outline-none disabled:opacity-50"
           >
             <span
               aria-hidden="true"

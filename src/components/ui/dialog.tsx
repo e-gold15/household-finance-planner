@@ -201,6 +201,11 @@ DialogHeader.displayName = 'DialogHeader'
  * Action row. Inside a bottom sheet it is sticky at the bottom (Save always
  * visible, clears the home indicator); in a centred dialog it is a normal
  * end-aligned row. Buttons stack full-width on mobile.
+ *
+ * The sticky inset is the *negative* of the sheet's bottom padding: browsers
+ * stick relative to the scroll container's padding-deflated box, so with
+ * `bottom-0` the footer floated 1rem (+ safe area) above the sheet edge and
+ * scrolling content showed through the strip underneath it.
  */
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => {
   const variant = React.useContext(DialogVariantContext)
@@ -209,7 +214,7 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
       className={cn(
         'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end',
         variant === 'auto' &&
-          'sticky bottom-0 z-10 -mx-4 -mb-[calc(1rem_+_env(safe-area-inset-bottom))] border-t bg-surface-2 px-4 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:mb-0 sm:border-t-0 sm:bg-transparent sm:p-0',
+          'sticky -bottom-[calc(1rem_+_env(safe-area-inset-bottom))] z-10 -mx-4 -mb-[calc(1rem_+_env(safe-area-inset-bottom))] border-t bg-surface-2 px-4 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:mb-0 sm:border-t-0 sm:bg-transparent sm:p-0',
         className
       )}
       {...props}

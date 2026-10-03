@@ -1,5 +1,6 @@
 import * as React from 'react'
 import * as SliderPrimitive from '@radix-ui/react-slider'
+import { useDirection } from '@radix-ui/react-direction'
 import { cn } from '@/lib/utils'
 
 /**
@@ -10,7 +11,10 @@ import { cn } from '@/lib/utils'
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(({ className, ...props }, ref) => {
+>(({ className, dir, ...props }, ref) => {
+  // `@radix-ui/react-slider` bundles its own nested `react-direction` copy, so
+  // the app DirectionProvider does not reach it — pass the app direction explicitly.
+  const appDir = useDirection()
   const thumbCount = Array.isArray(props.value)
     ? props.value.length
     : Array.isArray(props.defaultValue)
@@ -19,6 +23,7 @@ const Slider = React.forwardRef<
   return (
     <SliderPrimitive.Root
       ref={ref}
+      dir={dir ?? appDir}
       className={cn(
         'relative flex min-h-11 w-full touch-none select-none items-center data-[disabled]:opacity-50',
         className

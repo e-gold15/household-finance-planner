@@ -352,7 +352,8 @@ export function SurplusBanner() {
             <Sparkles className="h-4 w-4 text-primary-strong" aria-hidden="true" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">
+            {/* <div>, not <p>: Badge renders a <div> (validateDOMNesting) */}
+            <div className="text-sm font-semibold text-foreground">
               {t('You had a surplus last month', 'היה לך עודף בחודש שעבר', lang)}
               {' '}
               <Badge variant="success" className="ms-1">
@@ -363,7 +364,7 @@ export function SurplusBanner() {
                   {t('remaining', 'נותר', lang)}
                 </span>
               )}
-            </p>
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               {snapshot.label}
               {alreadyAllocated > 0 && (

@@ -33,7 +33,7 @@ type When = 'current' | 'past'
 // The public signature below is the contract mounted by App.tsx.
 
 export function QuickAddSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { data, addExpense, addExpenseToMonth } = useFinance()
+  const { data, isLoading, addExpense, addExpenseToMonth } = useFinance()
   const lang = data.language
 
   const [amountStr, setAmountStr] = useState('')
@@ -87,7 +87,7 @@ export function QuickAddSheet({ open, onOpenChange }: { open: boolean; onOpenCha
 
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault()
-    if (!payload) return
+    if (!payload || isLoading) return
     const cat = categoryLabel(payload.kind === 'current' ? payload.expense.category : payload.item.category, lang)
     const amount = payload.kind === 'current' ? payload.expense.amount : payload.item.amount
     const amountText = formatCurrency(amount, data.currency, data.locale)

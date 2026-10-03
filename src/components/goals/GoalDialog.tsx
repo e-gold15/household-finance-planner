@@ -60,8 +60,14 @@ export function GoalDialog({ open, onOpenChange, existing, onSave, currency, loc
   const currentAmount = parseMoneyInput(form.currentAmount, { allowNegative: false }) ?? 0
   const usedAmount = parseMoneyInput(form.usedAmount, { allowNegative: false }) ?? 0
 
-  const usedAmountError =
-    usedAmount > currentAmount ? t('Cannot exceed amount already saved', 'לא יכול לעלות על הסכום שנחסך', lang) : null
+  // Data safety: a non-empty value that fails to parse blocks Save — a typo
+  // must never silently zero a stored target / saved amount.
+  const isInvalid = (s: string) => s.trim() !== '' && parseMoneyInput(s, { allowNegative: false }) === null
+  const invalidNumber = isInvalid(form.targetAmount) || isInvalid(form.currentAmount) || isInvalid(form.usedAmount)
+
+  const usedAmountError = invalidNumber
+    ? t('Enter a valid number', 'יש להזין מספר תקין', lang)
+    : usedAmount > currentAmount ? t('Cannot exceed amount already saved', 'לא יכול לעלות על הסכום שנחסך', lang) : null
 
   const handleSave = () => {
     if (usedAmountError) return
@@ -149,7 +155,9 @@ export function GoalDialog({ open, onOpenChange, existing, onSave, currency, loc
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="goal-deadline">{t('Deadline', 'תאריך יעד', lang)}</Label>
-            <Input id="goal-deadline" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
+            {/* <input type="date"> only accepts yyyy-MM-dd; full ISO deadlines (demo data, older imports)
+                rendered blank. Display-only slice — the stored value is untouched unless the user edits it. */}
+            <Input id="goal-deadline" type="date" value={form.deadline.slice(0, 10)} onChange={(e) => set('deadline', e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="goal-priority">{t('Priority', 'עדיפות', lang)}</Label>

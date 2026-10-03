@@ -44,7 +44,11 @@ function TabContent() {
 /** App-level Quick Add sheet, mounted once and controlled by NavContext. */
 function AppQuickAdd() {
   const { quickAddOpen, setQuickAddOpen } = useNav()
-  return <QuickAddSheet open={quickAddOpen} onOpenChange={setQuickAddOpen} />
+  const { isLoading } = useFinance()
+  // Data safety: never allow writes before the first cloud pull completes.
+  // An early write would schedule a debounced push of near-empty local data
+  // that could overwrite the household's cloud row.
+  return <QuickAddSheet open={quickAddOpen && !isLoading} onOpenChange={setQuickAddOpen} />
 }
 
 function AppToaster({ lang, dark }: { lang: 'en' | 'he'; dark: boolean }) {

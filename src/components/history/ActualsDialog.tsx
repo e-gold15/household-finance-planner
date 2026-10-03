@@ -6,7 +6,7 @@ import { MoneyInput } from '../ui/money-input'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 import { useFinance } from '@/context/FinanceContext'
 import { t } from '@/lib/utils'
-import { parseMoneyInput } from '@/lib/moneyInput'
+import { parseMoneyInput, toMoneyInputValue } from '@/lib/moneyInput'
 import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
 import type { ExpenseCategory, MonthSnapshot } from '@/types'
 
@@ -29,7 +29,7 @@ export function ActualsDialog({ open, onOpenChange, snap, monthLabel, lang }: Ac
     const init: Record<string, string> = {}
     CATEGORIES.forEach(({ value }) => {
       const existing = snap.categoryActuals?.[value]
-      init[value] = existing != null ? existing.toFixed(0) : ''
+      init[value] = toMoneyInputValue(existing) // keep stored decimals — never round on re-save
     })
     setForm(init)
   }, [open]) // seeded once per open

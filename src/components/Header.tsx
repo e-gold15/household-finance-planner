@@ -28,7 +28,7 @@ const CURRENCY_OPTIONS: { value: Currency; label: string; locale: Locale }[] = [
 ]
 
 export function Header() {
-  const { data, setData, exportData, importData } = useFinance()
+  const { data, setData, exportData, importData, isLoading } = useFinance()
   const { user, household, signOut, isDemo } = useAuth()
   const { navigate, openQuickAdd, settingsOpen: settingsDialogOpen, setSettingsOpen: setSettingsDialogOpen } = useNav()
   const lang    = data.language
@@ -152,7 +152,7 @@ export function Header() {
 
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Add expense — desktop only (mobile uses the bottom-nav "+") */}
-          <Button onClick={openQuickAdd} className="hidden md:inline-flex min-h-[44px] gap-1.5">
+          <Button onClick={openQuickAdd} disabled={isLoading} className="hidden md:inline-flex min-h-[44px] gap-1.5">
             <Plus className="h-4 w-4" aria-hidden="true" />
             {t('Add expense', 'הוספת הוצאה', lang)}
           </Button>

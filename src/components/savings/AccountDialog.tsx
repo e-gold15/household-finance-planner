@@ -54,8 +54,14 @@ export function AccountDialog({ open, onOpenChange, existing, onSave, currency, 
     if (open) setForm(formFrom(existing))
   }, [open])
 
+  // Data safety: an empty field saves as 0, but a non-empty value that fails to
+  // parse blocks Save — a typo must never silently zero a stored balance.
+  const isInvalid = (s: string) => s.trim() !== '' && parseMoneyInput(s) === null
+  const invalidNumber = isInvalid(form.balance) || isInvalid(form.annualReturnPercent) || isInvalid(form.monthlyContribution)
+
   const handleSave = () => {
-    // Empty / invalid numeric fields save as 0 — never NaN (same as the v3 `+''` behaviour).
+    if (invalidNumber) return
+    // Empty numeric fields save as 0 — never NaN (same as the v3 `+''` behaviour).
     const balance = parseMoneyInput(form.balance) ?? 0
     const annualReturnPercent = parseMoneyInput(form.annualReturnPercent) ?? 0
     const monthlyContribution = parseMoneyInput(form.monthlyContribution) ?? 0
@@ -170,7 +176,12 @@ export function AccountDialog({ open, onOpenChange, existing, onSave, currency, 
               {t('Deducted from salary (e.g. pension, study fund)', 'מנוכה מהשכר (למשל פנסיה, קרן השתלמות)', lang)}
             </Label>
           </div>
-          <Button className="w-full" onClick={handleSave}>
+          {invalidNumber && (
+            <p role="alert" className="text-sm text-destructive">
+              {t('Enter a valid number', 'יש להזין מספר תקין', lang)}
+            </p>
+          )}
+          <Button className="w-full" disabled={invalidNumber} onClick={handleSave}>
             {t('Save', 'שמור', lang)}
           </Button>
         </div>
