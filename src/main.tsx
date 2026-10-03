@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@fontsource-variable/heebo'
 import './index.css'
 import App from './App'
 import { PENDING_INVITE_KEY, PENDING_INV_TOKEN_KEY } from '@/lib/localAuth'

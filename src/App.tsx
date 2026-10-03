@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
-import { LayoutDashboard, TrendingUp, ShoppingCart, PiggyBank, Target, History, PartyPopper, X, Loader2, Users } from 'lucide-react'
+import { DirectionProvider } from '@radix-ui/react-direction'
 import { Toaster, toast } from 'sonner'
 import { FinanceProvider, useFinance } from './context/FinanceContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { NavProvider, useNav } from './context/NavContext'
 import { AuthPage } from './pages/AuthPage'
 import { Header } from './components/Header'
 import { Overview } from './components/Overview'
@@ -15,223 +16,89 @@ import { History as HistoryTab } from './components/History'
 import { Members } from './components/Members'
 import { PWAInstallBanner } from './components/PWAInstallBanner'
 import { IOSInstallTooltip } from './components/IOSInstallTooltip'
+import { JoinedHouseholdBanner } from './components/shell/JoinedHouseholdBanner'
+import { NewMonthPrompt } from './components/shell/NewMonthPrompt'
+import { BottomNav } from './components/shell/BottomNav'
+import { AppSkeleton } from './components/shell/AppSkeleton'
+import { QuickAddSheet } from './components/quick-add/QuickAddSheet'
+import { useIsDesktop } from './hooks/useMediaQuery'
 import { t } from './lib/utils'
-import { cn } from './lib/utils'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './components/ui/dialog'
-import { Button } from './components/ui/button'
 
-// ─── Welcome banner (shown once after accepting an invite) ──────────────────
+// ─── Tab content (driven by the URL hash via NavContext) ──────────────────────
 
-function JoinedHouseholdBanner({ lang }: { lang: 'en' | 'he' }) {
-  const { household, clearJustJoined } = useAuth()
+function TabContent() {
+  const { tab, navigate } = useNav()
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 mb-5 flex gap-3 items-start">
-      <PartyPopper className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-primary">
-          {t(`You've joined ${household?.name ?? 'the household'}! 🎉`,
-             `הצטרפת ל-${household?.name ?? 'משק הבית'}! 🎉`,
-             lang)}
-        </p>
-        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-          {t(
-            "Income, expenses, goals and savings are shared across all household members. Your display preferences (dark mode, language) stay personal to this device.",
-            'הכנסות, הוצאות, יעדים וחיסכון משותפים לכל חברי משק הבית. העדפות תצוגה (מצב כהה, שפה) נשמרות במכשיר שלך בלבד.',
-            lang
-          )}
-        </p>
-      </div>
-      <button
-        onClick={clearJustJoined}
-        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center -me-2"
-        title={t('Dismiss', 'סגור', lang)}
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+    <>
+      {tab === 'overview'  && <Overview />}
+      {tab === 'income'    && <Income />}
+      {tab === 'expenses'  && <Expenses onNavigateToHistory={() => navigate('history')} />}
+      {tab === 'savings'   && <Savings />}
+      {tab === 'goals'     && <Goals />}
+      {tab === 'history'   && <HistoryTab />}
+      {tab === 'members'   && <Members />}
+    </>
   )
 }
 
-// ─── Auto-snapshot prompt (shown once per month if previous month has no snapshot) ─
-
-const LAST_SEEN_KEY = 'hf-last-seen-month'
-
-function currentMonthKey(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+/** App-level Quick Add sheet, mounted once and controlled by NavContext. */
+function AppQuickAdd() {
+  const { quickAddOpen, setQuickAddOpen } = useNav()
+  return <QuickAddSheet open={quickAddOpen} onOpenChange={setQuickAddOpen} />
 }
 
-function prevMonthLabel(lang: 'en' | 'he'): string {
-  const now = new Date()
-  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
-  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-  const prevDate  = new Date(prevYear, prevMonth - 1, 1)
-  return prevDate.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' })
-}
-
-function hasPrevMonthSnapshot(history: import('./types').MonthSnapshot[]): boolean {
-  const now = new Date()
-  const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth()
-  const prevYear  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-  return history.some((s) => {
-    const sd = new Date(s.date)
-    return sd.getFullYear() === prevYear && sd.getMonth() + 1 === prevMonth
-  })
-}
-
-function NewMonthPrompt({ lang }: { lang: 'en' | 'he' }) {
-  const { data, snapshotPreviousMonth } = useFinance()
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    const stored  = localStorage.getItem(LAST_SEEN_KEY)
-    const current = currentMonthKey()
-
-    // Always update the last-seen key so next visit can detect a month change.
-    localStorage.setItem(LAST_SEEN_KEY, current)
-
-    // The actual variable-expense clearing now happens inside FinanceContext's
-    // cloud pull (after the additive merge), so the cleared state can't be
-    // restored by cloud data arriving after this effect runs.
-    // Here we only handle the snapshot prompt UI.
-    if (stored && stored !== current && !hasPrevMonthSnapshot(data.history)) {
-      setOpen(true)
-    }
-  // Run only once on mount — data.history checked at mount time intentionally
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const monthLabel = prevMonthLabel(lang)
-
-  const handleSnapshot = () => {
-    snapshotPreviousMonth()
-    setOpen(false)
-    toast.success(
-      t(`Snapshot saved for ${monthLabel}`, `תמונת מצב נשמרה עבור ${monthLabel}`, lang)
-    )
-  }
-
+function AppToaster({ lang, dark }: { lang: 'en' | 'he'; dark: boolean }) {
+  const isDesktop = useIsDesktop()
+  // Below 768px toasts sit at the top, just under the sticky header
+  // (56px + safe area), so they never cover the header or the bottom-nav "+".
+  const belowHeader = { top: 'calc(env(safe-area-inset-top) + 64px)' }
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {t('New month — snapshot last month?', 'חודש חדש — לצלם את החודש שעבר?', lang)}
-          </DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground mt-1">
-          {t(
-            `${monthLabel} has no snapshot yet. Would you like to save it now?`,
-            `ל${monthLabel} אין עדיין תמונת מצב. האם תרצה לשמור אותה עכשיו?`,
-            lang
-          )}
-        </p>
-        <p className="text-xs text-muted-foreground mt-2">
-          {t(
-            'Variable expenses have been cleared so the new month starts fresh. Fixed expenses are kept.',
-            'הוצאות משתנות נמחקו כדי שהחודש החדש יתחיל נקי. הוצאות קבועות נשמרות.',
-            lang
-          )}
-        </p>
-        <div className="flex gap-3 justify-end mt-4">
-          <Button
-            variant="outline"
-            className="min-h-[44px]"
-            onClick={() => setOpen(false)}
-          >
-            {t('Skip', 'דלג', lang)}
-          </Button>
-          <Button
-            className="min-h-[44px]"
-            onClick={handleSnapshot}
-          >
-            {t(`Snapshot ${monthLabel}`, `צלם את ${monthLabel}`, lang)}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-type Tab = 'overview' | 'income' | 'expenses' | 'savings' | 'goals' | 'history' | 'members'
-
-const TABS: { id: Tab; icon: React.ElementType; en: string; he: string }[] = [
-  { id: 'overview',  icon: LayoutDashboard, en: 'Overview',  he: 'סקירה' },
-  { id: 'income',    icon: TrendingUp,       en: 'Income',    he: 'הכנסות' },
-  { id: 'expenses',  icon: ShoppingCart,     en: 'Expenses',  he: 'הוצאות' },
-  { id: 'savings',   icon: PiggyBank,        en: 'Savings',   he: 'חיסכון' },
-  { id: 'goals',     icon: Target,           en: 'Goals',     he: 'יעדים' },
-  { id: 'history',   icon: History,          en: 'History',   he: 'היסטוריה' },
-  { id: 'members',   icon: Users,            en: 'Members',   he: 'חברים' },
-]
-
-// ─── Loading skeleton (shown while fetching shared data from cloud) ────────────
-
-function DataLoadingSkeleton({ lang }: { lang: 'en' | 'he' }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 py-20 text-muted-foreground">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      <p className="text-sm">
-        {t('Loading household data…', 'טוען נתוני משק הבית…', lang)}
-      </p>
-    </div>
+    <Toaster
+      dir={lang === 'he' ? 'rtl' : 'ltr'}
+      theme={dark ? 'dark' : 'light'}
+      richColors
+      position={isDesktop ? 'bottom-right' : 'top-center'}
+      offset={isDesktop ? undefined : belowHeader}
+      mobileOffset={belowHeader}
+      containerAriaLabel={t('Notifications', 'התראות', lang)}
+    />
   )
 }
 
 function AppShell() {
   const { data, isLoading } = useFinance()
   const { justJoined } = useAuth()
-  const [tab, setTab] = useState<Tab>('overview')
   const lang = data.language
+  const dir  = lang === 'he' ? 'rtl' : 'ltr'
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', data.darkMode)
-    document.documentElement.dir  = lang === 'he' ? 'rtl' : 'ltr'
+    document.documentElement.dir  = dir
     document.documentElement.lang = lang === 'he' ? 'he' : 'en'
-  }, [data.darkMode, lang])
+  }, [data.darkMode, lang, dir])
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        {justJoined && <JoinedHouseholdBanner lang={lang} />}
-        <PWAInstallBanner lang={lang} />
-        <IOSInstallTooltip lang={lang} />
-        <nav className="flex gap-1 mb-6 overflow-x-auto pb-1">
-          {TABS.map(({ id, icon: Icon, en, he }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap min-h-[44px]',
-                tab === id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{t(en, he, lang)}</span>
-            </button>
-          ))}
-        </nav>
+    <DirectionProvider dir={dir}>
+      <NavProvider>
+        <div className="min-h-screen bg-background">
+          <Header />
+          {/* Bottom padding on mobile clears the fixed bottom nav (64px + raised "+" + safe area). */}
+          <main className="max-w-4xl mx-auto px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-6">
+            {justJoined && <JoinedHouseholdBanner lang={lang} />}
+            <PWAInstallBanner lang={lang} />
+            <IOSInstallTooltip lang={lang} />
 
-        <h1 className="sr-only">{t('Household Finance Planner', 'מתכנן פיננסי ביתי', lang)}</h1>
+            <h1 className="sr-only">{t('Household Finance Planner', 'מתכנן פיננסי ביתי', lang)}</h1>
 
-        <NewMonthPrompt lang={lang} />
-        {isLoading ? <DataLoadingSkeleton lang={lang} /> : (
-          <>
-            {tab === 'overview'  && <Overview />}
-            {tab === 'income'    && <Income />}
-            {tab === 'expenses'  && <Expenses onNavigateToHistory={() => setTab('history')} />}
-            {tab === 'savings'   && <Savings />}
-            {tab === 'goals'     && <Goals />}
-            {tab === 'history'   && <HistoryTab />}
-            {tab === 'members'   && <Members />}
-          </>
-        )}
-      </main>
-      <Toaster position="bottom-right" />
-    </div>
+            <NewMonthPrompt lang={lang} />
+            {isLoading ? <AppSkeleton lang={lang} /> : <TabContent />}
+          </main>
+          <BottomNav lang={lang} />
+          <AppQuickAdd />
+          <AppToaster lang={lang} dark={data.darkMode} />
+        </div>
+      </NavProvider>
+    </DirectionProvider>
   )
 }
 
@@ -251,6 +118,12 @@ function AppOrAuth() {
 // ── SW update notifier ───────────────────────────────────────────────────────
 // Shows a Sonner toast with a "Refresh" button whenever a new app version is
 // detected. Prevents users from being stuck on a cached old bundle.
+// Lives outside FinanceProvider, so the language is read from <html lang>
+// (kept in sync by AppShell) at the moment the toast fires.
+
+function currentDocLang(): 'en' | 'he' {
+  return typeof document !== 'undefined' && document.documentElement.lang === 'he' ? 'he' : 'en'
+}
 
 function SWUpdateNotifier() {
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
@@ -261,11 +134,12 @@ function SWUpdateNotifier() {
 
   useEffect(() => {
     if (!needRefresh) return
-    toast('New version available', {
-      description: 'Tap Refresh to get the latest update.',
+    const lang = currentDocLang()
+    toast(t('New version available', 'גרסה חדשה זמינה', lang), {
+      description: t('Tap Refresh to get the latest update.', 'הקישו על "רענון" כדי לקבל את העדכון האחרון.', lang),
       duration: Infinity,
       action: {
-        label: 'Refresh',
+        label: t('Refresh', 'רענון', lang),
         onClick: handleUpdate,
       },
     })

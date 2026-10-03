@@ -1,5 +1,6 @@
-import { useRef, useState, useEffect } from 'react'
-import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users, FlaskConical, ArrowRight, ChevronDown } from 'lucide-react'
+import { useRef, useState } from 'react'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Wallet, Settings, Download, Upload, Moon, Sun, LogOut, Users, FlaskConical, ArrowRight, ChevronDown, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
@@ -9,9 +10,14 @@ import { Label } from './ui/label'
 import { Switch } from './ui/switch'
 import { useFinance } from '@/context/FinanceContext'
 import { useAuth } from '@/context/AuthContext'
-import { t } from '@/lib/utils'
+import { useNav } from '@/context/NavContext'
+import { cn, t } from '@/lib/utils'
 import type { Currency, Locale, FinanceData } from '@/types'
 import { HouseholdSettings } from './HouseholdSettings'
+import { DesktopNav } from './shell/DesktopNav'
+
+const menuItemClass =
+  'flex w-full cursor-pointer select-none items-center gap-2.5 rounded-md px-3 min-h-[44px] text-sm outline-none transition-colors data-[highlighted]:bg-muted focus-visible:ring-2 focus-visible:ring-ring'
 
 const CURRENCY_OPTIONS: { value: Currency; label: string; locale: Locale }[] = [
   { value: 'ILS', label: '₪ ILS', locale: 'he-IL' },
@@ -24,6 +30,7 @@ const CURRENCY_OPTIONS: { value: Currency; label: string; locale: Locale }[] = [
 export function Header() {
   const { data, setData, exportData, importData } = useFinance()
   const { user, household, signOut, isDemo } = useAuth()
+  const { navigate, openQuickAdd, settingsOpen: settingsDialogOpen, setSettingsOpen: setSettingsDialogOpen } = useNav()
   const lang    = data.language
   const fileRef = useRef<HTMLInputElement>(null)
   const [pendingImport, setPendingImport] = useState<FinanceData | null>(null)
@@ -68,23 +75,19 @@ export function Header() {
   const userInitial = userName.slice(0, 1).toUpperCase()
   const firstName = userName.split(' ')[0] ?? userName
 
-  // Mobile avatar dropdown state
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Account menu (avatar dropdown) + dialogs it can open.
+  // The Settings dialog open state lives in NavContext so the mobile "More"
+  // sheet can open the very same dialog via `openSettings()`.
+  const [menuOpen, setMenuOpen] = useState(false)
   const [householdDialogOpen, setHouseholdDialogOpen] = useState(false)
-  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [signOutDialogOpen, setSignOutDialogOpen] = useState(false)
-  const mobileMenuRef = useRef<HTMLDivElement>(null)
+  // Set when a menu item opens a dialog, so the menu doesn't steal focus back.
+  const openingDialogRef = useRef(false)
 
-  useEffect(() => {
-    if (!mobileMenuOpen) return
-    const handler = (e: MouseEvent) => {
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
-        setMobileMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [mobileMenuOpen])
+  const openFromMenu = (open: () => void) => {
+    openingDialogRef.current = true
+    open()
+  }
 
   // ── CSV helpers ──────────────────────────────────────────────────────────
   function downloadCsv(filename: string, rows: (string | number)[][]): void {
@@ -126,140 +129,50 @@ export function Header() {
 
   return (
     <>
-    <header className="sticky top-0 z-40 border-b bg-card/80 backdrop-blur-sm">
-      <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Logo + app name */}
-        <div className="flex items-center gap-2.5">
-          <div className="rounded-lg bg-primary p-1.5">
+    <header className="sticky top-0 z-40 border-b bg-card pt-[env(safe-area-inset-top)]">
+      <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-2">
+        {/* Logo + app name — tap to go to Overview */}
+        <button
+          type="button"
+          onClick={() => navigate('overview')}
+          className="flex items-center gap-2.5 min-h-[44px] min-w-0 rounded-lg -ms-1 ps-1 pe-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          title={t('Go to Overview', 'מעבר לסקירה', lang)}
+          aria-label={t('Household Finance Planner — go to Overview', 'מתכנן פיננסי ביתי — מעבר לסקירה', lang)}
+        >
+          <span className="rounded-lg bg-primary p-1.5 shrink-0" aria-hidden="true">
             <Wallet className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="font-bold tracking-tight hidden sm:block">
+          </span>
+          <span className="font-bold tracking-tight truncate lg:hidden" aria-hidden="true">
+            {t('Finance', 'כספים', lang)}
+          </span>
+          <span className="font-bold tracking-tight truncate hidden lg:block" aria-hidden="true">
             {t('Household Finance Planner', 'מתכנן פיננסי ביתי', lang)}
           </span>
-        </div>
+        </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Add expense — desktop only (mobile uses the bottom-nav "+") */}
+          <Button onClick={openQuickAdd} className="hidden md:inline-flex min-h-[44px] gap-1.5">
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {t('Add expense', 'הוספת הוצאה', lang)}
+          </Button>
+
           {/* Language toggle */}
-          <Button variant="ghost" size="sm" onClick={toggleLang} className="text-xs font-medium min-h-[44px]"
+          <Button variant="ghost" size="sm" onClick={toggleLang} className="text-xs font-medium min-h-[44px] min-w-[44px]"
+            title={t('Switch language', 'החלף שפה', lang)}
             aria-label={t('Switch language', 'החלף שפה', lang)}>
             {lang === 'en' ? 'עב' : 'EN'}
           </Button>
 
-          {/* Dark mode toggle */}
+          {/* Dark mode toggle (sm+; on mobile it lives in the account menu) */}
           <Button variant="ghost" size="icon" onClick={toggleDark}
-            className="min-h-[44px] min-w-[44px]"
+            className="hidden sm:inline-flex min-h-[44px] min-w-[44px]"
             title={t('Toggle dark mode', 'החלף מצב לילה', lang)}
             aria-label={t('Toggle dark mode', 'החלף מצב לילה', lang)}>
             {data.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
-          {/* User + household chip */}
-          {user && (
-            <>
-              <div className="w-px h-5 bg-border" />
-
-              {/* ── Mobile avatar chip (< sm) ── */}
-              <div className="sm:hidden relative" ref={mobileMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen((o) => !o)}
-                  className="flex items-center gap-1.5 rounded-full border bg-muted/50 px-2 py-1 min-h-[44px] min-w-[44px]"
-                  aria-label={t('Account menu', 'תפריט חשבון', lang)}
-                  aria-expanded={mobileMenuOpen}
-                  aria-haspopup="true"
-                >
-                  {user.avatar
-                    ? <img src={user.avatar} className="h-6 w-6 rounded-full object-cover shrink-0" alt={userName} />
-                    : (
-                      <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                        {userInitial}
-                      </div>
-                    )
-                  }
-                  <span className="text-sm font-medium max-w-[60px] truncate">{firstName}</span>
-                  <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${mobileMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {/* Dropdown panel */}
-                {mobileMenuOpen && (
-                  <div className="absolute end-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border bg-card shadow-lg py-1">
-                    {/* Household settings row */}
-                    {household && (
-                      <button
-                        type="button"
-                        className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px]"
-                        onClick={() => { setMobileMenuOpen(false); setHouseholdDialogOpen(true) }}
-                      >
-                        <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-                        {t('Household settings', 'הגדרות משק הבית', lang)}
-                      </button>
-                    )}
-                    {/* App settings row */}
-                    <button
-                      type="button"
-                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px]"
-                      onClick={() => { setMobileMenuOpen(false); setSettingsDialogOpen(true) }}
-                    >
-                      <Settings className="h-4 w-4 text-muted-foreground shrink-0" />
-                      {t('App settings', 'הגדרות אפליקציה', lang)}
-                    </button>
-                    <div className="h-px bg-border mx-2 my-1" />
-                    {/* Sign out row */}
-                    <button
-                      type="button"
-                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted/60 min-h-[44px] text-destructive"
-                      onClick={() => { setMobileMenuOpen(false); setSignOutDialogOpen(true) }}
-                    >
-                      <LogOut className="h-4 w-4 shrink-0" />
-                      {t('Sign out', 'התנתק', lang)}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Desktop layout (sm+) — unchanged ── */}
-              <div className="hidden sm:flex items-center gap-2">
-                {/* Avatar */}
-                {user.avatar
-                  ? <img src={user.avatar} className="h-7 w-7 rounded-full object-cover shrink-0" alt={userName} />
-                  : (
-                    <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                      {userInitial}
-                    </div>
-                  )
-                }
-                {/* Name + household */}
-                <div className="flex flex-col leading-none max-w-[120px]">
-                  <span className="text-sm font-medium truncate">{userName}</span>
-                  {household && (
-                    <span className="text-[10px] text-muted-foreground truncate">{household.name}</span>
-                  )}
-                </div>
-
-                {/* Household settings dialog trigger (desktop) */}
-                {household && (
-                  <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground"
-                    title={t('Household settings', 'הגדרות משק הבית', lang)}
-                    aria-label={t('Household settings', 'הגדרות משק הבית', lang)}
-                    onClick={() => setHouseholdDialogOpen(true)}>
-                    <Users className="h-4 w-4" />
-                  </Button>
-                )}
-
-                {/* Sign out (desktop) */}
-                <Button
-                  variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-muted-foreground hover:text-destructive"
-                  title={t('Sign out', 'התנתק', lang)}
-                  aria-label={t('Sign out', 'התנתק', lang)}
-                  onClick={() => setSignOutDialogOpen(true)}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </>
-          )}
-
-          {/* Settings gear (desktop only — mobile uses avatar dropdown) */}
+          {/* Settings gear (sm+; on mobile: account menu or More sheet) */}
           <Button variant="ghost" size="icon"
             className="hidden sm:inline-flex min-h-[44px] min-w-[44px]"
             title={t('Settings', 'הגדרות', lang)}
@@ -267,6 +180,90 @@ export function Header() {
             onClick={() => setSettingsDialogOpen(true)}>
             <Settings className="h-4 w-4" />
           </Button>
+
+          {/* Account menu (avatar dropdown) — all breakpoints */}
+          {user && (
+            <>
+              <div className="w-px h-5 bg-border mx-1" aria-hidden="true" />
+              <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen} modal={false} dir={lang === 'he' ? 'rtl' : 'ltr'}>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 rounded-full border bg-muted/50 ps-1 pe-2 py-1 min-h-[44px] min-w-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={t('Account menu', 'תפריט חשבון', lang)}
+                    title={t('Account menu', 'תפריט חשבון', lang)}
+                  >
+                    {user.avatar
+                      ? <img src={user.avatar} className="h-7 w-7 rounded-full object-cover shrink-0" alt="" width={28} height={28} />
+                      : (
+                        <span className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0" aria-hidden="true">
+                          {userInitial}
+                        </span>
+                      )
+                    }
+                    {/* Mobile: first name; sm+: full name + household */}
+                    <span className="text-sm font-medium max-w-[60px] truncate sm:hidden">{firstName}</span>
+                    <span className="hidden sm:flex flex-col items-start leading-tight max-w-[120px] min-w-0">
+                      <span className="text-sm font-medium truncate max-w-full">{userName}</span>
+                      {household && (
+                        <span className="text-xs text-muted-foreground truncate max-w-full">{household.name}</span>
+                      )}
+                    </span>
+                    <ChevronDown className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform shrink-0', menuOpen && 'rotate-180')} aria-hidden="true" />
+                  </button>
+                </DropdownMenu.Trigger>
+
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align={lang === 'he' ? 'start' : 'end'}
+                    sideOffset={6}
+                    collisionPadding={8}
+                    onCloseAutoFocus={(e) => {
+                      if (openingDialogRef.current) {
+                        e.preventDefault()
+                        openingDialogRef.current = false
+                      }
+                    }}
+                    className="z-50 min-w-[220px] max-w-[calc(100vw-1rem)] rounded-lg border bg-card text-card-foreground shadow-lg p-1"
+                  >
+                    <DropdownMenu.Label className="px-3 py-2">
+                      <span className="block text-sm font-medium truncate">{userName}</span>
+                      {household && (
+                        <span className="block text-xs text-muted-foreground truncate">{household.name}</span>
+                      )}
+                    </DropdownMenu.Label>
+                    <DropdownMenu.Separator className="h-px bg-border mx-1 my-1" />
+
+                    {household && (
+                      <DropdownMenu.Item className={menuItemClass} onSelect={() => openFromMenu(() => setHouseholdDialogOpen(true))}>
+                        <Users className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                        {t('Household settings', 'הגדרות משק הבית', lang)}
+                      </DropdownMenu.Item>
+                    )}
+                    <DropdownMenu.Item className={menuItemClass} onSelect={() => openFromMenu(() => setSettingsDialogOpen(true))}>
+                      <Settings className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                      {t('App settings', 'הגדרות אפליקציה', lang)}
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item className={menuItemClass} onSelect={toggleDark}>
+                      {data.darkMode
+                        ? <Sun className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />
+                        : <Moon className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true" />}
+                      {data.darkMode ? t('Light mode', 'מצב יום', lang) : t('Dark mode', 'מצב לילה', lang)}
+                    </DropdownMenu.Item>
+
+                    <DropdownMenu.Separator className="h-px bg-border mx-1 my-1" />
+                    <DropdownMenu.Item
+                      className={cn(menuItemClass, 'text-destructive')}
+                      onSelect={() => openFromMenu(() => setSignOutDialogOpen(true))}
+                    >
+                      <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {t('Sign out', 'התנתק', lang)}
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            </>
+          )}
 
           {/* ── Shared dialogs (triggered from both mobile dropdown and desktop buttons) ── */}
 
@@ -389,34 +386,40 @@ export function Header() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </header>
 
-    {/* Demo Mode banner — shown below the sticky header when in demo session */}
-    {isDemo && (
-      <div className="sticky top-14 z-30 border-b border-warning/40 bg-warning/20">
-        <div className="max-w-4xl mx-auto px-4 h-10 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <FlaskConical className="h-4 w-4 shrink-0 text-warning-foreground" aria-hidden="true" />
-            <span>
-              {t(
-                'Demo Mode \u2014 sample data only, nothing is saved',
-                '\u05de\u05e6\u05d1 \u05d3\u05de\u05d5 \u2014 \u05e0\u05ea\u05d5\u05e0\u05d9 \u05d3\u05d5\u05d2\u05de\u05d0 \u05d1\u05dc\u05d1\u05d3, \u05dc\u05d0 \u05e0\u05e9\u05de\u05e8 \u05d3\u05d1\u05e8',
-                lang
-              )}
-            </span>
+      {/* Demo Mode banner — part of the sticky header block, fully opaque (bg-card underneath) */}
+      {isDemo && (
+        <div className="border-t border-warning/40 bg-[hsl(var(--warning)/0.15)]">
+          <div className="max-w-4xl mx-auto px-4 min-h-10 py-1.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground min-w-0">
+              <FlaskConical className="h-4 w-4 shrink-0 text-warning-foreground" aria-hidden="true" />
+              <span className="sm:hidden">
+                {t('Demo — nothing is saved', 'דמו — שום דבר לא נשמר', lang)}
+              </span>
+              <span className="hidden sm:inline">
+                {t(
+                  'Demo Mode \u2014 sample data only, nothing is saved',
+                  '\u05de\u05e6\u05d1 \u05d3\u05de\u05d5 \u2014 \u05e0\u05ea\u05d5\u05e0\u05d9 \u05d3\u05d5\u05d2\u05de\u05d0 \u05d1\u05dc\u05d1\u05d3, \u05dc\u05d0 \u05e0\u05e9\u05de\u05e8 \u05d3\u05d1\u05e8',
+                  lang
+                )}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={signOut}
+              className="shrink-0 min-h-[44px] gap-1.5 text-xs bg-card"
+            >
+              {t('Exit Demo', 'צא מדמו', lang)}
+              <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" aria-hidden="true" />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={signOut}
-            className="shrink-0 min-h-[32px] gap-1.5 text-xs"
-          >
-            {t('Exit Demo', 'צא מדמו', lang)}
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </Button>
         </div>
-      </div>
-    )}
+      )}
+
+      {/* Desktop tab bar (≥768px) */}
+      <DesktopNav lang={lang} />
+    </header>
     </>
   )
 }

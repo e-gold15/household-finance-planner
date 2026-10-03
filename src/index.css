@@ -2,38 +2,96 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Design system v4 — HSL tokens (space-separated "H S% L%" so Tailwind can
+ * inject alpha: `bg-primary/10` → hsl(var(--primary) / 0.1)).
+ *
+ * Contrast rule: a "*-strong" token is for TEXT, a "*-subtle" token is for
+ * tinted BACKGROUNDS, the bare token is a FILL (with "*-foreground" on top).
+ * Every text/background pair below passes WCAG AA (≥ 4.5:1) in both themes —
+ * ratios are recorded in docs/v4 (PR description).
+ *
+ * Legacy names (--primary, --muted-foreground, --destructive, --warning,
+ * --warning-foreground, --accent, --secondary …) keep working.
+ */
 @layer base {
   :root {
+    /* Neutrals */
     --background: 160 20% 97%;
     --foreground: 162 30% 10%;
     --card: 0 0% 100%;
     --card-foreground: 162 30% 10%;
-    --primary: 162 63% 41%;
-    --primary-foreground: 0 0% 100%;
+    --surface-2: 0 0% 100%;              /* sheets, dialogs, menus (raised) */
     --secondary: 162 20% 92%;
     --secondary-foreground: 162 40% 20%;
     --muted: 162 15% 94%;
-    --muted-foreground: 162 20% 45%;
-    --accent: 199 89% 48%;
+    --muted-foreground: 162 18% 35%;     /* 6.02 on card · 5.68 on bg · 5.33 on muted */
+    --border: 162 18% 88%;
+    --input: 162 18% 84%;
+
+    /* Brand */
+    --primary: 162 63% 30%;              /* white text on it 5.08 · as text on card 5.08 */
+    --primary-foreground: 0 0% 100%;
+    --primary-strong: 162 64% 25%;       /* teal TEXT: 6.66 on card · 6.02 on subtle */
+    --primary-subtle: 162 45% 94%;       /* tinted surfaces */
+    --ring: 162 63% 30%;
+
+    --accent: 199 89% 32%;               /* white text on it 5.78 */
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
+
+    /* Status triads: base = fill, -strong = text, -subtle = background */
+    --success: 152 62% 30%;
+    --success-foreground: 0 0% 100%;
+    --success-strong: 152 65% 24%;
+    --success-subtle: 152 50% 93%;
+
+    --warning: 38 92% 50%;               /* fill only — never text (2.1:1) */
+    --warning-foreground: 38 80% 25%;    /* legacy: text on warning tints / fill */
+    --warning-strong: 32 95% 28%;
+    --warning-subtle: 38 92% 92%;
+
+    --danger: 0 72% 45%;
+    --danger-foreground: 0 0% 100%;
+    --danger-strong: 0 70% 40%;
+    --danger-subtle: 0 80% 96%;
+
+    --destructive: 0 72% 45%;            /* = danger; kept for back-compat */
     --destructive-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 80% 25%;
-    --border: 162 20% 88%;
-    --input: 162 20% 88%;
-    --ring: 162 63% 41%;
+
+    --info: 199 89% 32%;
+    --info-foreground: 0 0% 100%;
+    --info-strong: 201 90% 28%;
+    --info-subtle: 199 80% 94%;
+
+    /* Data viz — fixed category palette, every hue ≥ 3:1 on card */
+    --chart-1: 162 63% 36%;
+    --chart-2: 199 89% 38%;
+    --chart-3: 35 95% 40%;
+    --chart-4: 280 60% 55%;
+    --chart-5: 0 72% 52%;
+    --chart-6: 142 65% 32%;
+    --chart-7: 217 85% 55%;
+    --chart-8: 22 90% 45%;
+    --chart-9: 322 65% 50%;
+    --chart-10: 245 55% 58%;
+    --chart-11: 75 65% 32%;
+    --chart-neutral: 162 8% 55%;         /* "other" / "none" — never use --muted */
+
+    /* Scrim behind dialogs and sheets (same in both themes) */
+    --overlay: 162 30% 4%;
+
+    /* Radius scale 8 / 12 / 16 / 24 */
     --radius: 0.75rem;
-    --chart-1: 162 63% 41%;
-    --chart-2: 199 89% 48%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 0 72% 51%;
-    --chart-6: 142 71% 45%;
-    --chart-7: 217 91% 60%;
-    --chart-8: 25 95% 53%;
-    --chart-9: 322 65% 55%;
-    --chart-10: 174 72% 56%;
+    --radius-sm: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.5rem;
+
+    /* Motion */
+    --duration-fast: 120ms;
+    --duration-base: 200ms;
+    --duration-slow: 280ms;
+    --ease-standard: cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .dark {
@@ -41,31 +99,58 @@
     --foreground: 162 15% 92%;
     --card: 162 25% 11%;
     --card-foreground: 162 15% 92%;
-    --primary: 162 63% 45%;
-    --primary-foreground: 0 0% 100%;
+    --surface-2: 162 20% 14%;
     --secondary: 162 20% 18%;
-    --secondary-foreground: 162 20% 80%;
+    --secondary-foreground: 162 20% 82%;
     --muted: 162 20% 16%;
-    --muted-foreground: 162 15% 55%;
-    --accent: 199 89% 48%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --muted-foreground: 162 12% 64%;     /* 6.94 on card · 7.63 on bg · 5.83 on muted */
+    --border: 162 18% 20%;
+    --input: 162 16% 26%;
+
+    --primary: 162 60% 48%;
+    --primary-foreground: 162 40% 7%;    /* dark text on teal 8.13 */
+    --primary-strong: 162 60% 62%;       /* 9.33 on card */
+    --primary-subtle: 162 30% 16%;
+    --ring: 162 60% 48%;
+
+    --accent: 199 89% 60%;
+    --accent-foreground: 200 60% 8%;
+
+    --success: 152 55% 45%;
+    --success-foreground: 152 40% 6%;
+    --success-strong: 152 60% 62%;
+    --success-subtle: 152 35% 14%;
+
     --warning: 38 92% 55%;
-    --warning-foreground: 38 80% 85%;
-    --border: 162 20% 20%;
-    --input: 162 20% 20%;
-    --ring: 162 63% 45%;
-    --chart-1: 162 63% 50%;
-    --chart-2: 199 89% 55%;
+    --warning-foreground: 38 80% 85%;    /* legacy: text on warning tints */
+    --warning-strong: 38 92% 65%;
+    --warning-subtle: 38 40% 16%;
+
+    --danger: 0 80% 66%;
+    --danger-foreground: 0 0% 5%;
+    --danger-strong: 0 85% 74%;
+    --danger-subtle: 0 45% 16%;
+
+    --destructive: 0 80% 66%;            /* as text on card 5.09 */
+    --destructive-foreground: 0 0% 5%;
+
+    --info: 199 89% 60%;
+    --info-foreground: 200 60% 8%;
+    --info-strong: 199 85% 72%;
+    --info-subtle: 199 45% 16%;
+
+    --chart-1: 162 60% 48%;
+    --chart-2: 199 89% 58%;
     --chart-3: 38 92% 55%;
-    --chart-4: 280 65% 65%;
-    --chart-5: 0 72% 55%;
-    --chart-6: 142 71% 50%;
-    --chart-7: 217 91% 65%;
+    --chart-4: 280 65% 70%;
+    --chart-5: 0 72% 62%;
+    --chart-6: 142 60% 48%;
+    --chart-7: 217 91% 68%;
     --chart-8: 25 95% 58%;
-    --chart-9: 322 65% 60%;
-    --chart-10: 174 72% 60%;
+    --chart-9: 322 65% 64%;
+    --chart-10: 245 70% 72%;
+    --chart-11: 75 60% 50%;
+    --chart-neutral: 162 8% 45%;
   }
 }
 
@@ -73,12 +158,50 @@
   * {
     @apply border-border;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 
-[dir="rtl"] .recharts-wrapper {
+@layer components {
+  /* Tabular numerals for money and other aligned numbers. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+  }
+}
+
+/*
+ * Recharts — keep SVG geometry LTR in Hebrew (axes, pie start angle) but let
+ * the HTML tooltip and legend follow the document direction (audit B2).
+ */
+[dir="rtl"] .recharts-surface {
   direction: ltr;
+}
+
+/*
+ * Reduced motion: neutralise transform-based enter/exit animations
+ * (tailwindcss-animate reads these vars) so only opacity changes, and make
+ * transitions effectively instant.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-enter-rotate: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-exit-rotate: 0 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
