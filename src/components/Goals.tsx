@@ -1,356 +1,26 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Target, CheckCircle, AlertTriangle, XCircle, Edit2, Bot, RefreshCw, CirclePlus } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { useState, useMemo } from 'react'
+import { Plus, ShieldCheck, Target } from 'lucide-react'
+import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
-import { Badge } from './ui/badge'
-import { Progress } from './ui/progress'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
-import { Switch } from './ui/switch'
+import { Money } from './ui/money'
 import { Slider } from './ui/slider'
+import { EmptyState } from './ui/empty-state'
 import { useFinance } from '@/context/FinanceContext'
 import { allocateGoals, autoAllocateSavings } from '@/lib/savingsEngine'
 import { getNetMonthly } from '@/lib/taxEstimation'
-import { formatCurrency, generateId, t } from '@/lib/utils'
+import { t } from '@/lib/utils'
 import { explainGoalPlan, aiEnabled } from '@/lib/aiAdvisor'
-import { toast } from 'sonner'
-import type { Currency, Locale, Goal, GoalAllocation, GoalPriority, GoalStatus, SavingsAccount } from '@/types'
-
-function GoalDialog({
-  existing,
-  onSave,
-  lang,
-}: {
-  existing?: Goal
-  onSave: (g: Goal) => void
-  lang: 'en' | 'he'
-}) {
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<Goal>(
-    existing ?? {
-      id: generateId(),
-      name: '',
-      targetAmount: 0,
-      currentAmount: 0,
-      usedAmount: 0,
-      deadline: '',
-      priority: 'medium',
-      notes: '',
-      useLiquidSavings: false,
-    }
-  )
-  const set = <K extends keyof Goal>(k: K, v: Goal[K]) => setForm((f) => ({ ...f, [k]: v }))
-
-  const usedAmountError =
-    (form.usedAmount ?? 0) > form.currentAmount
-      ? t('Cannot exceed amount already saved', 'לא יכול לעלות על הסכום שנחסך', lang)
-      : null
-
-  useEffect(() => {
-    if (open && !existing) {
-      setForm({ id: generateId(), name: '', targetAmount: 0, currentAmount: 0, usedAmount: 0, deadline: '', priority: 'medium', notes: '', useLiquidSavings: false })
-    }
-  }, [open, existing])
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {existing ? (
-          <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
-            title={t('Edit goal', 'ערוך יעד', lang)}
-            aria-label={t('Edit goal', 'ערוך יעד', lang)}>
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <Button size="sm">
-            <Plus className="h-4 w-4 me-1" />
-            {t('Add Goal', 'הוסף יעד', lang)}
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{existing ? t('Edit Goal', 'ערוך יעד', lang) : t('Add Goal', 'הוסף יעד', lang)}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          <div>
-            <Label htmlFor="goal-name">{t('Goal Name', 'שם היעד', lang)}</Label>
-            <Input id="goal-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="goal-target">{t('Target Amount', 'סכום יעד', lang)}</Label>
-              <Input id="goal-target" type="number" value={form.targetAmount} onChange={(e) => set('targetAmount', +e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="goal-saved">{t('Already Saved', 'כבר חסכת', lang)}</Label>
-              <Input id="goal-saved" type="number" value={form.currentAmount} onChange={(e) => set('currentAmount', +e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label htmlFor="goal-used">{t('Amount Used', 'סכום שנוצל', lang)}</Label>
-            <Input
-              id="goal-used"
-              type="number"
-              min={0}
-              value={form.usedAmount ?? 0}
-              onChange={(e) => set('usedAmount', +e.target.value)}
-              className={usedAmountError ? 'border-destructive' : ''}
-            />
-            {usedAmountError && (
-              <p className="text-xs text-destructive mt-1">{usedAmountError}</p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="goal-deadline">{t('Deadline', 'תאריך יעד', lang)}</Label>
-            <Input id="goal-deadline" type="date" value={form.deadline} onChange={(e) => set('deadline', e.target.value)} />
-          </div>
-          <div>
-            <Label>{t('Priority', 'עדיפות', lang)}</Label>
-            <Select value={form.priority} onValueChange={(v) => set('priority', v as GoalPriority)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">{t('High', 'גבוה', lang)}</SelectItem>
-                <SelectItem value="medium">{t('Medium', 'בינוני', lang)}</SelectItem>
-                <SelectItem value="low">{t('Low', 'נמוך', lang)}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="goal-notes">{t('Notes', 'הערות', lang)}</Label>
-            <Input id="goal-notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder={t('Optional notes…', 'הערות אופציונליות…', lang)} />
-          </div>
-          <div className="flex items-center gap-3">
-            <Switch checked={form.useLiquidSavings} onCheckedChange={(v) => set('useLiquidSavings', v)} />
-            <Label>{t('Use liquid savings toward this goal', 'השתמש בחסכונות נזילים לעבר יעד זה', lang)}</Label>
-          </div>
-          <Button className="w-full" disabled={!!usedAmountError} onClick={() => { onSave(form); setOpen(false) }}>
-            {t('Save', 'שמור', lang)}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function FundGoalDialog({
-  goal,
-  accounts,
-  currency,
-  locale,
-  lang,
-  onFund,
-}: {
-  goal: Goal
-  accounts: SavingsAccount[]
-  currency: Currency
-  locale: Locale
-  lang: 'en' | 'he'
-  onFund: (accountId: string, amount: number) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('')
-  const [amountStr, setAmountStr] = useState('')
-
-  const hasAccounts = accounts.length > 0
-
-  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null
-  const parsedAmount = parseFloat(amountStr) || 0
-
-  const isOverBalance = selectedAccount !== null && parsedAmount > selectedAccount.balance
-  const isValid =
-    selectedAccount !== null && parsedAmount > 0 && !isOverBalance
-
-  const newGoalAmount = goal.currentAmount + parsedAmount
-  const newGoalPct = goal.targetAmount > 0
-    ? Math.min(100, (newGoalAmount / goal.targetAmount) * 100)
-    : 0
-  const newAccountBalance = selectedAccount
-    ? Math.max(0, selectedAccount.balance - parsedAmount)
-    : 0
-
-  const showPreview = selectedAccount !== null && parsedAmount > 0 && !isOverBalance
-
-  const handleConfirm = () => {
-    if (!isValid || !selectedAccount) return
-    onFund(selectedAccount.id, parsedAmount)
-    const amountFmt = formatCurrency(parsedAmount, currency, locale)
-    toast.success(
-      t(
-        `${amountFmt} transferred from "${selectedAccount.name}" to "${goal.name}" ✓`,
-        `${amountFmt} הועבר מ-"${selectedAccount.name}" ל-"${goal.name}" ✓`,
-        lang
-      )
-    )
-    setOpen(false)
-    setSelectedAccountId('')
-    setAmountStr('')
-  }
-
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next)
-    if (!next) {
-      setSelectedAccountId('')
-      setAmountStr('')
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          size="sm"
-          className="flex-1 min-h-[44px]"
-          disabled={!hasAccounts}
-          title={
-            !hasAccounts
-              ? t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)
-              : undefined
-          }
-          aria-label={t('Add Funds to Goal', 'הוסף כסף ליעד', lang)}
-        >
-          <CirclePlus className="h-4 w-4 me-1" />
-          {t('Add Funds', 'הוסף כסף', lang)}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('Add Funds to Goal', 'הוסף כסף ליעד', lang)}</DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            {goal.name} · {formatCurrency(goal.currentAmount, currency, locale)} / {formatCurrency(goal.targetAmount, currency, locale)}
-          </p>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          {/* Account selector */}
-          <div>
-            <Label htmlFor="fund-account">{t('Source — Savings Account', 'מקור — חשבון חיסכון', lang)}</Label>
-            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-              <SelectTrigger id="fund-account" className="min-h-[44px]">
-                <SelectValue placeholder={t('Select account…', 'בחר חשבון...', lang)} />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name} · {formatCurrency(a.balance, currency, locale)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedAccount && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {t('Available:', 'זמין:', lang)}{' '}
-                <span className="font-medium">{formatCurrency(selectedAccount.balance, currency, locale)}</span>
-              </p>
-            )}
-          </div>
-
-          {/* Amount input */}
-          <div>
-            <Label htmlFor="fund-amount">{t('Amount', 'סכום', lang)}</Label>
-            <Input
-              id="fund-amount"
-              type="number"
-              min={0}
-              max={selectedAccount?.balance ?? undefined}
-              step={100}
-              value={amountStr}
-              onChange={(e) => setAmountStr(e.target.value)}
-              className="min-h-[44px]"
-              placeholder="0"
-            />
-            {isOverBalance && (
-              <p className="text-xs text-destructive mt-1">
-                {t('Amount exceeds available balance.', 'הסכום עולה על היתרה הזמינה.', lang)}
-              </p>
-            )}
-          </div>
-
-          {/* Live preview */}
-          {showPreview && (
-            <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 space-y-3">
-              <p className="text-xs font-semibold text-primary uppercase tracking-wide">
-                {t('Preview', 'תצוגה מקדימה', lang)} — {t('after transfer', 'אחרי ההעברה', lang)}
-              </p>
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium">{goal.name}</span>
-                  <span className="text-primary font-semibold">
-                    {formatCurrency(newGoalAmount, currency, locale)} ({newGoalPct.toFixed(0)}%)
-                  </span>
-                </div>
-                <Progress value={newGoalPct} className="h-2" aria-label={`${goal.name} – ${newGoalPct.toFixed(0)}%`} />
-              </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>{selectedAccount!.name} {t('balance after', 'יתרה אחרי', lang)}</span>
-                <span className="font-medium text-foreground">{formatCurrency(newAccountBalance, currency, locale)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-2 pt-1">
-            <Button
-              variant="outline"
-              className="flex-1 min-h-[44px]"
-              onClick={() => handleOpenChange(false)}
-            >
-              {t('Cancel', 'ביטול', lang)}
-            </Button>
-            <Button
-              className="flex-1 min-h-[44px]"
-              disabled={!isValid}
-              onClick={handleConfirm}
-            >
-              {t('Confirm', 'אישור', lang)}
-            </Button>
-          </div>
-
-          {/* No-accounts hint */}
-          {!hasAccounts && (
-            <p className="text-xs text-muted-foreground text-center">
-              {t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)}
-            </p>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-const STATUS_ICONS: Record<GoalStatus, React.ElementType> = {
-  realistic: CheckCircle,
-  tight: AlertTriangle,
-  unrealistic: XCircle,
-  blocked: XCircle,
-}
-
-const STATUS_COLORS: Record<GoalStatus, string> = {
-  realistic: 'text-primary',
-  tight: 'text-warning',
-  unrealistic: 'text-destructive',
-  blocked: 'text-destructive',
-}
-
-const STATUS_BADGE: Record<GoalStatus, 'success' | 'warning' | 'destructive'> = {
-  realistic: 'success',
-  tight: 'warning',
-  unrealistic: 'destructive',
-  blocked: 'destructive',
-}
-
-const PRIORITY_BADGE: Record<GoalPriority, 'default' | 'secondary' | 'outline'> = {
-  high: 'default',
-  medium: 'secondary',
-  low: 'outline',
-}
+import type { GoalAllocation } from '@/types'
+import { GoalDialog } from './goals/GoalDialog'
+import { GoalCard } from './goals/GoalCard'
+import { AllocationPlan } from './goals/AllocationPlan'
 
 export function Goals() {
   const { data, addGoal, updateGoal, deleteGoal, moveGoal, setData, fundGoalFromSavings } = useFinance()
   const lang = data.language
+  const { currency, locale } = data
 
+  const [addOpen, setAddOpen] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
   const [aiExplanation, setAiExplanation] = useState<string | null>(null)
   const [aiError, setAiError] = useState<string | null>(null)
@@ -394,7 +64,6 @@ export function Goals() {
   )
 
   const [autoAllocations, setAutoAllocations] = useState<GoalAllocation[] | null>(null)
-
   const displayAllocations = autoAllocations ?? allocations
 
   const handleRecalculate = () => {
@@ -404,12 +73,10 @@ export function Goals() {
     setShowAiCard(false)
   }
 
-  // Sync autoAllocations when base allocations change (goals/data changes)
   const totalAllocated = useMemo(
     () => displayAllocations.reduce((s, g) => s + (g.monthlyAllocated ?? g.monthlyRecommended), 0),
     [displayAllocations]
   )
-
   const isOverBudget = totalAllocated > Math.max(0, freeCashFlow)
 
   const handleExplainPlan = async () => {
@@ -443,345 +110,110 @@ export function Goals() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-sm text-muted-foreground">
           {t('Monthly surplus for goals:', 'עודף חודשי ליעדים:', lang)}{' '}
-          <span className={`font-semibold ${surplus >= 0 ? 'text-primary' : 'text-destructive'}`}>
-            {formatCurrency(surplus, data.currency, data.locale)}
-          </span>
-        </div>
-        <GoalDialog onSave={(g) => addGoal(g)} lang={lang} />
+          <Money
+            value={surplus}
+            currency={currency}
+            locale={locale}
+            tone={surplus < 0 ? 'negative' : 'neutral'}
+            className="font-semibold text-foreground"
+          />
+        </p>
+        {data.goals.length > 0 && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {t('Add Goal', 'הוסף יעד', lang)}
+          </Button>
+        )}
       </div>
 
+      {/* Emergency buffer — the Slider inherits RTL from DirectionProvider */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <Label className="text-sm">{t('Emergency Buffer', 'מרווח חירום', lang)}: {data.emergencyBufferMonths} {t('months', 'חודשים', lang)}</Label>
-            <span className="text-xs text-muted-foreground">({formatCurrency(data.emergencyBufferMonths * totalExpenses, data.currency, data.locale)})</span>
+        <CardContent className="space-y-1 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+            <p id="emergency-buffer-label" className="flex items-center gap-1.5 text-sm font-medium">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-primary-strong" aria-hidden="true" />
+              {t('Emergency Buffer', 'מרווח חירום', lang)}:{' '}
+              <bdi className="num tabular-nums">{data.emergencyBufferMonths}</bdi> {t('months', 'חודשים', lang)}
+            </p>
+            <span className="text-xs text-muted-foreground">
+              (<Money value={data.emergencyBufferMonths * totalExpenses} currency={currency} locale={locale} />)
+            </span>
           </div>
           <Slider
-            min={1} max={12} step={1}
+            min={1}
+            max={12}
+            step={1}
             value={[data.emergencyBufferMonths]}
             onValueChange={([v]) => setData((d) => ({ ...d, emergencyBufferMonths: v }))}
+            aria-labelledby="emergency-buffer-label"
           />
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground">
             {t('Use arrow keys to adjust', 'השתמש במקשי החצים לכוונון', lang)}
           </p>
         </CardContent>
       </Card>
 
-      {/* Allocation Plan */}
       {data.goals.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t('Allocation Plan', 'תוכנית הקצאה', lang)}</CardTitle>
-              <div className="flex items-center gap-2">
-                {aiEnabled && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-[44px]"
-                    onClick={handleExplainPlan}
-                    disabled={aiLoading}
-                    aria-label={t('Explain my plan', 'הסבר את התוכנית', lang)}
-                  >
-                    <Bot className="h-4 w-4 me-1" />
-                    {aiLoading
-                      ? t('Thinking…', 'חושב…', lang)
-                      : t('Explain my plan', 'הסבר את התוכנית', lang)}
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="min-h-[44px]"
-                  onClick={handleRecalculate}
-                  aria-label={t('Recalculate', 'חשב מחדש', lang)}
-                >
-                  <RefreshCw className="h-4 w-4 me-1" />
-                  {t('Recalculate', 'חשב מחדש', lang)}
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 max-h-[85vh] overflow-y-auto">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-muted-foreground border-b">
-                    <th className="text-start py-2 font-medium">{t('Goal', 'יעד', lang)}</th>
-                    <th className="text-start py-2 font-medium">{t('Priority', 'עדיפות', lang)}</th>
-                    <th className="text-start py-2 font-medium">{t('Needed/mo', 'נדרש/חודש', lang)}</th>
-                    <th className="text-start py-2 font-medium">{t('Allocated', 'מוקצה', lang)}</th>
-                    <th className="text-start py-2 font-medium">{t('Status', 'סטטוס', lang)}</th>
-                    <th className="text-start py-2 font-medium">{t('Progress', 'התקדמות', lang)}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayAllocations.map((goal) => {
-                    const goalUsed = goal.usedAmount ?? 0
-                    const goalAvailable = goal.currentAmount - goalUsed
-                    const goalEffectiveTarget = goal.targetAmount - goalUsed
-                    const pct = Math.min(100, goalEffectiveTarget > 0 ? (goalAvailable / goalEffectiveTarget) * 100 : 100)
-                    const allocated = goal.monthlyAllocated ?? goal.monthlyRecommended
-                    const statusLabel = {
-                      realistic: t('Realistic', 'ריאלי', lang),
-                      tight: t('Tight', 'הדוק', lang),
-                      unrealistic: t('Unrealistic', 'לא ריאלי', lang),
-                      blocked: t('Blocked', 'חסום', lang),
-                    }[goal.status]
-                    const priorityLabel = {
-                      high: t('High', 'גבוה', lang),
-                      medium: t('Medium', 'בינוני', lang),
-                      low: t('Low', 'נמוך', lang),
-                    }[goal.priority]
-                    return (
-                      <tr key={goal.id} className="border-b last:border-0">
-                        <td className="py-2 font-medium">{goal.name}</td>
-                        <td className="py-2">
-                          <Badge variant={PRIORITY_BADGE[goal.priority]} className="text-xs">{priorityLabel}</Badge>
-                        </td>
-                        <td className="py-2">{formatCurrency(goal.monthlyRecommended, data.currency, data.locale)}</td>
-                        <td className="py-2 font-semibold">{formatCurrency(allocated, data.currency, data.locale)}</td>
-                        <td className="py-2">
-                          <Badge variant={STATUS_BADGE[goal.status]} className="text-xs inline-flex items-center gap-1">
-                            {(() => { const Icon = STATUS_ICONS[goal.status]; return <Icon className="h-3 w-3" /> })()}
-                            {statusLabel}
-                          </Badge>
-                        </td>
-                        <td className="py-2 min-w-[100px]">
-                          <Progress
-                            value={pct}
-                            indicatorClassName={
-                              goal.status === 'realistic' ? 'bg-primary' :
-                              goal.status === 'tight' ? 'bg-warning' : 'bg-destructive'
-                            }
-                            aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
-                          />
-                          <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
-                          <span className="text-muted-foreground ms-1">
-                            ({formatCurrency(goalAvailable, data.currency, data.locale)} / {formatCurrency(goalEffectiveTarget, data.currency, data.locale)})
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t">
-                    <td colSpan={3} className="py-2 text-muted-foreground">
-                      {t('Total allocated:', 'סה"כ מוקצה:', lang)}
-                    </td>
-                    <td colSpan={3} className="py-2">
-                      <span className={`font-semibold ${isOverBudget ? 'text-destructive' : 'text-primary'}`}>
-                        {formatCurrency(totalAllocated, data.currency, data.locale)}
-                      </span>
-                      <span className="text-muted-foreground ms-1 me-1">/</span>
-                      <span className="text-muted-foreground">
-                        {t('FCF:', 'תזרים:', lang)} {formatCurrency(Math.max(0, freeCashFlow), data.currency, data.locale)}
-                      </span>
-                      {isOverBudget && (
-                        <span className="text-destructive ms-2 text-xs">
-                          {t('⚠ Over budget', '⚠ חריגה מתקציב', lang)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-
-            {/* AI Explanation card */}
-            {showAiCard && (
-              <div className="mt-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                      <Bot className="h-4 w-4 text-primary" />
-                      <CardTitle className="text-sm">{t('AI Plan Assessment', 'הערכת תוכנית AI', lang)}</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0 max-h-[40vh] overflow-y-auto">
-                    {aiLoading && (
-                      <p className="text-sm text-muted-foreground">{t('Analyzing your plan…', 'מנתח את התוכנית שלך…', lang)}</p>
-                    )}
-                    {aiError && (
-                      <p className="text-sm text-destructive">{aiError}</p>
-                    )}
-                    {aiExplanation && !aiLoading && (
-                      <p className="text-sm whitespace-pre-wrap">{aiExplanation}</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <AllocationPlan
+          allocations={displayAllocations}
+          totalAllocated={totalAllocated}
+          freeCashFlow={freeCashFlow}
+          isOverBudget={isOverBudget}
+          currency={currency}
+          locale={locale}
+          lang={lang}
+          aiEnabled={aiEnabled}
+          aiLoading={aiLoading}
+          onExplain={handleExplainPlan}
+          onRecalculate={handleRecalculate}
+          showAiCard={showAiCard}
+          aiExplanation={aiExplanation}
+          aiError={aiError}
+        />
       )}
 
       {data.goals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-          <div className="rounded-full bg-primary/10 p-4">
-            <Target className="h-8 w-8 text-primary" />
-          </div>
-          <div className="space-y-1">
-            <p className="font-semibold text-foreground">{t('No savings goals yet', 'אין יעדי חיסכון עדיין', lang)}</p>
-            <p className="text-sm text-muted-foreground">{t('Set a target and track when you\'ll reach it.', 'הגדר יעד ועקוב מתי תגיע אליו.', lang)}</p>
-          </div>
-          <GoalDialog onSave={(g) => addGoal(g)} lang={lang} />
-        </div>
+        <Card>
+          <EmptyState
+            icon={Target}
+            title={t('No savings goals yet', 'אין יעדי חיסכון עדיין', lang)}
+            description={t("Set a target and track when you'll reach it.", 'הגדר יעד ועקוב מתי תגיע אליו.', lang)}
+            actionLabel={t('Add Goal', 'הוסף יעד', lang)}
+            actionIcon={Plus}
+            onAction={() => setAddOpen(true)}
+          />
+        </Card>
       ) : (
-        displayAllocations.map((goal, idx) => {
-          const usedAmt = goal.usedAmount ?? 0
-          const available = goal.currentAmount - usedAmt
-          const effectiveTarget = goal.targetAmount - usedAmt
-          const pct = Math.min(100, effectiveTarget > 0 ? (available / effectiveTarget) * 100 : 100)
-          const stillNeeded = effectiveTarget - available
-          const StatusIcon = STATUS_ICONS[goal.status]
-          const statusLabel = {
-            realistic: t('Realistic', 'ריאלי', lang),
-            tight: t('Tight', 'הדוק', lang),
-            unrealistic: t('Unrealistic', 'לא ריאלי', lang),
-            blocked: t('Blocked', 'חסום', lang),
-          }[goal.status]
-
-          return (
-            <Card key={goal.id}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <StatusIcon className={`h-4 w-4 ${STATUS_COLORS[goal.status]}`} />
-                    <CardTitle className="text-base">{goal.name}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Badge variant={PRIORITY_BADGE[goal.priority]} className="text-xs">
-                      {goal.priority === 'high' ? t('High', 'גבוה', lang) : goal.priority === 'medium' ? t('Medium', 'בינוני', lang) : t('Low', 'נמוך', lang)}
-                    </Badge>
-                    <Badge variant={STATUS_BADGE[goal.status]} className="text-xs">{statusLabel}</Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Three-metric amount display */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <span className="text-muted-foreground">{t('Saved', 'חסכנו', lang)}</span>
-                  <span className="font-medium text-end">{formatCurrency(goal.currentAmount, data.currency, data.locale)}</span>
-                  {usedAmt > 0 && (
-                    <>
-                      <span className="text-muted-foreground">{t('Used', 'נוצל', lang)}</span>
-                      <span className="font-medium text-destructive text-end">{formatCurrency(usedAmt, data.currency, data.locale)}</span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground">{t('Available', 'זמין', lang)}</span>
-                  <span className="font-semibold text-primary text-end">{formatCurrency(available, data.currency, data.locale)}</span>
-                  {stillNeeded > 0 && (
-                    <>
-                      <span className="text-muted-foreground">{t('Still needed', 'נשאר לחסוך', lang)}</span>
-                      <span className="font-medium text-end">{formatCurrency(stillNeeded, data.currency, data.locale)}</span>
-                    </>
-                  )}
-                </div>
-                {/* Progress bar based on available / targetAmount */}
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">{formatCurrency(available, data.currency, data.locale)} / {formatCurrency(effectiveTarget, data.currency, data.locale)}</span>
-                    <span>{pct.toFixed(0)}%</span>
-                  </div>
-                  <Progress
-                    value={pct}
-                    indicatorClassName={
-                      goal.status === 'realistic' ? 'bg-primary' :
-                      goal.status === 'tight' ? 'bg-warning' : 'bg-destructive'
-                    }
-                    aria-label={`${goal.name} – ${pct.toFixed(0)}%`}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-muted/50 rounded p-2">
-                    <p className="text-muted-foreground">{t('Recommended/mo', 'מומלץ/חודש', lang)}</p>
-                    <p className="font-semibold">{formatCurrency(goal.monthlyRecommended, data.currency, data.locale)}</p>
-                  </div>
-                  <div className="bg-muted/50 rounded p-2">
-                    <p className="text-muted-foreground">{t('Deadline', 'מועד יעד', lang)}</p>
-                    <p className="font-semibold">{goal.deadline ? new Date(goal.deadline).toLocaleDateString(data.locale) : '—'}</p>
-                  </div>
-                  {goal.monthlyAllocated !== undefined && goal.monthlyAllocated !== goal.monthlyRecommended && (
-                    <div className="bg-muted/50 rounded p-2">
-                      <p className="text-muted-foreground">{t('Allocated/mo', 'מוקצה/חודש', lang)}</p>
-                      <p className="font-semibold">{formatCurrency(goal.monthlyAllocated, data.currency, data.locale)}</p>
-                    </div>
-                  )}
-                  {goal.gap > 0 && (
-                    <div className="bg-destructive/10 rounded p-2 col-span-2">
-                      <p className="text-destructive text-xs">{t('Monthly gap:', 'פער חודשי:', lang)} {formatCurrency(goal.gap, data.currency, data.locale)}</p>
-                    </div>
-                  )}
-                </div>
-                {goal.notes && <p className="text-xs text-muted-foreground">{goal.notes}</p>}
-
-                {/* Add Funds row */}
-                <div className="flex gap-2">
-                  <FundGoalDialog
-                    goal={goal}
-                    accounts={data.accounts}
-                    currency={data.currency}
-                    locale={data.locale}
-                    lang={lang}
-                    onFund={(accountId, amount) => fundGoalFromSavings(goal.id, accountId, amount)}
-                  />
-                  {data.accounts.length === 0 && (
-                    <p className="text-xs text-muted-foreground self-center">
-                      {t('Add a savings account first', 'הוסף חשבון חיסכון תחילה', lang)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
-                      disabled={idx === 0} onClick={() => moveGoal(goal.id, 'up')}
-                      title={t('Move up', 'הזז למעלה', lang)} aria-label={t('Move up', 'הזז למעלה', lang)}>
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px]"
-                      disabled={idx === displayAllocations.length - 1} onClick={() => moveGoal(goal.id, 'down')}
-                      title={t('Move down', 'הזז למטה', lang)} aria-label={t('Move down', 'הזז למטה', lang)}>
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <div className="flex gap-1">
-                    <GoalDialog existing={goal} onSave={(g) => updateGoal(g)} lang={lang} />
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="min-h-[44px] min-w-[44px] text-destructive"
-                          title={t('Delete goal', 'מחק יעד', lang)} aria-label={t('Delete goal', 'מחק יעד', lang)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
-                          <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                          <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => deleteGoal(goal.id)}
-                          >
-                            {t('Delete', 'מחק', lang)}
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })
+        displayAllocations.map((goal, idx) => (
+          <GoalCard
+            key={goal.id}
+            goal={goal}
+            storedGoal={data.goals.find((g) => g.id === goal.id) ?? goal}
+            isFirst={idx === 0}
+            isLast={idx === displayAllocations.length - 1}
+            accounts={data.accounts}
+            currency={currency}
+            locale={locale}
+            lang={lang}
+            onUpdate={updateGoal}
+            onDelete={deleteGoal}
+            onMove={moveGoal}
+            onFund={fundGoalFromSavings}
+          />
+        ))
       )}
+
+      <GoalDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSave={(g) => addGoal(g)}
+        currency={currency}
+        locale={locale}
+        lang={lang}
+      />
     </div>
   )
 }

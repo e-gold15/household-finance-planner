@@ -1,435 +1,21 @@
-import { useState, useEffect } from 'react'
-import { Camera, History as HistoryIcon, Trash2, ClipboardList, Edit2, Plus, Receipt, TrendingUp, AlertTriangle, PiggyBank, Target } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Camera, ChevronDown, History as HistoryIcon } from 'lucide-react'
+import { Card } from './ui/card'
 import { Button } from './ui/button'
-import { Badge } from './ui/badge'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './ui/alert-dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { EmptyState } from './ui/empty-state'
 import { useFinance } from '@/context/FinanceContext'
-import { formatCurrency, t } from '@/lib/utils'
-import { EXPENSE_CATEGORIES as CATEGORIES } from '@/lib/categories'
-import type { ExpenseCategory, MonthSnapshot, HistoricalExpense, HistoricalIncome } from '@/types'
-
-// ── ActualsDialog ─────────────────────────────────────────────────────────────
-// Lets the user record or edit what they actually spent per category in a past month.
-
-function ActualsDialog({
-  snap,
-  lang,
-}: {
-  snap: MonthSnapshot
-  lang: 'en' | 'he'
-}) {
-  const { data, updateSnapshotActuals } = useFinance()
-  const [open, setOpen] = useState(false)
-
-  // Initialise form from existing actuals (or empty strings so inputs are blank)
-  const [form, setForm] = useState<Record<string, string>>({})
-
-  const handleOpen = (o: boolean) => {
-    if (o) {
-      const init: Record<string, string> = {}
-      CATEGORIES.forEach(({ value }) => {
-        const existing = snap.categoryActuals?.[value]
-        init[value] = existing != null ? existing.toFixed(0) : ''
-      })
-      setForm(init)
-    }
-    setOpen(o)
-  }
-
-  const handleSave = () => {
-    const actuals: Partial<Record<ExpenseCategory, number>> = {}
-    CATEGORIES.forEach(({ value }) => {
-      const n = parseFloat(form[value] ?? '')
-      if (!isNaN(n) && n >= 0) actuals[value] = n
-    })
-    updateSnapshotActuals(snap.id, actuals)
-    setOpen(false)
-  }
-
-  const hasActuals = snap.categoryActuals && Object.keys(snap.categoryActuals).length > 0
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-xs gap-1.5 min-h-[44px]"
-          title={t('Log actual spending for this month', 'רשום הוצאות בפועל לחודש זה', lang)}>
-          <ClipboardList className="h-3.5 w-3.5" />
-          {hasActuals ? t('Edit Actuals', 'ערוך בפועל', lang) : t('Log Actuals', 'רשום בפועל', lang)}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4" />
-            {snap.label} — {t('Actual Spending', 'הוצאות בפועל', lang)}
-          </DialogTitle>
-        </DialogHeader>
-        <p className="text-xs text-muted-foreground mt-1">
-          {t(
-            'Enter what you actually spent per category. Pre-filled with your planned amounts — edit only what changed.',
-            'הזן כמה הוצאת בפועל לכל קטגוריה. ערכים ממולאים לפי תכנון — ערוך רק מה שהשתנה.',
-            lang
-          )}
-        </p>
-        <div className="space-y-3 mt-3">
-          {CATEGORIES.map(({ value, en, he }) => (
-            <div key={value} className="flex items-center gap-3">
-              <Label className="w-24 shrink-0 text-sm">{lang === 'he' ? he : en}</Label>
-              <Input
-                type="number"
-                min="0"
-                value={form[value] ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, [value]: e.target.value }))}
-                placeholder="0"
-                className="flex-1"
-                aria-label={`${lang === 'he' ? he : en} — ${t('actual amount', 'סכום בפועל', lang)}`}
-              />
-              <span className="text-xs text-muted-foreground shrink-0">
-                {formatCurrency(0, data.currency, data.locale).replace('0', '').trim()}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2 mt-4">
-          <Button className="flex-1" onClick={handleSave}>
-            {t('Save Actuals', 'שמור בפועל', lang)}
-          </Button>
-          <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-            {t('Cancel', 'ביטול', lang)}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── HistoricalExpenseDialog ───────────────────────────────────────────────────
-// Lets the user add or edit a named expense line item on a past month snapshot.
-
-function HistoricalExpenseDialog({
-  snapshotId,
-  snapLabel,
-  existing,
-  lang,
-}: {
-  snapshotId: string
-  snapLabel: string
-  existing?: HistoricalExpense
-  lang: 'en' | 'he'
-}) {
-  const { addHistoricalExpense, updateHistoricalExpense } = useFinance()
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState<ExpenseCategory>('other')
-  const [note, setNote] = useState('')
-
-  const handleOpen = (o: boolean) => {
-    if (o) {
-      setName(existing?.name ?? '')
-      setAmount(existing?.amount.toString() ?? '')
-      setCategory(existing?.category ?? 'other')
-      setNote(existing?.note ?? '')
-    }
-    setOpen(o)
-  }
-
-  const isValid = name.trim().length > 0 && parseFloat(amount) > 0
-
-  const handleSave = () => {
-    const amt = parseFloat(amount)
-    if (!isValid) return
-    if (existing) {
-      updateHistoricalExpense(snapshotId, {
-        ...existing,
-        name: name.trim(),
-        amount: amt,
-        category,
-        note: note.trim() || undefined,
-      })
-    } else {
-      addHistoricalExpense(snapshotId, {
-        name: name.trim(),
-        amount: amt,
-        category,
-        note: note.trim() || undefined,
-      })
-    }
-    setOpen(false)
-  }
-
-  const dialogTitle = existing
-    ? t(`Edit Expense — ${snapLabel}`, `ערוך הוצאה — ${snapLabel}`, lang)
-    : t(`Add Expense — ${snapLabel}`, `הוסף הוצאה — ${snapLabel}`, lang)
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger asChild>
-        {existing ? (
-          <Button
-            variant="ghost" size="icon"
-            className="min-h-[44px] min-w-[44px]"
-            title={t('Edit recorded expense', 'ערוך הוצאה שנרשמה', lang)}
-            aria-label={t('Edit recorded expense', 'ערוך הוצאה שנרשמה', lang)}
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <Button
-            variant="outline" size="sm"
-            className="text-xs gap-1.5 min-h-[44px]"
-            title={t(`Add expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
-            aria-label={t(`Add expense to ${snapLabel}`, `הוסף הוצאה ל${snapLabel}`, lang)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('Add Expense', 'הוסף הוצאה', lang)}
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Receipt className="h-4 w-4" />
-            {dialogTitle}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          <div>
-            <Label htmlFor="hist-exp-name">{t('Name', 'שם', lang)}</Label>
-            <Input
-              id="hist-exp-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('e.g. Dentist visit', 'למשל: ביקור אצל רופא שיניים', lang)}
-              aria-label={t('Expense name', 'שם הוצאה', lang)}
-            />
-            {name.length > 0 && name.trim().length === 0 && (
-              <p className="text-xs text-destructive mt-1">{t('Name is required', 'שם חובה', lang)}</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="hist-exp-amount">{t('Amount', 'סכום', lang)}</Label>
-              <Input
-                id="hist-exp-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                aria-label={t('Amount', 'סכום', lang)}
-              />
-              {amount.length > 0 && !(parseFloat(amount) > 0) && (
-                <p className="text-xs text-destructive mt-1">{t('Amount must be greater than 0', 'הסכום חייב להיות גדול מ-0', lang)}</p>
-              )}
-            </div>
-            <div>
-              <Label htmlFor="hist-exp-category">{t('Category', 'קטגוריה', lang)}</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as ExpenseCategory)}>
-                <SelectTrigger id="hist-exp-category" aria-label={t('Category', 'קטגוריה', lang)}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((c) => (
-                    <SelectItem key={c.value} value={c.value}>
-                      {lang === 'he' ? c.he : c.en}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="hist-exp-note">{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
-            <Input
-              id="hist-exp-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('Any extra detail…', 'פרטים נוספים…', lang)}
-              aria-label={t('Note', 'הערה', lang)}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={handleSave} disabled={!isValid}>
-              {t('Save Expense', 'שמור הוצאה', lang)}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-              {t('Cancel', 'ביטול', lang)}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── HistoricalIncomeDialog ────────────────────────────────────────────────────
-// Lets the user add or edit a net income entry on a past month snapshot.
-
-function HistoricalIncomeDialog({
-  snapshotId,
-  snapLabel,
-  existing,
-  lang,
-  memberNames,
-}: {
-  snapshotId: string
-  snapLabel: string
-  existing?: HistoricalIncome
-  lang: 'en' | 'he'
-  memberNames: string[]
-}) {
-  const { addHistoricalIncome, updateHistoricalIncome } = useFinance()
-  const [open, setOpen] = useState(false)
-  const [memberName, setMemberName] = useState('')
-  const [amount, setAmount] = useState('')
-  const [note, setNote] = useState('')
-
-  const handleOpen = (o: boolean) => {
-    if (o) {
-      setMemberName(existing?.memberName ?? (memberNames[0] ?? ''))
-      setAmount(existing?.amount.toString() ?? '')
-      setNote(existing?.note ?? '')
-    }
-    setOpen(o)
-  }
-
-  const isValid = memberName.trim().length > 0 && parseFloat(amount) > 0
-
-  const handleSave = () => {
-    const amt = parseFloat(amount)
-    if (!isValid) return
-    if (existing) {
-      updateHistoricalIncome(snapshotId, {
-        ...existing,
-        memberName: memberName.trim(),
-        amount: amt,
-        note: note.trim() || undefined,
-      })
-    } else {
-      addHistoricalIncome(snapshotId, {
-        memberName: memberName.trim(),
-        amount: amt,
-        note: note.trim() || undefined,
-      })
-    }
-    setOpen(false)
-  }
-
-  const dialogTitle = existing
-    ? t(`Edit Income — ${snapLabel}`, `ערוך הכנסה — ${snapLabel}`, lang)
-    : t(`Add Income — ${snapLabel}`, `הוסף הכנסה — ${snapLabel}`, lang)
-
-  const listId = `members-${snapshotId}`
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger asChild>
-        {existing ? (
-          <Button
-            variant="ghost" size="icon"
-            className="min-h-[44px] min-w-[44px]"
-            title={t('Edit recorded income', 'ערוך הכנסה שנרשמה', lang)}
-            aria-label={t('Edit recorded income', 'ערוך הכנסה שנרשמה', lang)}
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-        ) : (
-          <Button
-            variant="outline" size="sm"
-            className="text-xs gap-1.5 min-h-[44px]"
-            title={t(`Add income to ${snapLabel}`, `הוסף הכנסה ל${snapLabel}`, lang)}
-            aria-label={t(`Add income to ${snapLabel}`, `הוסף הכנסה ל${snapLabel}`, lang)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('Add Income', 'הוסף הכנסה', lang)}
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            {dialogTitle}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 mt-2">
-          {/* Member name — datalist for autocomplete from existing members */}
-          <datalist id={listId}>
-            {memberNames.map((n) => <option key={n} value={n} />)}
-          </datalist>
-          <div>
-            <Label htmlFor={`${snapshotId}-member`}>{t('Person', 'אדם', lang)}</Label>
-            <Input
-              id={`${snapshotId}-member`}
-              list={listId}
-              value={memberName}
-              onChange={(e) => setMemberName(e.target.value)}
-              placeholder={memberNames[0] ?? t('Name', 'שם', lang)}
-              aria-label={t('Person', 'אדם', lang)}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor={`${snapshotId}-income-amount`}>{t('Net amount received', 'סכום נטו שהתקבל', lang)}</Label>
-            <Input
-              id={`${snapshotId}-income-amount`}
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              aria-label={t('Net amount received', 'סכום נטו שהתקבל', lang)}
-            />
-            {amount.length > 0 && !(parseFloat(amount) > 0) && (
-              <p className="text-xs text-destructive mt-1">{t('Amount must be greater than 0', 'הסכום חייב להיות גדול מ-0', lang)}</p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor={`${snapshotId}-income-note`}>{t('Note (optional)', 'הערה (אופציונלי)', lang)}</Label>
-            <Input
-              id={`${snapshotId}-income-note`}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('e.g. Monthly salary, Bonus…', 'למשל: משכורת חודשית, בונוס…', lang)}
-              aria-label={t('Note', 'הערה', lang)}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={handleSave} disabled={!isValid}>
-              {t('Save Income', 'שמור הכנסה', lang)}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
-              {t('Cancel', 'ביטול', lang)}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ── Main History component ────────────────────────────────────────────────────
-
-const isCurrentMonth = (s: MonthSnapshot) => {
-  const now = new Date()
-  const d = new Date(s.date)
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-}
+import { cn, t } from '@/lib/utils'
+import { SnapshotRow } from './history/SnapshotRow'
+import { TrendChart } from './history/TrendChart'
+import { HISTORY_VISIBLE_COUNT, isCurrentMonthSnapshot, sortSnapshotsNewestFirst, splitVisibleSnapshots } from './history/historyUtils'
 
 export function History() {
-  const { data, snapshotMonth, setData, deleteHistoricalExpense, deleteHistoricalIncome } = useFinance()
+  const { data, snapshotMonth, setData } = useFinance()
   const lang = data.language
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  // UI-only state: per-row expand overrides (the newest row defaults to open) and "Show older".
+  const [expandOverrides, setExpandOverrides] = useState<Record<string, boolean>>({})
+  const [showAll, setShowAll] = useState(false)
 
   // Auto-hide the warning after 4 seconds
   useEffect(() => {
@@ -437,6 +23,13 @@ export function History() {
     const timer = setTimeout(() => setShowDuplicateWarning(false), 4000)
     return () => clearTimeout(timer)
   }, [showDuplicateWarning])
+
+  const sorted = useMemo(() => sortSnapshotsNewestFirst(data.history), [data.history])
+  const newestId = sorted[0]?.id
+  const { visible, hiddenCount } = splitVisibleSnapshots(sorted, showAll)
+
+  const isExpanded = (id: string) => expandOverrides[id] ?? id === newestId
+  const toggle = (id: string) => setExpandOverrides((prev) => ({ ...prev, [id]: !isExpanded(id) }))
 
   const deleteSnapshot = (id: string) => {
     setShowDuplicateWarning(false)
@@ -451,363 +44,68 @@ export function History() {
       const d = new Date(h.date)
       return d.getFullYear() === currentYear && d.getMonth() === currentMonth
     })
-    if (alreadyExists) {
-      setShowDuplicateWarning(true)
-    } else {
-      setShowDuplicateWarning(false)
-    }
+    setShowDuplicateWarning(alreadyExists)
     snapshotMonth()
   }
 
+  const canSnapshot = !data.history.some((s) => s.autoSnapshot && isCurrentMonthSnapshot(s))
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          {data.history.length} {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
+          <bdi className="num tabular-nums">{data.history.length}</bdi> {t('snapshots recorded', 'תמונות מצב שנרשמו', lang)}
         </p>
-        <div className="flex flex-col items-end gap-2">
-          {!data.history.some(s => s.autoSnapshot && isCurrentMonth(s)) && (
-            <Button size="sm" onClick={handleSnapshot}>
-              <Camera className="h-4 w-4 me-1" />
-              {t('Snapshot This Month', 'צלם חודש זה', lang)}
-            </Button>
-          )}
-          {showDuplicateWarning && (
-            <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 rounded-md px-3 py-2">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              {t('A snapshot for this month already exists.', 'קיים כבר תמונת מצב לחודש זה.', lang)}
-            </div>
-          )}
-        </div>
+        {data.history.length > 0 && canSnapshot && (
+          <Button size="sm" onClick={handleSnapshot}>
+            <Camera className="h-4 w-4" aria-hidden="true" />
+            {t('Snapshot This Month', 'צלם חודש זה', lang)}
+          </Button>
+        )}
       </div>
+      {showDuplicateWarning && (
+        <div role="status" className="flex items-center gap-2 rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning-strong">
+          <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {t('A snapshot for this month already exists.', 'קיים כבר תמונת מצב לחודש זה.', lang)}
+        </div>
+      )}
 
       {data.history.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
-          <div className="rounded-full bg-primary/10 p-4">
-            <HistoryIcon className="h-8 w-8 text-primary" />
-          </div>
-          <div className="space-y-1">
-            <p className="font-semibold text-foreground">{t('No history yet', 'אין היסטוריה עדיין', lang)}</p>
-            <p className="text-sm text-muted-foreground">{t('Snapshot this month to start tracking trends.', 'צלם תמונת מצב לחודש זה כדי להתחיל לעקוב אחר מגמות.', lang)}</p>
-          </div>
-          <Button size="sm" onClick={handleSnapshot} className="min-h-[44px]">
-            <Camera className="h-4 w-4 me-1" />
-            {t('Snapshot this month', 'צלם חודש זה', lang)}
-          </Button>
-        </div>
+        <Card>
+          <EmptyState
+            icon={HistoryIcon}
+            title={t('No history yet', 'אין היסטוריה עדיין', lang)}
+            description={t('Snapshot this month to start tracking trends.', 'צלם תמונת מצב לחודש זה כדי להתחיל לעקוב אחר מגמות.', lang)}
+            actionLabel={t('Snapshot this month', 'צלם חודש זה', lang)}
+            actionIcon={Camera}
+            onAction={handleSnapshot}
+          />
+        </Card>
       ) : (
         <>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">{t('Monthly Trend', 'מגמה חודשית', lang)}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={[...data.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).filter((snap) => snap.totalIncome > 0 || snap.totalExpenses > 0 || (snap.historicalIncomes && snap.historicalIncomes.length > 0))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v) => formatCurrency(Number(v), data.currency, data.locale)} />
-                  <Legend />
-                  <Line type="monotone" dataKey="totalIncome"   name={t('Income',     'הכנסה',       lang)} stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="totalExpenses" name={t('Expenses',    'הוצאות',      lang)} stroke="hsl(var(--chart-5))" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="freeCashFlow"  name={t('Free Cash',   'תזרים חופשי', lang)} stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          <TrendChart history={data.history} currency={data.currency} locale={data.locale} lang={lang} />
 
           <div className="space-y-2">
-            {[...data.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).reverse().map((snap) => {
-              const hasActuals = snap.categoryActuals && Object.keys(snap.categoryActuals).length > 0
-              return (
-                <Card key={snap.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold truncate">{snap.label}</p>
-                          {snap.autoSnapshot && isCurrentMonth(snap) && (
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                              {t('Live', 'חי', lang)}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">{new Date(snap.date).toLocaleDateString(data.locale)}</p>
-                        {snap.totalIncome === 0 && snap.totalExpenses > 0 && (
-                          <p className="text-xs text-muted-foreground/70 italic mt-0.5">
-                            {t('fixed expenses only', 'הוצאות קבועות בלבד', lang)}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {snap.totalIncome === 0 && snap.totalExpenses > 0 ? (
-                          <Badge variant="secondary" title={t('Income unknown — stub snapshot', 'הכנסה לא ידועה — תמונת מצב חלקית', lang)}>
-                            —
-                          </Badge>
-                        ) : (
-                          <Badge variant={snap.freeCashFlow >= 0 ? 'success' : 'destructive'}>
-                            {snap.freeCashFlow >= 0 ? '+' : ''}{formatCurrency(snap.freeCashFlow, data.currency, data.locale)}
-                          </Badge>
-                        )}
-                        {/* Actuals indicator */}
-                        {hasActuals && (
-                          <Badge variant="secondary" className="text-xs gap-1">
-                            <ClipboardList className="h-3 w-3" />
-                            {t('Actuals logged', 'נרשם בפועל', lang)}
-                          </Badge>
-                        )}
-                        <ActualsDialog snap={snap} lang={lang} />
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost" size="icon"
-                              className="min-h-[44px] min-w-[44px] text-destructive"
-                              title={t('Delete snapshot', 'מחק תמונת מצב', lang)}
-                              aria-label={t('Delete snapshot', 'מחק תמונת מצב', lang)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
-                              <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => deleteSnapshot(snap.id)}
-                              >
-                                {t('Delete', 'מחק', lang)}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
-
-                    {/* Summary totals */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-center">
-                      <div className="bg-muted/50 rounded p-2">
-                        <p className="text-muted-foreground">{t('Income', 'הכנסה', lang)}</p>
-                        <p className="font-semibold text-primary">{formatCurrency(snap.totalIncome, data.currency, data.locale)}</p>
-                      </div>
-                      <div className="bg-muted/50 rounded p-2">
-                        <p className="text-muted-foreground">{t('Expenses', 'הוצאות', lang)}</p>
-                        <p className="font-semibold text-destructive">{formatCurrency(snap.totalExpenses, data.currency, data.locale)}</p>
-                      </div>
-                      <div className="bg-muted/50 rounded p-2">
-                        <p className="text-muted-foreground">{t('Savings', 'חיסכון', lang)}</p>
-                        <p className="font-semibold">{formatCurrency(snap.totalSavings, data.currency, data.locale)}</p>
-                      </div>
-                      <div className="bg-muted/50 rounded p-2">
-                        <p className="text-muted-foreground">{t('Free Cash', 'תזרים חופשי', lang)}</p>
-                        <p className={`font-semibold ${snap.totalIncome === 0 ? 'text-muted-foreground' : snap.freeCashFlow >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'}`}>
-                          {snap.totalIncome === 0 ? '—' : `${snap.freeCashFlow >= 0 ? '+' : ''}${formatCurrency(snap.freeCashFlow, data.currency, data.locale)}`}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Surplus allocations — shown when the user allocated this month's surplus */}
-                    {snap.surplusAllocations && snap.surplusAllocations.length > 0 && (
-                      <div className="mt-2 border-t pt-2 space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground">
-                          {t('Allocated from surplus', 'שויך מהעודף', lang)}
-                        </p>
-                        {snap.surplusAllocations.map((alloc, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-1 text-muted-foreground">
-                              {alloc.type === 'savings'
-                                ? <PiggyBank className="h-3 w-3" />
-                                : <Target className="h-3 w-3" />}
-                              {alloc.destinationName}
-                            </span>
-                            <span className="font-medium text-primary">
-                              +{formatCurrency(alloc.amount, data.currency, data.locale)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Recorded historical incomes — above actuals and expenses */}
-                    <div className="mt-3 border-t pt-3">
-                      <div className="flex items-center justify-between mb-2">
-                        {(snap.historicalIncomes ?? []).length > 0 ? (
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {t(
-                              `Recorded income (${snap.historicalIncomes!.length})`,
-                              `הכנסות שנרשמו (${snap.historicalIncomes!.length})`,
-                              lang
-                            )}
-                          </p>
-                        ) : (
-                          <span />
-                        )}
-                        <HistoricalIncomeDialog
-                          snapshotId={snap.id}
-                          snapLabel={snap.label}
-                          lang={lang}
-                          memberNames={data.members.map((m) => m.name)}
-                        />
-                      </div>
-                      {(snap.historicalIncomes ?? []).length > 0 && (
-                        <div className="space-y-1">
-                          {snap.historicalIncomes!.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between text-xs gap-2">
-                              <div className="min-w-0 flex-1">
-                                <span className="font-medium">{item.memberName}</span>
-                                {item.note && (
-                                  <span className="text-muted-foreground ms-2 hidden sm:inline">{item.note}</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <span className="font-semibold tabular-nums text-primary">
-                                  {formatCurrency(item.amount, data.currency, data.locale)}
-                                </span>
-                                <HistoricalIncomeDialog
-                                  snapshotId={snap.id}
-                                  snapLabel={snap.label}
-                                  existing={item}
-                                  lang={lang}
-                                  memberNames={data.members.map((m) => m.name)}
-                                />
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost" size="icon"
-                                      className="min-h-[44px] min-w-[44px] text-destructive"
-                                      title={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
-                                      aria-label={t('Delete recorded income', 'מחק הכנסה שנרשמה', lang)}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
-                                      <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        onClick={() => deleteHistoricalIncome(snap.id, item.id)}
-                                      >
-                                        {t('Delete', 'מחק', lang)}
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Category actuals breakdown — shown when logged */}
-                    {hasActuals && snap.categoryActuals && (
-                      <div className="mt-3 border-t pt-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-2">{t('Actual spending by category', 'הוצאות בפועל לפי קטגוריה', lang)}</p>
-                        <div className="grid grid-cols-2 gap-1">
-                          {CATEGORIES.filter(({ value }) => snap.categoryActuals![value] != null).map(({ value, en, he }) => (
-                            <div key={value} className="flex justify-between text-xs min-w-0">
-                              <span className="text-muted-foreground truncate me-1">{lang === 'he' ? he : en}</span>
-                              <span className="font-medium shrink-0">{formatCurrency(snap.categoryActuals![value]!, data.currency, data.locale)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Recorded historical expenses */}
-                    {(snap.historicalExpenses ?? []).length > 0 && (
-                      <div className="mt-3 border-t pt-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {t(
-                              `Recorded expenses (${snap.historicalExpenses!.length})`,
-                              `הוצאות שנרשמו (${snap.historicalExpenses!.length})`,
-                              lang
-                            )}
-                          </p>
-                          <HistoricalExpenseDialog snapshotId={snap.id} snapLabel={snap.label} lang={lang} />
-                        </div>
-                        <div className="space-y-1">
-                          {snap.historicalExpenses!.map((item) => {
-                            const catLabel = CATEGORIES.find((c) => c.value === item.category)
-                            return (
-                              <div key={item.id} className="flex items-start justify-between text-xs gap-2 flex-wrap">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-medium">{item.name}</span>
-                                    {/* Category badge — hidden on very narrow screens to prevent overflow */}
-                                    <Badge variant="outline" className="text-xs py-0 hidden sm:inline-flex">
-                                      {lang === 'he' ? catLabel?.he : catLabel?.en}
-                                    </Badge>
-                                  </div>
-                                  {item.note && (
-                                    <p className="text-muted-foreground text-xs truncate">{item.note}</p>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                  <span className="font-semibold tabular-nums me-1">
-                                    {formatCurrency(item.amount, data.currency, data.locale)}
-                                  </span>
-                                  <HistoricalExpenseDialog
-                                    snapshotId={snap.id}
-                                    snapLabel={snap.label}
-                                    existing={item}
-                                    lang={lang}
-                                  />
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button
-                                        variant="ghost" size="icon"
-                                        className="min-h-[44px] min-w-[44px] text-destructive"
-                                        title={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
-                                        aria-label={t('Delete recorded expense', 'מחק הוצאה שנרשמה', lang)}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>{t('Are you sure?', 'האם אתה בטוח?', lang)}</AlertDialogTitle>
-                                        <AlertDialogDescription>{t('This cannot be undone.', 'פעולה זו אינה הפיכה.', lang)}</AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>{t('Cancel', 'ביטול', lang)}</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                          onClick={() => deleteHistoricalExpense(snap.id, item.id)}
-                                        >
-                                          {t('Delete', 'מחק', lang)}
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Add expense button — always shown */}
-                    <div className={(snap.historicalExpenses ?? []).length > 0 ? 'mt-2' : 'mt-3 border-t pt-3'}>
-                      <HistoricalExpenseDialog snapshotId={snap.id} snapLabel={snap.label} lang={lang} />
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+            {visible.map((snap) => (
+              <SnapshotRow
+                key={snap.id}
+                snap={snap}
+                expanded={isExpanded(snap.id)}
+                onToggle={() => toggle(snap.id)}
+                onDelete={deleteSnapshot}
+                lang={lang}
+              />
+            ))}
           </div>
+
+          {sorted.length > HISTORY_VISIBLE_COUNT && (
+            <Button variant="outline" className="w-full" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+              <ChevronDown className={cn('h-4 w-4 transition-transform duration-fast', showAll && 'rotate-180')} aria-hidden="true" />
+              {showAll
+                ? t('Show fewer', 'הצג פחות', lang)
+                : t(`Show older (${hiddenCount})`, `הצג ישנים יותר (${hiddenCount})`, lang)}
+            </Button>
+          )}
         </>
       )}
     </div>

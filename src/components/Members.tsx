@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Crown, User, Trash2, Users } from 'lucide-react'
+import { Crown, Settings, User, UserMinus, Users } from 'lucide-react'
 import { toast } from 'sonner'
+import { Card } from './ui/card'
+import { Skeleton } from './ui/skeleton'
+import { EmptyState } from './ui/empty-state'
+import { StatusChip } from './ui/status-chip'
+import { ConfirmDelete } from './ui/confirm-delete'
 import { useAuth } from '@/context/AuthContext'
 import { useFinance } from '@/context/FinanceContext'
+import { useNav } from '@/context/NavContext'
 import { t } from '@/lib/utils'
 import type { LocalUser } from '@/types'
 
@@ -20,41 +26,25 @@ function MemberAvatar({ member }: { member: LocalUser }) {
     return (
       <img
         src={member.avatar}
-        alt={member.name}
+        alt=""
         width={44}
         height={44}
-        className="h-11 w-11 rounded-full object-cover shrink-0"
+        className="h-11 w-11 shrink-0 rounded-full object-cover"
       />
     )
   }
 
   return (
-    <div className="h-11 w-11 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold shrink-0 select-none">
+    <div
+      aria-hidden="true"
+      className="flex h-11 w-11 shrink-0 select-none items-center justify-center rounded-full bg-primary-subtle text-sm font-semibold text-primary-strong"
+    >
       {initials || <User className="h-5 w-5" />}
     </div>
   )
 }
 
-// ─── Role badge ───────────────────────────────────────────────────────────────
-
-function RoleBadge({ role, lang }: { role: 'owner' | 'member'; lang: 'en' | 'he' }) {
-  if (role === 'owner') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
-        <Crown className="h-3 w-3" />
-        {t('Owner', 'בעלים', lang)}
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-xs font-medium">
-      <User className="h-3 w-3" />
-      {t('Member', 'חבר', lang)}
-    </span>
-  )
-}
-
-// ─── Member card ──────────────────────────────────────────────────────────────
+// ─── Member row ───────────────────────────────────────────────────────────────
 
 interface MemberCardProps {
   member: LocalUser
@@ -63,11 +53,12 @@ interface MemberCardProps {
   isCurrentUser: boolean
   canRemove: boolean
   lang: 'en' | 'he'
-  onRemove: () => void
+  onRemove: () => Promise<void>
 }
 
 function MemberCard({ member, role, joinedAt, isCurrentUser, canRemove, lang, onRemove }: MemberCardProps) {
   const [removing, setRemoving] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   const handleRemove = async () => {
     setRemoving(true)
@@ -75,43 +66,68 @@ function MemberCard({ member, role, joinedAt, isCurrentUser, canRemove, lang, on
     setRemoving(false)
   }
 
+  const joined = new Date(joinedAt)
+  const joinedLabel = Number.isNaN(joined.getTime())
+    ? null
+    : joined.toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+
   return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
+    <li className="flex items-center gap-3 p-4">
       <MemberAvatar member={member} />
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-semibold truncate">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="min-w-0 truncate text-sm font-semibold">
             {member.name}
             {isCurrentUser && (
-              <span className="ms-1.5 text-xs text-muted-foreground font-normal">
-                {t('(you)', '(את/ה)', lang)}
-              </span>
+              <span className="ms-1.5 text-xs font-normal text-muted-foreground">{t('(you)', '(את/ה)', lang)}</span>
             )}
           </p>
-          <RoleBadge role={role} lang={lang} />
+          {role === 'owner' ? (
+            <StatusChip tone="info" icon={Crown} label={t('Owner', 'בעלים', lang)} />
+          ) : (
+            <StatusChip tone="neutral" icon={User} label={t('Member', 'חבר', lang)} />
+          )}
         </div>
-        <p className="text-xs text-muted-foreground truncate mt-0.5">{member.email}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {t('Joined', 'הצטרף/ה', lang)}{' '}
-          {new Date(joinedAt).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', {
-            day: 'numeric', month: 'short', year: 'numeric',
-          })}
+        <p className="mt-0.5 truncate text-xs text-muted-foreground" dir="ltr" style={{ textAlign: 'start' }}>
+          {member.email}
         </p>
+        {joinedLabel && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t('Joined', 'הצטרף/ה', lang)} {joinedLabel}
+          </p>
+        )}
       </div>
 
       {canRemove && (
-        <button
-          onClick={handleRemove}
-          disabled={removing}
-          title={t('Remove member', 'הסר חבר', lang)}
-          aria-label={t(`Remove ${member.name}`, `הסר את ${member.name}`, lang)}
-          className="shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            disabled={removing}
+            title={t('Remove member', 'הסר חבר', lang)}
+            aria-label={t(`Remove ${member.name}`, `הסר את ${member.name}`, lang)}
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-danger-subtle hover:text-danger-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <UserMinus className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <ConfirmDelete
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            itemName={member.name}
+            lang={lang}
+            title={t(`Remove "${member.name}" from the household?`, `להסיר את "${member.name}" ממשק הבית?`, lang)}
+            description={t(
+              'They will lose access to this household. Its finance data is not deleted.',
+              'הגישה למשק הבית תוסר. הנתונים הפיננסיים של משק הבית לא יימחקו.',
+              lang
+            )}
+            confirmLabel={t('Remove', 'הסר', lang)}
+            onConfirm={handleRemove}
+          />
+        </>
       )}
-    </div>
+    </li>
   )
 }
 
@@ -120,6 +136,7 @@ function MemberCard({ member, role, joinedAt, isCurrentUser, canRemove, lang, on
 export function Members() {
   const { user, household, getMembers, removeMember } = useAuth()
   const { data } = useFinance()
+  const { openSettings } = useNav()
   const lang = data.language
 
   // Cloud member fetch (refreshMembersFromCloud) is async — show skeleton
@@ -130,8 +147,8 @@ export function Members() {
     return () => clearTimeout(timer)
   }, [])
 
-  const members    = getMembers()
-  const isOwner    = household?.createdBy === user?.id
+  const members = getMembers()
+  const isOwner = household?.createdBy === user?.id
 
   // Once members arrive from cloud we can stop showing the skeleton early
   const showSkeleton = isLoading && members.length === 0
@@ -147,13 +164,14 @@ export function Members() {
 
   if (showSkeleton) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 animate-pulse">
-            <div className="h-10 w-10 rounded-full bg-muted shrink-0" />
+      <div className="space-y-3" aria-busy="true">
+        <span className="sr-only">{t('Loading members…', 'טוען חברים…', lang)}</span>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg p-3">
+            <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
             <div className="flex-1 space-y-2">
-              <div className="h-3 w-32 rounded bg-muted" />
-              <div className="h-2 w-20 rounded bg-muted" />
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-2 w-20" />
             </div>
           </div>
         ))}
@@ -163,48 +181,56 @@ export function Members() {
 
   if (members.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
-        <Users className="h-10 w-10 opacity-30" />
-        <p className="text-sm">{t('No members found.', 'לא נמצאו חברים.', lang)}</p>
-      </div>
+      <Card>
+        <EmptyState
+          icon={Users}
+          title={t('No members found.', 'לא נמצאו חברים.', lang)}
+          description={t(
+            'Invite your partner from Household Settings to plan together.',
+            'הזמינו את בן/בת הזוג מהגדרות משק הבית כדי לתכנן יחד.',
+            lang
+          )}
+          actionLabel={t('Household Settings', 'הגדרות משק הבית', lang)}
+          actionIcon={Settings}
+          onAction={openSettings}
+        />
+      </Card>
     )
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">
-            {t('Household Members', 'חברי משק הבית', lang)}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {members.length === 1
-              ? t('1 member', 'חבר אחד', lang)
-              : t(`${members.length} members`, `${members.length} חברים`, lang)}
-          </p>
-        </div>
+      <div>
+        <h2 className="text-lg font-semibold">{t('Household Members', 'חברי משק הבית', lang)}</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {members.length === 1
+            ? t('1 member', 'חבר אחד', lang)
+            : t(`${members.length} members`, `${members.length} חברים`, lang)}
+        </p>
       </div>
 
-      <div className="space-y-3">
-        {members.map((member) => {
-          const membership = household?.memberships.find((m) => m.userId === member.id)
-          const role       = membership?.role ?? 'member'
-          const joinedAt   = membership?.joinedAt ?? member.createdAt
+      <Card>
+        <ul className="divide-y">
+          {members.map((member) => {
+            const membership = household?.memberships.find((m) => m.userId === member.id)
+            const role = membership?.role ?? 'member'
+            const joinedAt = membership?.joinedAt ?? member.createdAt
 
-          return (
-            <MemberCard
-              key={member.id}
-              member={member}
-              role={role}
-              joinedAt={joinedAt}
-              isCurrentUser={member.id === user?.id}
-              canRemove={isOwner && member.id !== user?.id}
-              lang={lang}
-              onRemove={() => handleRemove(member.id, member.name)}
-            />
-          )
-        })}
-      </div>
+            return (
+              <MemberCard
+                key={member.id}
+                member={member}
+                role={role}
+                joinedAt={joinedAt}
+                isCurrentUser={member.id === user?.id}
+                canRemove={isOwner && member.id !== user?.id}
+                lang={lang}
+                onRemove={() => handleRemove(member.id, member.name)}
+              />
+            )
+          })}
+        </ul>
+      </Card>
     </div>
   )
 }

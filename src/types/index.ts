@@ -379,3 +379,48 @@ export interface HouseholdInvite {
 export interface CreatedHouseholdInvite extends HouseholdInvite {
   token: string
 }
+
+// ─── v4.0 Home — derived (never persisted) ───────────────────────────────────
+// Pure outputs of src/lib/insights.ts. Not part of FinanceData.
+
+/** Spending pace for the current month (see computeMonthlyPlan). */
+export type PaceStatus = 'no-income' | 'over' | 'ahead' | 'on-track'
+
+/** "Left to spend this month" plan — every value is unrounded. */
+export interface MonthlyPlan {
+  /** Σ getNetMonthly over all members' sources (no FX — same as the Income KPI). */
+  income: number
+  /** Monthly-equivalent of fixed expenses (yearly ÷ 12 = sinking-fund provision). */
+  fixed: number
+  /** Monthly-equivalent of variable expenses logged in the live list. */
+  variableSpent: number
+  /** Contributions of accounts not linked by a savings expense and not deducted from salary. */
+  savingsContrib: number
+  /** income − fixed − savingsContrib */
+  spendable: number
+  /** spendable − variableSpent (≡ the legacy Overview free cash flow). */
+  leftToSpend: number
+  daysInMonth: number
+  /** 1-based day of month of `today` (local time). */
+  dayOfMonth: number
+  /** Days left including today. */
+  daysLeft: number
+  /** Share of the month already elapsed before today, 0–100. */
+  elapsedPct: number
+  /** variableSpent ÷ spendable × 100, or null when spendable ≤ 0. Not capped. */
+  spentPct: number | null
+  /** leftToSpend ÷ daysLeft when leftToSpend > 0, else 0. */
+  dailyAllowance: number
+  status: PaceStatus
+}
+
+export type InsightTone = 'danger' | 'success' | 'warning' | 'info' | 'neutral'
+
+/** One Home insight card (max 3 shown, sorted by `priority`, 1 = highest). */
+export type Insight =
+  | { id: 'deficit'; tone: 'danger'; priority: 1; /** Amount over (≥ 0). */ amount: number; /** True when fixed + savings alone exceed income. */ structural: boolean }
+  | { id: 'surplus'; tone: 'success'; priority: 2; snapshotId: string; snapshotLabel: string; snapshotDate: string; /** Remaining (unallocated) surplus. */ amount: number }
+  | { id: 'over-budget'; tone: 'warning'; priority: 3; categories: ExpenseCategory[]; worst: { category: ExpenseCategory; spent: number; budget: number } }
+  | { id: 'bill-due'; tone: 'info'; priority: 4; bills: Array<{ expenseId: string; name: string; amount: number; dueMonth: number; thisMonth: boolean }> }
+  | { id: 'pace-ahead'; tone: 'warning'; priority: 5; spentPct: number; elapsedPct: number }
+  | { id: 'briefing'; tone: 'neutral'; priority: 6; snapshotId: string; score: number; headline: string }
