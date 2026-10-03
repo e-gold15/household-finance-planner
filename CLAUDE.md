@@ -307,7 +307,9 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `receiptScan.test.ts`   | 20 | JSON parsing, category validation, amount clamping, malformed input |
 | `cloudSync.test.ts`     | 32 | additive merge, empty-cloud, empty-local, diverged devices, realtime |
 | `monthlyBriefing.test.ts` | 23 | briefing parser, score clamping, bullet validation, API integration |
-| **Total** | **1752** (as of v3.2 — run `npm test` for live count) | |
+| `v4DataFreeze.test.ts` | 26 | FinanceData shape freeze, merge invariants, sync files identical to main |
+| `v4SaveGuards.test.tsx` | 10 | Quick Add blocked while loading, invalid numbers never saved as 0 |
+| **Total** | **913** (as of v4.0 — run `npm test` for live count) | |
 
 ### Rules
 - All existing tests must pass before any commit — run `npm test` and check the "Tests" line in the output
@@ -513,6 +515,19 @@ How will we know this feature is working?
 - ✅ Supabase Realtime subscription — live cross-device updates without page reload
 - ✅ Payslip scan: 18-field `PayslipScanResult`, study fund extraction, net pinned from payslip
 - ✅ 32 sync tests + 23 briefing tests added
+
+**v4.0 — shipped (Oct 2026) — Mobile-first redesign** (spec: `docs/v4/PRD.md`, PRODUCT_DESIGN.md §29)
+- ✅ Design system v4: Heebo, AA-contrast teal tokens, status triads, motion, 44px primitives, 16px inputs, RTL-correct progress/slider/switch/select
+- ✅ Mobile bottom nav (Home · Expenses · + · Goals · More), desktop sticky nav, hash routing (`#/expenses`) with working Back
+- ✅ Dialogs render as bottom sheets <640px; shared Money, MoneyInput, ListRow, ActionMenu, ConfirmDelete, EmptyState, Skeleton
+- ✅ Quick Add — 3-tap expense entry; disabled while first cloud pull is loading (data safety)
+- ✅ New Home: "Left to spend this month" hero (≡ legacy FCF), pace bar, ≤3 insight cards, donut + legend, collapsible More charts, onboarding checklist
+- ✅ All tabs refactored into focused components; zero horizontal overflow at 375px
+- ✅ Zero data-model / storage / sync changes — enforced by `v4DataFreeze.test.ts`
+
+**Follow-ups (need a Data Safety spec):**
+- [ ] FinanceContext: cancel/replace the pending debounced push when the first cloud pull completes (pre-existing stale-push race for any pre-pull write)
+- [ ] cloudInvites.test.ts hits the live Supabase when `.env.local` is present — mock `@/lib/supabase` in that test
 
 **Next (v3.3)**
 - [ ] Fix Google Sign-In on custom domain (Google Console authorized origins)
