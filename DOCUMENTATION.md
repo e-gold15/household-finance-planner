@@ -21,6 +21,7 @@
 | Design System | [docs/_shared/design-system.md](docs/_shared/design-system.md) |
 | AI Features | [docs/_shared/ai-features.md](docs/_shared/ai-features.md) |
 | Deployment | [docs/_shared/deployment.md](docs/_shared/deployment.md) |
+| v4.0 redesign (draft, not shipped) | [docs/v4/PRD.md](docs/v4/PRD.md) · [research](docs/v4/research.md) · [UX audit](docs/v4/ux-audit.md) |
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Audience:** designers, engineers, and product stakeholders.
 > This document is the single source of truth for every feature, screen, interaction, and design decision in the app.
-> **Version:** 3.3-draft — May 2026
+> **Version:** 4.0-draft — October 2026
 
 ---
 
@@ -32,6 +32,7 @@
 22. [Feature Spec: Historical Expense Entry (v2.3)](#22-feature-spec-historical-expense-entry-v23)
 24. [Feature Spec: Historical Income Entry (v2.5)](#24-feature-spec-historical-income-entry-v25)
 25. [Feature Spec: Add Income to Past Month from Income Tab (v2.6)](#25-feature-spec-add-income-to-past-month-from-income-tab-v26)
+29. [Feature Spec: v4.0 Mobile-First Redesign](#29-feature-spec-v40-mobile-first-redesign)
 
 ---
 
@@ -3234,3 +3235,88 @@ Secondary: at least one household member on iOS can reach the "Add to Home Scree
 2. `cloudFinance.ts` `mergeFinanceData` requires no change — `GoalAllocation` is a computed view, not stored
 3. Confirm `FINANCE_DEFAULTS` does not reference `monthlyAllocated` — it is absent from defaults by design
 4. Update `.claude/docs/database.md` to note that `GoalAllocation.monthlyAllocated` is a computed field, never written to the cloud
+
+---
+
+## 29. Feature Spec: v4.0 Mobile-First Redesign
+
+> **Status:** Draft, awaiting approval. Not implemented.
+> **Target version:** v4.0 · **Date written:** October 2026
+> **Full PRD:** [`docs/v4/PRD.md`](docs/v4/PRD.md) (authoritative: formulas, file ownership, QA checklist). **Inputs:** [`docs/v4/research.md`](docs/v4/research.md), [`docs/v4/ux-audit.md`](docs/v4/ux-audit.md).
+
+### 29.1 Non-negotiables
+
+1. **Zero data-model changes.**
+   - No added, removed or renamed fields in `FinanceData` or nested types.
+   - No new, renamed or removed `hf-*` keys.
+   - No changes to `cloudFinance.ts`, `localAuth.ts`, `contributionEngine.ts`, `supabase/*`, or the sync, merge, pull, push, realtime, rollover or auto-snapshot logic in `FinanceContext.tsx`.
+   - All new features are derived from existing data or are pure UI state (React state or URL hash). No `hf-ui-*` keys are planned.
+2. **Nothing is removed.** Every existing feature stays reachable: demo, PWA, receipt and payslip scan, AI briefing and plan explanation, surplus actions, history editing, invites, export and import, and the month-rollover prompt.
+3. **Mobile-first.** Design at 375px, then up to 1280px. Hebrew RTL and English, light and dark.
+4. **Green builds.** `npm test` and `npm run build` pass. No existing test is deleted or weakened. New pure logic gets unit tests.
+5. **Release gate:** `git diff main...HEAD` on the frozen files above is empty.
+
+### 29.2 Problem, users and metric
+
+**Problem:**
+- On a phone, 7 tabs scroll off-screen and dialogs overflow by 16px.
+- The Savings tab overflows to 462px, and iOS zooms on every input.
+- Brand teal fails WCAG contrast.
+- Home stacks 8 charts with no headline answer.
+- Adding an expense takes too many taps.
+
+**Users:**
+- Couple: both partners log on their phones.
+- Freelancer: needs a fast "what's left".
+- Expat: needs correct RTL and bidi.
+
+**Success metrics:**
+- Zero data loss: export array lengths are identical before and after the first v4 load.
+- A ≤3-tap Quick Add.
+- No horizontal overflow at 375px on any tab, in he and en.
+- All text token pairs pass WCAG AA.
+- Lighthouse mobile Accessibility ≥95.
+
+### 29.3 Sub-features
+
+| ID | Sub-feature | Summary | Key acceptance criteria |
+|---|---|---|---|
+| A | Design system v4 | Heebo font, self-hosted via `@fontsource-variable/heebo`, with tabular numerals. Teal split into fill (`--primary`) and text (`--primary-strong`). Success, warning, danger and info triads (base, strong, subtle). Type, radius and motion scales. `tailwindcss-animate`. Primitive fixes: buttons ≥44px, inputs 16px/`h-11`, dialog width and RTL close button, Progress/Slider/Switch RTL. New `Money` (bidi-isolated, tabular), `MoneyInput` (`inputMode="decimal"`, can be empty), `DirIcon`, `Skeleton`, `EmptyState`, `StatusChip`, `ChartTooltip`. A stable category colour map. | AA contrast in both themes. No iOS zoom. RTL fills from the start side. `parseMoneyInput` is unit-tested. |
+| B | App shell and navigation | Mobile bottom nav: Home · Expenses · [+] · Goals · More. More holds Income, Savings, History, Members and Settings. Desktop: sticky top nav with all 7 tabs plus a header "Add expense" button. URL hash routing (`#/expenses` etc.) so Back works. Solid header and demo banner. Safe-area insets. `DirectionProvider`. Toaster aware of RTL and dark mode. Skeleton instead of the full-screen spinner. | Every tab reachable at 375px with no overflow. Deep links and Back/forward work. `?inv=` invites unaffected. `NewMonthPrompt` unchanged. |
+| C | Responsive sheets | `DialogContent` is a bottom sheet below 640px (drag handle, sticky footer, `90dvh`) and a centred dialog at 640px and up. `AlertDialog` stays centred. The API is backward compatible. | All add/edit forms are sheets on mobile. Save is reachable with the keyboard open. Focus is trapped and restored. |
+| D | Quick Add | Global "+" opens: large amount (numeric keypad) → recency-ranked category chips → optional name (defaults to the category label) → Save. Calls `addExpense` with the same defaults as `ExpenseDialog`. "Earlier month" calls `addExpenseToMonth`. "More details" opens the full, prefilled `ExpenseDialog`. Receipt scan icon. Replaces the Expenses floating button. | 3 taps to save. Never saves 0. Past-month results identical to v3.x. RTL and dark mode work. |
+| E | Home redesign | Hero "Left to spend this month" = income − fixed − unlinked/non-deducted savings contributions − this month's variable expenses. This equals the existing FCF and is unit-tested. Shows days left, daily allowance, and a pace bar (spent % vs elapsed % of the month). Up to 3 insight cards by priority: deficit, surplus (existing allocation flow), over-budget, bill due, pace ahead, briefing. Compact 3-up KPI row. Donut with legend list. Budget health, goal donut, forecast and the full briefing sit in a collapsible "More charts" section. Onboarding checklist on first run. | Edge cases tested (no income, spendable ≤ 0, over, injected `today`). ≤3 cards. Every existing Overview feature still reachable. No clipped chart labels. |
+| F | P0/P1 fixes across tabs | Savings: two-line account card with a ⋯ menu. Goals: allocation table becomes mobile cards. History: collapsible month rows with "Show older". Expenses: mirrored chevrons, "Clear variable" moved into ⋯, neutral totals, Hebrew copy fixes. Income: flattened source rows and bidi-safe money. AuthPage: language toggle and accessible password eye. Shared empty states. | P0-1…P0-13 verified fixed at 375px in Hebrew. |
+| G | Consolidation | `ConfirmDelete` (names the item), `SegmentedControl`, `ListRow` + `ActionMenu`, applied only in files touched by A–F. | Keyboard accessible, RTL, no `any`. |
+
+### 29.4 Out of scope (v4.1+)
+
+- Mine/partner/shared `owner` field. It needs its own spec under the Data Safety Protocol.
+- Persisted health score or streaks.
+- Bank or CSV import.
+- Multi-currency or FX in totals.
+- Swipe actions and pull-to-refresh.
+- Quick-add undo.
+- Per-category pace.
+- Push notifications.
+- Folding Members into Household Settings.
+- Playwright visual-regression CI.
+- Fixing Google Sign-In on the custom domain.
+
+### 29.5 Implementation waves
+
+- **Wave 1 (parallel), foundation:**
+  - 1A, UX: tokens, primitives and `categories.ts`.
+  - 1B, Frontend: `App.tsx`, `Header.tsx`, `index.html`, `NavContext`, hash routing, bottom/desktop nav, More sheet, skeleton, and a `QuickAddSheet` stub.
+- **Wave 2 (parallel):**
+  - 2A: Overview + `SurplusBanner` + `src/lib/insights.ts`.
+  - 2B: Expenses + extracted `ExpenseDialog` + `QuickAddSheet` + `src/lib/quickAdd.ts`.
+  - 2C: Income, Savings, Goals, History, Members and AuthPage.
+  - Wave 1 files are frozen during Wave 2.
+- **Wave 3:**
+  - QA: new tests, including a data-freeze test.
+  - Code review: release gate.
+  - Manual mobile QA (375px he/en, light/dark, plus 1280px).
+  - Docs.
+
+Exact per-file ownership is in the PRD §4.
