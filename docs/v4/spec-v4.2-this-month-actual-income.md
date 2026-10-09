@@ -132,3 +132,22 @@ This is a bottom sheet on mobile and a dialog on desktop.
 - ≥ 30% of active households set at least one actual within 2 months of launch.
 - Edits to a source's planned `amount` drop, because people stop editing the baseline for one-off months.
 - History income totals line up with real bank deposits, so fewer manual "Recorded income" corrections.
+
+---
+
+## v4.2.1 — Copy: salary arrives the month after it's earned (approved 2026-10-09)
+
+The user clarified that the pay received in a month is last month's salary, and that it funds the current month's expenses. **The calculation does not change.** The amount received in October counts toward October's "Left to spend" and October's History entry. Only the wording of the sheet changes:
+
+| Element | New copy (EN / HE) |
+|---|---|
+| Subtitle | "Eilon · Salary — received in October 2026" / "התקבל באוקטובר 2026" |
+| Hint under the amount | "Usually September's pay — it funds October's expenses." / "בדרך כלל משכורת ספטמבר — היא מממנת את ההוצאות של אוקטובר." |
+| Info box | "Counts toward the October 2026 budget only. Your planned amount and future months stay the same." / "נספר רק בתקציב של אוקטובר 2026…" |
+
+### Acceptance criteria
+- [ ] The hint names the previous month, and January's hint names December.
+- [ ] In Hebrew, all month names are in Hebrew.
+- [ ] No change to any number.
+
+**Out of scope:** recording the amount against the previous month. The user chose the wording-only option.
