@@ -1,6 +1,6 @@
 # Spec — v4.2: "This month's actual" net income
 
-> **Status:** Draft, waiting for the user's approval · October 2026 · Owner: Product
+> **Status:** Approved by the user on 2026-10-09 (goals stay on planned income; actuals per source) · October 2026 · Owner: Product
 > Mockup: published as an artifact alongside this spec (Income tab, edit sheet, Home hero, in EN and HE).
 
 ---

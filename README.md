@@ -12,7 +12,7 @@ A modern, privacy-first household finance web app built for Israeli families (wi
 |------|-------------|
 | **Auth** | Google Sign-In (primary) + local email/password, per-user isolation |
 | **Household** | Shared household model — invite partners via a link, cross-device |
-| **Income** | Multi-member, multi-source, full Israeli tax engine (gross → net) |
+| **Income** | Multi-member, multi-source, full Israeli tax engine (gross → net); per-source "this month's actual" net for bonus / vacation-day months (planned amount untouched) |
 | **Expenses** | Categorised, recurring vs one-time, monthly normalisation |
 | **Savings** | Accounts by type and liquidity, contribution tracking |
 | **Goals** | Priority-ordered, smart allocation engine, gap analysis |
