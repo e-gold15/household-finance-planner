@@ -16,13 +16,13 @@ import { sourceTypeLabel } from './incomeUtils'
 
 /** FX conversion note for a source held in a foreign currency. */
 function FxNote({
-  source, currency, locale, lang, fxRates,
+  source, net, currency, locale, lang, fxRates,
 }: {
-  source: IncomeSource; currency: Currency; locale: Locale; lang: 'en' | 'he'; fxRates: FxRateCache | null
+  source: IncomeSource; net: number; currency: Currency; locale: Locale; lang: 'en' | 'he'; fxRates: FxRateCache | null
 }) {
   const src = source.sourceCurrency
   if (!src || src === currency) return null
-  const converted = convertAmount(getNetMonthly(source), src, currency, fxRates)
+  const converted = convertAmount(net, src, currency, fxRates)
   const rateNote = formatRateNote(src, currency, fxRates, lang)
   return (
     <div className="space-y-0.5 text-xs text-muted-foreground">
@@ -84,11 +84,14 @@ export function SourceRow({
   }
 
   // v4.2 — this month's actual (ignored once the month is over).
+  // Planned net as every total sees it (getNetMonthly also handles imputed
+  // income / reimbursements), so the chip matches the dialog and the header.
+  const plannedNet = useMemo(() => getNetMonthly(source), [source])
   const actual = activeMonthActual(source, yearMonth)
-  const actualDelta = actual ? actual.amount - bd.netMonthly : 0
+  const actualDelta = actual ? actual.amount - plannedNet : 0
 
   const hasDetails = source.isGross || source.useManualNet
-  const fx = <FxNote source={source} currency={currency} locale={locale} lang={lang} fxRates={fxRates} />
+  const fx = <FxNote source={source} net={actual ? actual.amount : plannedNet} currency={currency} locale={locale} lang={lang} fxRates={fxRates} />
 
   return (
     <li className="py-1">
@@ -155,7 +158,7 @@ export function SourceRow({
                 />
                 <span className="text-xs text-muted-foreground">
                   {t('Planned', 'מתוכנן', lang)}{' '}
-                  <Money value={bd.netMonthly} currency={ownCurrency} locale={locale} />
+                  <Money value={plannedNet} currency={ownCurrency} locale={locale} />
                 </span>
               </>
             ) : (

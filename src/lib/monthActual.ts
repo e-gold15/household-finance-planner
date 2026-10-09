@@ -12,7 +12,8 @@ import type { HouseholdMember, IncomeMonthActual, IncomeSource } from '@/types'
 /** The source's actual for `yearMonth`, or null when none is set for that month. */
 export function activeMonthActual(source: IncomeSource, yearMonth: string): IncomeMonthActual | null {
   const a = source.monthActual
-  return a && a.month === yearMonth ? a : null
+  // Same validity rule as getNetForMonth, so display and totals always agree.
+  return a && a.month === yearMonth && Number.isFinite(a.amount) && a.amount >= 0 ? a : null
 }
 
 /**

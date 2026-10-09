@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, Check, Info, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -47,20 +47,26 @@ export function MonthActualDialog({
   const existing = activeMonthActual(source, yearMonth)
   const ownCurrency: Currency = source.sourceCurrency ?? currency
 
-  const [value, setValue] = useState('')
-  const [note, setNote] = useState('')
+  // Planned net rounded to agorot — the pre-fill and the comparison base, so an
+  // untouched field never shows a fake "−₪0" difference.
+  const plannedRounded = Math.round(planned * 100) / 100
+  const seedValue = () => toMoneyInputValue(existing ? existing.amount : plannedRounded)
+  const [value, setValue] = useState(seedValue)
+  const [note, setNote] = useState(existing?.note ?? '')
+  const [touched, setTouched] = useState(false)
 
-  // Re-seed every time the sheet opens: the existing actual, else the planned net.
-  useEffect(() => {
+  // Re-seed every time the sheet opens (before paint, so no empty-field flash).
+  useLayoutEffect(() => {
     if (!open) return
-    setValue(toMoneyInputValue(existing ? existing.amount : Math.round(planned)))
+    setValue(seedValue())
     setNote(existing?.note ?? '')
+    setTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const parsed = parseMoneyInput(value)
   const valid = parsed !== null && Number.isFinite(parsed) && parsed >= 0
-  const delta = valid ? parsed - planned : 0
+  const delta = valid ? parsed - plannedRounded : 0
 
   const save = () => {
     if (!valid) return
@@ -98,16 +104,19 @@ export function MonthActualDialog({
             <MoneyInput
               id={inputId}
               value={value}
-              onValueChange={(v) => setValue(v)}
+              onValueChange={(v) => {
+                setValue(v)
+                setTouched(true)
+              }}
               currency={ownCurrency}
               locale={locale}
-              aria-invalid={!valid}
+              aria-invalid={touched && !valid}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') save()
               }}
             />
             {valid ? (
-              delta !== 0 && (
+              Math.abs(delta) >= 0.005 && (
                 <StatusChip
                   tone={delta > 0 ? 'success' : 'warning'}
                   icon={delta > 0 ? ArrowUp : ArrowDown}
@@ -120,7 +129,7 @@ export function MonthActualDialog({
                   }
                 />
               )
-            ) : (
+            ) : touched && (
               <p className="text-sm text-destructive" role="alert">
                 {t('Enter an amount of 0 or more.', 'יש להזין סכום של 0 ומעלה.', lang)}
               </p>

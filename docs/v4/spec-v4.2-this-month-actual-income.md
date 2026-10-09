@@ -71,6 +71,8 @@ This is a bottom sheet on mobile and a dialog on desktop.
 - The override is stamped with its month (`"2026-10"`). From 1 November it no longer matches the current month, so it is ignored everywhere. No cleanup job is needed.
 - October's snapshot keeps the actual total that was in place on the last day the app was open in October. This is the existing auto-snapshot behaviour.
 - The stale value stays on the source and does nothing. The next time the user sets an actual, it is overwritten.
+- Exception: when the app creates last month's snapshot late, for example on its first open in November (`snapshotPreviousMonth`), it uses last month's actual if one is still on the source. That is the real figure for that month.
+- An actual of 0 is a real month, such as unpaid leave. Home shows it as over budget, not as "no income".
 
 ### Data contract (🔴 Data Safety Protocol)
 

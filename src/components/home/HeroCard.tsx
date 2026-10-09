@@ -171,7 +171,7 @@ export function HeroCard({ plan, currency, locale, lang, onAddIncome }: HeroCard
                 {plan.income !== plan.plannedIncome ? t('Net income this month', 'הכנסה נטו החודש', lang) : t('Net income', 'הכנסה נטו', lang)}
                 {plan.income !== plan.plannedIncome && (
                   <span className="block text-xs">
-                    {t('Actual · planned', 'בפועל · מתוכנן', lang)} {m(plan.plannedIncome)}
+                    {t('Planned', 'מתוכנן', lang)} {m(plan.plannedIncome)}
                   </span>
                 )}
               </dt>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Money } from '@/components/ui/money'
 import { getNetForMonth } from '@/lib/taxEstimation'
+import { activeMonthActual } from '@/lib/monthActual'
 import type { FxRateCache } from '@/lib/fxRates'
 import { t } from '@/lib/utils'
 import type { Currency, HouseholdMember, IncomeSource, Locale } from '@/types'
@@ -33,7 +34,7 @@ export function MemberSection({
 }) {
   // v4.2 — this month's actuals count for the member total (planned when none).
   const memberNet = member.sources.reduce((s, src) => s + getNetForMonth(src, yearMonth), 0)
-  const hasActual = member.sources.some((src) => src.monthActual?.month === yearMonth)
+  const hasActual = member.sources.some((src) => activeMonthActual(src, yearMonth) !== null)
   const headingId = `member-${member.id}-heading`
   const initial = member.name.trim().charAt(0).toUpperCase() || '?'
   const count = member.sources.length

@@ -71,7 +71,7 @@ export function Overview() {
   const upcomingBills = useMemo(() => getUpcomingBills(data.expenses, today), [data.expenses, today])
   const donut = useMemo(() => buildExpenseDonut(data.expenses), [data.expenses])
   const projection = useMemo(() => computeSavingsProjection(data.accounts), [data.accounts])
-  const onboarding = useMemo(() => getOnboardingState(data, plan.income), [data, plan.income])
+  const onboarding = useMemo(() => getOnboardingState(data, plan.plannedIncome), [data, plan.plannedIncome])
   const surplusSnapshot = useMemo(() => findActionableSurplus(data.history, today), [data.history, today])
 
   // v4.1 — done goals are excluded from the Home goal donut, top-priority list and briefing.

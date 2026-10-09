@@ -368,10 +368,12 @@ describe('v4 data freeze — sync layer unchanged vs main', () => {
     // FinanceContext is how snapshot builders compute totalIncome (this month's
     // actuals). Every added/removed line must match one of these patterns; any
     // other change (sync, merge, push, pull, realtime) still fails here.
+    // Order-preserving: drop allowed lines from both sides, then the rest must be
+    // identical line by line (a reorder of sync steps would still fail).
     const allowed = ALLOWED_DIFF_LINES[file] ?? []
-    const changed = lineMultisetDiff(mainContent, current)
-    const unexpected = changed.filter((l) => !allowed.some((re) => re.test(l)))
-    expect(unexpected, `${file} differs from main outside the allowed lines`).toEqual([])
+    const norm = (text: string) =>
+      text.split('\n').map((l) => l.trim()).filter((l) => l && !allowed.some((re) => re.test(l)))
+    expect(norm(current), `${file} differs from main outside the allowed lines`).toEqual(norm(mainContent))
   })
 })
 
@@ -382,25 +384,7 @@ const ALLOWED_DIFF_LINES: Record<string, RegExp[]> = {
     /^import \{ toYearMonth \} from '@\/lib\/taxEstimation'$/,
     /^import \{ householdIncomeForMonth \} from '@\/lib\/monthActual'$/,
     /^const totalIncome\s+= d\.members\.reduce\(\(s, m\) => s \+ m\.sources\.reduce\(\(ss, src\) => ss \+ getNetMonthly\(src\), 0\), 0\)$/,
-    /^const totalIncome\s+= householdIncomeForMonth\(d\.members, .+\)\.actual$/,
+    /^const totalIncome\s+= householdIncomeForMonth\(d\.members, (toYearMonth\((new Date\(\)|now)\)|`\$\{prevYear\}-\$\{String\(prevMonth\)\.padStart\(2, '0'\)\}`)\)\.actual$/,
     /^\/\/ v4\.2 — this month's actuals \(if any\) replace the planned net for the current month\.$/,
   ],
-}
-
-/** Lines (trimmed, non-empty) present in one text but not the other, counted as multisets. */
-function lineMultisetDiff(a: string, b: string): string[] {
-  const count = (text: string) => {
-    const m = new Map<string, number>()
-    for (const raw of text.split('\n')) {
-      const l = raw.trim()
-      if (l) m.set(l, (m.get(l) ?? 0) + 1)
-    }
-    return m
-  }
-  const ca = count(a)
-  const cb = count(b)
-  const out: string[] = []
-  for (const [l, n] of ca) if ((cb.get(l) ?? 0) !== n) out.push(l)
-  for (const [l, n] of cb) if (!ca.has(l) && n > 0) out.push(l)
-  return out
 }
