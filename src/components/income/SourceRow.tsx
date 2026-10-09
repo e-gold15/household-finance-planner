@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ArrowRight, BadgeCheck, Lock, Pencil, Trash2, Waves } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, BadgeCheck, CalendarCheck, Lock, Pencil, RotateCcw, Trash2, Waves } from 'lucide-react'
 import { ActionMenu } from '@/components/ui/action-menu'
 import { Badge } from '@/components/ui/badge'
 import { DirIcon } from '@/components/ui/dir-icon'
@@ -7,6 +7,7 @@ import { ListRow } from '@/components/ui/list-row'
 import { Money } from '@/components/ui/money'
 import { StatusChip } from '@/components/ui/status-chip'
 import { estimateTax, getNetMonthly } from '@/lib/taxEstimation'
+import { activeMonthActual } from '@/lib/monthActual'
 import { convertAmount, formatRateNote, type FxRateCache } from '@/lib/fxRates'
 import { t } from '@/lib/utils'
 import type { Currency, IncomeSource, Locale } from '@/types'
@@ -48,11 +49,17 @@ function FxNote({
  * (contributions, detailed payslip) and the tax breakdown sit underneath.
  */
 export function SourceRow({
-  source, onEdit, onDelete, lang, currency, locale, fxRates,
+  source, onEdit, onDelete, onSetActual, onResetActual, yearMonth, lang, currency, locale, fxRates,
 }: {
   source: IncomeSource
   onEdit: () => void
   onDelete: () => void
+  /** v4.2 — open the "This month's actual" sheet. */
+  onSetActual: () => void
+  /** v4.2 — remove this month's actual (back to planned). */
+  onResetActual: () => void
+  /** Current month, "YYYY-MM". */
+  yearMonth: string
   lang: 'en' | 'he'
   currency: Currency
   locale: Locale
@@ -75,6 +82,10 @@ export function SourceRow({
       <Badge key="adv" variant="secondary" className="py-0 text-xs">{t('Detailed payslip', 'תלוש מפורט', lang)}</Badge>,
     )
   }
+
+  // v4.2 — this month's actual (ignored once the month is over).
+  const actual = activeMonthActual(source, yearMonth)
+  const actualDelta = actual ? actual.amount - bd.netMonthly : 0
 
   const hasDetails = source.isGross || source.useManualNet
   const fx = <FxNote source={source} currency={currency} locale={locale} lang={lang} fxRates={fxRates} />
@@ -107,6 +118,18 @@ export function SourceRow({
                 {t('Manual', 'ידני', lang)}
               </span>
             )}
+            {actual && actualDelta !== 0 && (
+              <StatusChip
+                tone={actualDelta > 0 ? 'success' : 'warning'}
+                icon={actualDelta > 0 ? ArrowUp : ArrowDown}
+                label={
+                  <>
+                    <Money value={actualDelta} currency={ownCurrency} locale={locale} showSign />{' '}
+                    {t('this month', 'החודש', lang)}
+                  </>
+                }
+              />
+            )}
           </>
         }
         trailing={
@@ -120,23 +143,51 @@ export function SourceRow({
                 aria-label={t('Gross', 'ברוטו', lang)}
               />
             )}
-            <Money value={bd.netMonthly} currency={ownCurrency} locale={locale} size="md" className="font-semibold" />
-            <span className="text-xs text-muted-foreground">{t('net per month', 'נטו לחודש', lang)}</span>
+            {actual ? (
+              <>
+                <Money
+                  value={actual.amount}
+                  currency={ownCurrency}
+                  locale={locale}
+                  size="md"
+                  className="font-semibold"
+                  aria-label={t("This month's actual", 'בפועל החודש', lang)}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {t('Planned', 'מתוכנן', lang)}{' '}
+                  <Money value={bd.netMonthly} currency={ownCurrency} locale={locale} />
+                </span>
+              </>
+            ) : (
+              <>
+                <Money value={bd.netMonthly} currency={ownCurrency} locale={locale} size="md" className="font-semibold" />
+                <span className="text-xs text-muted-foreground">{t('net per month', 'נטו לחודש', lang)}</span>
+              </>
+            )}
           </div>
         }
         actions={
           <ActionMenu
             label={t(`Actions for ${source.name}`, `פעולות עבור ${source.name}`, lang)}
             items={[
-              { key: 'edit', label: t('Edit', 'עריכה', lang), icon: Pencil, onSelect: onEdit },
+              { key: 'actual', label: t("This month's actual", 'בפועל החודש', lang), icon: CalendarCheck, onSelect: onSetActual },
+              { key: 'edit', label: t('Edit planned amount', 'עריכת הסכום המתוכנן', lang), icon: Pencil, onSelect: onEdit },
+              ...(actual
+                ? [{ key: 'reset', label: t('Reset to planned', 'חזרה למתוכנן', lang), icon: RotateCcw, onSelect: onResetActual }]
+                : []),
               'separator',
               { key: 'delete', label: t('Delete', 'מחיקה', lang), icon: Trash2, destructive: true, onSelect: onDelete },
             ]}
           />
         }
       />
-      {(hasDetails || extras.length > 0 || (source.sourceCurrency && source.sourceCurrency !== currency)) && (
+      {(hasDetails || extras.length > 0 || actual?.note || (source.sourceCurrency && source.sourceCurrency !== currency)) && (
         <div className="space-y-1 pe-2 ps-4">
+          {actual?.note && (
+            <p className="text-xs italic text-muted-foreground">
+              <bdi>{actual.note}</bdi>
+            </p>
+          )}
           {fx}
           {extras.length > 0 && <div className="flex flex-wrap gap-1">{extras}</div>}
           <TaxBreakdownExpander source={source} currency={ownCurrency} locale={locale} lang={lang} />

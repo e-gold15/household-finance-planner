@@ -22,6 +22,21 @@ export type Currency = 'ILS' | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF' | 'CAD' | '
 export type Locale = 'he-IL' | 'en-US' | 'en-GB' | 'de-DE' | 'fr-FR' | 'en-CA'
 export type IncomeSourceType = 'salary' | 'freelance' | 'business' | 'rental' | 'investment' | 'pension' | 'other'
 
+/**
+ * v4.2 — the net amount actually received in one calendar month, when it
+ * differs from the planned amount (bonus, vacation days, overtime…).
+ * Only honoured while `month` is the current month; the planned amount is
+ * never modified.
+ */
+export interface IncomeMonthActual {
+  /** Local calendar month this amount applies to, "YYYY-MM". */
+  month: string
+  /** Net amount received that month, in the source's own currency. ≥ 0. */
+  amount: number
+  /** Optional reason: "Bonus", "3 vacation days"… */
+  note?: string
+}
+
 export interface IncomeSource {
   id: string
   name: string
@@ -74,6 +89,12 @@ export interface IncomeSource {
    * backward-compatible with existing data.
    */
   incomeType?: 'fixed' | 'variable'
+  /**
+   * v4.2 — this month's actual net, overriding the planned net for that month
+   * only. Optional; absent = planned amount. Travels inside the member, so
+   * the members mergeById strategy is unchanged.
+   */
+  monthActual?: IncomeMonthActual
 }
 
 export interface HouseholdMember {
@@ -390,8 +411,10 @@ export type PaceStatus = 'no-income' | 'over' | 'ahead' | 'on-track'
 
 /** "Left to spend this month" plan — every value is unrounded. */
 export interface MonthlyPlan {
-  /** Σ getNetMonthly over all members' sources (no FX — same as the Income KPI). */
+  /** Σ getNetForMonth over all members' sources for the month of `today` (v4.2 — actuals honoured; no FX). */
   income: number
+  /** Σ getNetMonthly over all members' sources — the planned income, ignoring this month's actuals. */
+  plannedIncome: number
   /** Monthly-equivalent of fixed expenses (yearly ÷ 12 = sinking-fund provision). */
   fixed: number
   /** Monthly-equivalent of variable expenses logged in the live list. */
@@ -400,7 +423,7 @@ export interface MonthlyPlan {
   savingsContrib: number
   /** income − fixed − savingsContrib */
   spendable: number
-  /** spendable − variableSpent (≡ the legacy Overview free cash flow). */
+  /** spendable − variableSpent (≡ the legacy free cash flow when no actuals are set). */
   leftToSpend: number
   daysInMonth: number
   /** 1-based day of month of `today` (local time). */

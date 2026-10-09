@@ -58,7 +58,8 @@ export function Overview() {
 
   // ── Derived numbers ──────────────────────────────────────────────────────
   const plan = useMemo(() => computeMonthlyPlan(data, today), [data, today])
-  // Same evaluation order as the v2.x KPIs (plan.leftToSpend === legacy.freeCashFlow).
+  // Same evaluation order as the v2.x KPIs (plan.leftToSpend === legacy.freeCashFlow
+  // unless this month's actual income is set — v4.2).
   const legacy = useMemo(() => computeLegacyTotals(data), [data])
   const totalExpenses = legacy.totalExpenses
   const totalAssets = useMemo(() => data.accounts.reduce((s, a) => s + a.balance, 0), [data.accounts])
@@ -77,14 +78,15 @@ export function Overview() {
   const goalAllocations = useMemo(() => {
     const goals = activeGoals(data.goals)
     if (goals.length === 0) return []
+    // v4.2 — goals plan on the planned income, never on this month's actuals.
     return allocateGoals({
       goals,
-      monthlySurplus: plan.leftToSpend,
+      monthlySurplus: legacy.freeCashFlow,
       accounts: data.accounts,
       emergencyBufferMonths: data.emergencyBufferMonths,
       monthlyExpenses: totalExpenses,
     })
-  }, [data.goals, plan.leftToSpend, data.accounts, data.emergencyBufferMonths, totalExpenses])
+  }, [data.goals, legacy.freeCashFlow, data.accounts, data.emergencyBufferMonths, totalExpenses])
 
   // ── v3.3 Monthly briefing (unchanged payload) ────────────────────────────
   const currentSnapshot = useMemo(() => data.history.find((h) => h.autoSnapshot === true), [data.history])

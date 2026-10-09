@@ -167,7 +167,14 @@ export function HeroCard({ plan, currency, locale, lang, onAddIncome }: HeroCard
         <div id={breakdownId} className="border-t bg-muted/30 px-5 py-4">
           <dl className="space-y-2 text-sm">
             <div className="flex items-center justify-between gap-3">
-              <dt className="text-muted-foreground">{t('Net income', 'הכנסה נטו', lang)}</dt>
+              <dt className="text-muted-foreground">
+                {plan.income !== plan.plannedIncome ? t('Net income this month', 'הכנסה נטו החודש', lang) : t('Net income', 'הכנסה נטו', lang)}
+                {plan.income !== plan.plannedIncome && (
+                  <span className="block text-xs">
+                    {t('Actual · planned', 'בפועל · מתוכנן', lang)} {m(plan.plannedIncome)}
+                  </span>
+                )}
+              </dt>
               <dd>{m(plan.income, { className: 'font-medium' })}</dd>
             </div>
             <div className="flex items-center justify-between gap-3">

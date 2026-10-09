@@ -1,20 +1,24 @@
 import { useMemo, useState } from 'react'
-import { Lock, UserPlus, Users, Waves } from 'lucide-react'
+import { ArrowDown, ArrowUp, Lock, UserPlus, Users, Waves } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { ConfirmDelete } from './ui/confirm-delete'
 import { EmptyState } from './ui/empty-state'
 import { Money } from './ui/money'
 import { StatusChip } from './ui/status-chip'
 import { useFinance } from '@/context/FinanceContext'
-import { getNetMonthly } from '@/lib/taxEstimation'
+import { getNetMonthly, toYearMonth } from '@/lib/taxEstimation'
+import { householdIncomeForMonth, setMemberSourceMonthActual } from '@/lib/monthActual'
 import { t } from '@/lib/utils'
-import type { IncomeSource } from '@/types'
+import type { IncomeMonthActual, IncomeSource } from '@/types'
 import { AddIncomeDialog } from './income/AddIncomeDialog'
 import { AddMemberDialog } from './income/AddMemberDialog'
 import { MemberSection } from './income/MemberSection'
+import { MonthActualDialog } from './income/MonthActualDialog'
 import { SourceDialog } from './income/SourceDialog'
 
 type SourceTarget = { memberId: string; memberName: string; source?: IncomeSource }
+type ActualTarget = { memberId: string; sourceId: string }
 type DeleteTarget =
   | { kind: 'source'; memberId: string; sourceId: string; name: string }
   | { kind: 'member'; memberId: string; name: string }
@@ -35,6 +39,32 @@ export function Income() {
   const [sourceTarget, setSourceTarget] = useState<SourceTarget | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+
+  // v4.2 — "This month's actual". The month is fixed per render; it rolls over by itself.
+  const yearMonth = toYearMonth(new Date())
+  const monthLabel = new Date().toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US', { month: 'long', year: 'numeric' })
+  const [actualOpen, setActualOpen] = useState(false)
+  const [actualTarget, setActualTarget] = useState<ActualTarget | null>(null)
+  const actualMember = actualTarget ? data.members.find((m) => m.id === actualTarget.memberId) : undefined
+  const actualSource = actualMember?.sources.find((s) => s.id === actualTarget?.sourceId)
+
+  const saveMonthActual = (memberId: string, sourceId: string, actual: IncomeMonthActual | null) => {
+    const member = data.members.find((m) => m.id === memberId)
+    if (!member) return
+    const source = member.sources.find((s) => s.id === sourceId)
+    if (!source) return
+    updateMember(setMemberSourceMonthActual(member, sourceId, actual))
+    toast.success(
+      actual
+        ? t(`${source.name}: actual saved for ${monthLabel} ✓`, `${source.name}: הסכום בפועל נשמר עבור ${monthLabel} ✓`, lang)
+        : t(`${source.name}: back to the planned amount ✓`, `${source.name}: חזרה לסכום המתוכנן ✓`, lang),
+    )
+  }
+
+  const openActual = (memberId: string, src: IncomeSource) => {
+    setActualTarget({ memberId, sourceId: src.id })
+    setActualOpen(true)
+  }
 
   const handleSaveSource = (memberId: string, src: IncomeSource) => {
     const member = data.members.find((m) => m.id === memberId)
@@ -80,6 +110,9 @@ export function Income() {
     return { totalIncome: total, fixedIncome: fixed, variableIncome: variable }
   }, [data.members])
 
+  const monthIncome = useMemo(() => householdIncomeForMonth(data.members, yearMonth), [data.members, yearMonth])
+  const monthDelta = monthIncome.actual - monthIncome.planned
+
   const hasSources = data.members.some((m) => m.sources.length > 0)
   const hasFixedAndVariable = fixedIncome > 0 && variableIncome > 0
 
@@ -88,12 +121,41 @@ export function Income() {
       {/* Summary — total + fixed/variable split */}
       {hasSources && (
         <div className="space-y-2 px-1 pt-1">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-sm font-medium text-muted-foreground">
-              {t('Total net monthly', 'סה"כ נטו חודשי', lang)}
-            </span>
-            <Money value={totalIncome} currency={currency} locale={locale} className="text-2xl font-bold" />
-          </div>
+          {monthIncome.hasActuals ? (
+            <>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-sm font-medium text-muted-foreground">
+                  {t('This month (actual)', 'החודש (בפועל)', lang)}
+                </span>
+                <Money value={monthIncome.actual} currency={currency} locale={locale} className="text-2xl font-bold" />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span className="text-sm text-muted-foreground">
+                  {t('Planned monthly', 'מתוכנן לחודש', lang)}{' '}
+                  <Money value={totalIncome} currency={currency} locale={locale} />
+                </span>
+                {monthDelta !== 0 && (
+                  <StatusChip
+                    tone={monthDelta > 0 ? 'success' : 'warning'}
+                    icon={monthDelta > 0 ? ArrowUp : ArrowDown}
+                    label={
+                      <>
+                        <Money value={monthDelta} currency={currency} locale={locale} showSign />{' '}
+                        {t('vs planned', 'מהמתוכנן', lang)}
+                      </>
+                    }
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="text-sm font-medium text-muted-foreground">
+                {t('Total net monthly', 'סה"כ נטו חודשי', lang)}
+              </span>
+              <Money value={totalIncome} currency={currency} locale={locale} className="text-2xl font-bold" />
+            </div>
+          )}
           {hasFixedAndVariable && (
             <div className="flex flex-wrap gap-2">
               <StatusChip
@@ -164,6 +226,9 @@ export function Income() {
             currency={currency}
             locale={locale}
             fxRates={fxRates}
+            yearMonth={yearMonth}
+            onSetActual={(src) => openActual(member.id, src)}
+            onResetActual={(src) => saveMonthActual(member.id, src.id, null)}
             onAddSource={() => openSource({ memberId: member.id, memberName: member.name })}
             onEditSource={(src) => openSource({ memberId: member.id, memberName: member.name, source: src })}
             onDeleteSource={(src) => askDelete({ kind: 'source', memberId: member.id, sourceId: src.id, name: src.name })}
@@ -182,6 +247,21 @@ export function Income() {
           memberName={sourceTarget.memberName}
           existing={sourceTarget.source}
           onSave={handleSaveSource}
+          lang={lang}
+          currency={currency}
+          locale={locale}
+        />
+      )}
+
+      {actualTarget && actualMember && actualSource && (
+        <MonthActualDialog
+          open={actualOpen}
+          onOpenChange={setActualOpen}
+          memberName={actualMember.name}
+          source={actualSource}
+          yearMonth={yearMonth}
+          monthLabel={monthLabel}
+          onSave={(actual) => saveMonthActual(actualTarget.memberId, actualTarget.sourceId, actual)}
           lang={lang}
           currency={currency}
           locale={locale}

@@ -363,6 +363,44 @@ describe('v4 data freeze — sync layer unchanged vs main', () => {
       return
     }
     const current = node.fs.readFileSync(node.path.resolve(root, file), 'utf8')
-    expect(current === mainContent, `${file} differs from main`).toBe(true)
+    if (current === mainContent) return
+    // v4.2 (spec-v4.2-this-month-actual-income.md) — the ONLY allowed change in
+    // FinanceContext is how snapshot builders compute totalIncome (this month's
+    // actuals). Every added/removed line must match one of these patterns; any
+    // other change (sync, merge, push, pull, realtime) still fails here.
+    const allowed = ALLOWED_DIFF_LINES[file] ?? []
+    const changed = lineMultisetDiff(mainContent, current)
+    const unexpected = changed.filter((l) => !allowed.some((re) => re.test(l)))
+    expect(unexpected, `${file} differs from main outside the allowed lines`).toEqual([])
   })
 })
+
+/** Allowed added/removed lines per frozen file (trimmed). Empty = byte-identical required. */
+const ALLOWED_DIFF_LINES: Record<string, RegExp[]> = {
+  'src/context/FinanceContext.tsx': [
+    /^import \{ getNetMonthly \} from '@\/lib\/taxEstimation'$/,
+    /^import \{ toYearMonth \} from '@\/lib\/taxEstimation'$/,
+    /^import \{ householdIncomeForMonth \} from '@\/lib\/monthActual'$/,
+    /^const totalIncome\s+= d\.members\.reduce\(\(s, m\) => s \+ m\.sources\.reduce\(\(ss, src\) => ss \+ getNetMonthly\(src\), 0\), 0\)$/,
+    /^const totalIncome\s+= householdIncomeForMonth\(d\.members, .+\)\.actual$/,
+    /^\/\/ v4\.2 — this month's actuals \(if any\) replace the planned net for the current month\.$/,
+  ],
+}
+
+/** Lines (trimmed, non-empty) present in one text but not the other, counted as multisets. */
+function lineMultisetDiff(a: string, b: string): string[] {
+  const count = (text: string) => {
+    const m = new Map<string, number>()
+    for (const raw of text.split('\n')) {
+      const l = raw.trim()
+      if (l) m.set(l, (m.get(l) ?? 0) + 1)
+    }
+    return m
+  }
+  const ca = count(a)
+  const cb = count(b)
+  const out: string[] = []
+  for (const [l, n] of ca) if ((cb.get(l) ?? 0) !== n) out.push(l)
+  for (const [l, n] of cb) if (!ca.has(l) && n > 0) out.push(l)
+  return out
+}

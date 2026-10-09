@@ -215,3 +215,22 @@ export function getNetMonthly(source: IncomeSource): number {
   const reimbursements = components?.nonTaxableReimbursements ?? 0
   return net - imputedIncome + reimbursements
 }
+
+/** Local calendar month of `date` as "YYYY-MM" (v4.2 month actuals). */
+export function toYearMonth(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Net income of a source for one calendar month (v4.2).
+ * Returns the recorded actual when `monthActual.month === yearMonth`,
+ * otherwise the planned net (`getNetMonthly`). The planned amount is never
+ * changed by an actual — next month falls back to it automatically.
+ */
+export function getNetForMonth(source: IncomeSource, yearMonth: string): number {
+  const actual = source.monthActual
+  if (actual && actual.month === yearMonth && Number.isFinite(actual.amount) && actual.amount >= 0) {
+    return actual.amount
+  }
+  return getNetMonthly(source)
+}

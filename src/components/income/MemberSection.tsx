@@ -3,7 +3,7 @@ import { ActionMenu } from '@/components/ui/action-menu'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Money } from '@/components/ui/money'
-import { getNetMonthly } from '@/lib/taxEstimation'
+import { getNetForMonth } from '@/lib/taxEstimation'
 import type { FxRateCache } from '@/lib/fxRates'
 import { t } from '@/lib/utils'
 import type { Currency, HouseholdMember, IncomeSource, Locale } from '@/types'
@@ -14,19 +14,26 @@ import { SourceRow } from './SourceRow'
  * total · ⋯) followed by flat source rows — no card-in-card (P1-17).
  */
 export function MemberSection({
-  member, lang, currency, locale, fxRates, onAddSource, onEditSource, onDeleteSource, onDeleteMember,
+  member, lang, currency, locale, fxRates, yearMonth, onAddSource, onEditSource, onDeleteSource, onDeleteMember,
+  onSetActual, onResetActual,
 }: {
   member: HouseholdMember
   lang: 'en' | 'he'
   currency: Currency
   locale: Locale
   fxRates: FxRateCache | null
+  /** Current month, "YYYY-MM" (v4.2 actuals). */
+  yearMonth: string
+  onSetActual: (src: IncomeSource) => void
+  onResetActual: (src: IncomeSource) => void
   onAddSource: () => void
   onEditSource: (src: IncomeSource) => void
   onDeleteSource: (src: IncomeSource) => void
   onDeleteMember: () => void
 }) {
-  const memberNet = member.sources.reduce((s, src) => s + getNetMonthly(src), 0)
+  // v4.2 — this month's actuals count for the member total (planned when none).
+  const memberNet = member.sources.reduce((s, src) => s + getNetForMonth(src, yearMonth), 0)
+  const hasActual = member.sources.some((src) => src.monthActual?.month === yearMonth)
   const headingId = `member-${member.id}-heading`
   const initial = member.name.trim().charAt(0).toUpperCase() || '?'
   const count = member.sources.length
@@ -54,7 +61,9 @@ export function MemberSection({
           </div>
           <div className="shrink-0 text-end">
             <Money value={memberNet} currency={currency} locale={locale} size="md" className="font-semibold" />
-            <p className="text-xs text-muted-foreground">{t('net per month', 'נטו לחודש', lang)}</p>
+            <p className="text-xs text-muted-foreground">
+              {hasActual ? t('net this month', 'נטו החודש', lang) : t('net per month', 'נטו לחודש', lang)}
+            </p>
           </div>
           <ActionMenu
             label={t(`Actions for ${member.name}`, `פעולות עבור ${member.name}`, lang)}
@@ -75,6 +84,9 @@ export function MemberSection({
                 source={src}
                 onEdit={() => onEditSource(src)}
                 onDelete={() => onDeleteSource(src)}
+                onSetActual={() => onSetActual(src)}
+                onResetActual={() => onResetActual(src)}
+                yearMonth={yearMonth}
                 lang={lang}
                 currency={currency}
                 locale={locale}
