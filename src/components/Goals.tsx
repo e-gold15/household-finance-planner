@@ -9,6 +9,7 @@ import { EmptyState } from './ui/empty-state'
 import { useFinance } from '@/context/FinanceContext'
 import { allocateGoals, autoAllocateSavings } from '@/lib/savingsEngine'
 import { getNetMonthly } from '@/lib/taxEstimation'
+import { plannedFreeCashFlow } from '@/lib/monthActual'
 import { t } from '@/lib/utils'
 import { explainGoalPlan, aiEnabled } from '@/lib/aiAdvisor'
 import { activeGoals, completedGoals, markGoalDone, moveStepsPastHidden, reopenGoal } from '@/lib/goals'
@@ -50,13 +51,11 @@ export function Goals() {
   // Derive FCF from most recent non-stub snapshot, or fall back to computed surplus.
   // Stubs have totalIncome === 0 (income is unknown for retroactive stubs).
   // Only snapshots where totalIncome > 0 carry a meaningful freeCashFlow figure.
-  const freeCashFlow = useMemo(() => {
-    const nonStub = [...data.history]
-      .filter((s) => s.totalIncome > 0)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    if (nonStub.length > 0) return nonStub[0].freeCashFlow
-    return surplus
-  }, [data.history, surplus])
+  // v4.2 — goals plan on the PLANNED income, never on this month's actuals.
+  const freeCashFlow = useMemo(
+    () => plannedFreeCashFlow(data.history, data.members, surplus, new Date()),
+    [data.history, data.members, surplus]
+  )
 
   const allocations: GoalAllocation[] = useMemo(
     () =>

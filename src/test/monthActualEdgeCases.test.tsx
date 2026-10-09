@@ -6,9 +6,9 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import type { FinanceData, IncomeMonthActual, IncomeSource } from '@/types'
+import type { FinanceData, IncomeMonthActual, IncomeSource, MonthSnapshot } from '@/types'
 import { getNetForMonth, getNetMonthly } from '@/lib/taxEstimation'
-import { activeMonthActual, householdIncomeForMonth } from '@/lib/monthActual'
+import { activeMonthActual, householdIncomeForMonth, plannedFreeCashFlow } from '@/lib/monthActual'
 import { computeMonthlyPlan } from '@/lib/insights'
 import { convertAmount, type FxRateCache } from '@/lib/fxRates'
 import { MonthActualDialog } from '@/components/income/MonthActualDialog'
@@ -130,5 +130,33 @@ describe('foreign-currency source', () => {
     expect(plannedIls).not.toBeNull()
     expect(actualIls).not.toBeNull()
     expect((actualIls as number) / (plannedIls as number)).toBeCloseTo(5500 / 5000, 10)
+  })
+})
+
+describe('plannedFreeCashFlow() — Goals tab stays on planned income (QA bug)', () => {
+  const snap = (date: Date, income: number, fcf: number): MonthSnapshot => ({
+    id: date.toISOString(), label: '', date: date.toISOString(),
+    totalIncome: income, totalExpenses: 0, totalSavings: 0, freeCashFlow: fcf,
+  })
+  const members = (a?: IncomeMonthActual) => [{ id: 'm1', name: 'E', sources: [makeSource({ monthActual: a })] }]
+  const sept = snap(new Date(2026, 8, 1), 14000, 4000)
+
+  it('no actual: identical to the latest snapshot FCF (legacy behaviour)', () => {
+    expect(plannedFreeCashFlow([sept, snap(TODAY, 14000, 9000)], members(), 1, TODAY)).toBe(9000)
+  })
+
+  it('bonus actual: the current-month delta is removed', () => {
+    const oct = snap(TODAY, 16300, 11300) // snapshot carries the +2,300 actual
+    expect(plannedFreeCashFlow([sept, oct], members(actual(16300)), 1, TODAY)).toBe(9000)
+  })
+
+  it('zero actual: current snapshot is not treated as a stub', () => {
+    const oct = snap(TODAY, 0, -5000)
+    expect(plannedFreeCashFlow([sept, oct], members(actual(0)), 1, TODAY)).toBe(9000)
+  })
+
+  it('past-month snapshot is never adjusted; empty history falls back to surplus', () => {
+    expect(plannedFreeCashFlow([sept], members(actual(16300)), 1, TODAY)).toBe(4000)
+    expect(plannedFreeCashFlow([], members(actual(16300)), 777, TODAY)).toBe(777)
   })
 })
