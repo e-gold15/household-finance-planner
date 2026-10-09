@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import type { FinanceData, HouseholdMember, IncomeMonthActual, IncomeSource } from '@/types'
 import { getNetForMonth, getNetMonthly, toYearMonth } from '@/lib/taxEstimation'
 import {
@@ -21,8 +21,25 @@ import { mergeFinanceData } from '@/lib/cloudFinance'
 import { computeLegacyTotals, computeMonthlyPlan } from '@/lib/insights'
 import { MonthActualDialog } from '@/components/income/MonthActualDialog'
 import { SourceDialog } from '@/components/income/SourceDialog'
+import { FinanceProvider, useFinance } from '@/context/FinanceContext'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
+// FinanceProvider integration tests (QA) — keep the real mergeFinanceData but
+// never touch the network: cloud pull returns "no row", push is a no-op, and
+// Supabase is reported as unconfigured so no Realtime channel is opened.
+vi.mock('@/lib/supabase', () => ({
+  supabaseConfigured: false,
+  supabase: { channel: vi.fn(), removeChannel: vi.fn() },
+}))
+vi.mock('@/lib/cloudFinance', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/cloudFinance')>()
+  return {
+    ...actual,
+    fetchCloudFinanceData: vi.fn(async () => null),
+    pushCloudFinanceData: vi.fn(async () => {}),
+  }
+})
 
 afterEach(() => cleanup())
 
@@ -366,5 +383,317 @@ describe('<SourceDialog /> edit keeps monthActual', () => {
     const saved = onSave.mock.calls[0][1] as IncomeSource
     expect(saved.id).toBe('s1')
     expect(saved.monthActual).toEqual({ month: OCT, amount: 16300, note: 'Bonus' })
+  })
+})
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// QA additions (v4.2) — gaps vs the spec's required tests + Data Safety Protocol
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Current-month auto-snapshot through the real FinanceProvider ────────────
+
+describe('FinanceProvider auto-snapshot with month actuals', () => {
+  const HH = 'hh-qa-v42'
+  let api: ReturnType<typeof useFinance> | null = null
+
+  function Probe() {
+    api = useFinance()
+    return null
+  }
+
+  const mount = () =>
+    render(
+      <FinanceProvider householdId={HH}>
+        <Probe />
+      </FinanceProvider>,
+    )
+
+  const current = () => {
+    const snaps = api!.data.history.filter((h) => {
+      const d = new Date(h.date)
+      return d.getFullYear() === 2026 && d.getMonth() === 9
+    })
+    expect(snaps).toHaveLength(1)
+    return snaps[0]
+  }
+
+  const seed = (overrides: Partial<FinanceData> = {}) => {
+    localStorage.setItem(`hf-data-${HH}`, JSON.stringify(makeData(overrides)))
+    localStorage.setItem('hf-last-seen-month', OCT)
+  }
+
+  afterEach(() => {
+    api = null
+    vi.useRealTimers()
+    localStorage.clear()
+  })
+
+  const setNow = () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 9, 12, 0, 0))
+  }
+
+  it('snapshot income/FCF move by exactly the delta; reset restores them', async () => {
+    setNow()
+    seed()
+    mount()
+    await act(async () => {})
+    const before = current()
+    expect(before.totalIncome).toBe(28500)
+
+    const sivan = api!.data.members.find((m) => m.id === 'm2')!
+    await act(async () => {
+      api!.updateMember(setMemberSourceMonthActual(sivan, 's2', actual(11350, OCT, '3 vacation days')))
+    })
+    const after = current()
+    expect(after.totalIncome - before.totalIncome).toBe(-1150)
+    expect(after.freeCashFlow - before.freeCashFlow).toBe(-1150)
+    expect(after.id).toBe(before.id)
+    // Planned amount untouched
+    expect(api!.data.members.find((m) => m.id === 'm2')!.sources[0].amount).toBe(12500)
+    expect(sourceCounts(api!.data.members)).toEqual(sourceCounts(makeMembers()))
+
+    await act(async () => {
+      api!.updateMember(setMemberSourceMonthActual(api!.data.members.find((m) => m.id === 'm2')!, 's2', null))
+    })
+    const restored = current()
+    expect(restored.totalIncome).toBe(before.totalIncome)
+    expect(restored.freeCashFlow).toBe(before.freeCashFlow)
+    expect(restored.totalExpenses).toBe(before.totalExpenses)
+    expect(restored.totalSavings).toBe(before.totalSavings)
+  })
+
+  it('refresh keeps historicalExpenses, historicalIncomes, surplusActioned and id', async () => {
+    setNow()
+    seed({
+      history: [
+        {
+          id: 'snap-oct',
+          label: 'October 2026',
+          date: new Date(2026, 9, 1).toISOString(),
+          totalIncome: 1,
+          totalExpenses: 1,
+          totalSavings: 1,
+          freeCashFlow: -1,
+          autoSnapshot: true,
+          surplusActioned: true,
+          historicalExpenses: [{ id: 'he1', name: 'Pharmacy', amount: 120, category: 'health' }],
+          historicalIncomes: [{ id: 'hi1', memberName: 'Eilon', amount: 500, note: 'gift' }],
+        },
+      ],
+    })
+    mount()
+    await act(async () => {})
+    const eilon = api!.data.members.find((m) => m.id === 'm1')!
+    await act(async () => {
+      api!.updateMember(setMemberSourceMonthActual(eilon, 's1', actual(16300, OCT, 'Bonus')))
+    })
+    const snap = current()
+    expect(snap.id).toBe('snap-oct')
+    expect(snap.totalIncome).toBe(30800)
+    expect(snap.surplusActioned).toBe(true)
+    expect(snap.historicalExpenses).toEqual([{ id: 'he1', name: 'Pharmacy', amount: 120, category: 'health' }])
+    expect(snap.historicalIncomes).toEqual([{ id: 'hi1', memberName: 'Eilon', amount: 500, note: 'gift' }])
+    expect(api!.data.history).toHaveLength(1)
+  })
+
+  it('a stale (previous-month) actual is ignored by the current snapshot', async () => {
+    setNow()
+    const members = makeMembers()
+    members[0] = setMemberSourceMonthActual(members[0], 's1', actual(99999, '2026-09'))
+    seed({ members })
+    mount()
+    await act(async () => {})
+    expect(current().totalIncome).toBe(28500)
+  })
+
+  it('the actual is persisted to localStorage inside the source and survives a remount', async () => {
+    setNow()
+    seed()
+    const { unmount } = mount()
+    await act(async () => {})
+    const eilon = api!.data.members.find((m) => m.id === 'm1')!
+    await act(async () => {
+      api!.updateMember(setMemberSourceMonthActual(eilon, 's1', actual(0, OCT, 'Unpaid leave')))
+    })
+    const stored = JSON.parse(localStorage.getItem(`hf-data-${HH}`)!) as FinanceData
+    expect(stored.members.find((m) => m.id === 'm1')!.sources[0].monthActual).toEqual(actual(0, OCT, 'Unpaid leave'))
+    unmount()
+    mount()
+    await act(async () => {})
+    expect(api!.data.members.find((m) => m.id === 'm1')!.sources[0].monthActual?.amount).toBe(0)
+    expect(current().totalIncome).toBe(14500)
+  })
+})
+
+// ─── Foreign-currency source ──────────────────────────────────────────────────
+
+describe('foreign-currency source', () => {
+  it('actual is in the source currency and goes through the same (un-converted) path as planned', () => {
+    const usd = makeSource({ id: 'u1', name: 'US contract', amount: 4000, sourceCurrency: 'USD' })
+    const members: HouseholdMember[] = [{ id: 'm1', name: 'Eilon', sources: [usd] }]
+    const plannedPlan = computeMonthlyPlan(makeData({ members }), TODAY)
+    const withAct = [setMemberSourceMonthActual(members[0], 'u1', actual(4500))]
+    const actualPlan = computeMonthlyPlan(makeData({ members: withAct }), TODAY)
+    expect(getNetForMonth(withAct[0].sources[0], OCT)).toBe(4500)
+    expect(actualPlan.income - plannedPlan.income).toBe(500)
+    expect(actualPlan.leftToSpend - plannedPlan.leftToSpend).toBe(500)
+    expect(householdIncomeForMonth(withAct, OCT)).toEqual({ actual: 4500, planned: 4000, hasActuals: true })
+    expect(withAct[0].sources[0].sourceCurrency).toBe('USD')
+  })
+})
+
+// ─── Merge — more Data Safety cases ──────────────────────────────────────────
+
+describe('mergeFinanceData() — monthActual conflicts and counts', () => {
+  it('same member on both sides: cloud wins per member id (unchanged strategy)', () => {
+    const local = makeMembers()
+    local[0] = setMemberSourceMonthActual(local[0], 's1', actual(15000))
+    const cloud = makeMembers()
+    cloud[0] = setMemberSourceMonthActual(cloud[0], 's1', actual(16300, OCT, 'Bonus'))
+    const merged = mergeFinanceData(makeData({ members: cloud }), makeData({ members: local }))
+    expect(merged.members.find((m) => m.id === 'm1')!.sources[0].monthActual).toEqual(actual(16300, OCT, 'Bonus'))
+  })
+
+  it('every member’s source count is ≥ the cloud and local counts (diverged)', () => {
+    const local = makeMembers()
+    local[1] = setMemberSourceMonthActual(local[1], 's3', actual(0))
+    const noa: HouseholdMember = { id: 'm3', name: 'Noa', sources: [makeSource({ id: 's9', monthActual: actual(7000) })] }
+    const cloud = [makeMembers()[1], noa]
+    const merged = mergeFinanceData(makeData({ members: cloud }), makeData({ members: local }))
+    expect(merged.members.length).toBeGreaterThanOrEqual(Math.max(cloud.length, local.length))
+    for (const m of merged.members) {
+      const c = cloud.find((x) => x.id === m.id)?.sources.length ?? 0
+      const l = local.find((x) => x.id === m.id)?.sources.length ?? 0
+      // Per-member: cloud wins on id conflict, so the source list is the cloud's
+      // (or the local one when the member is local-only). Never fewer than that side.
+      expect(m.sources.length).toBeGreaterThanOrEqual(c > 0 ? c : l)
+    }
+    expect(merged.members.find((m) => m.id === 'm3')!.sources[0].monthActual?.amount).toBe(7000)
+  })
+
+  it('a source without monthActual (legacy data) merges unchanged', () => {
+    const legacy = makeData()
+    const merged = mergeFinanceData(legacy, makeData({ members: [] }))
+    for (const m of merged.members) for (const s of m.sources) expect('monthActual' in s).toBe(false)
+  })
+})
+
+// ─── Dialog edge cases ────────────────────────────────────────────────────────
+
+describe('<MonthActualDialog /> edge cases', () => {
+  const renderDialog = (source: IncomeSource, onSave = vi.fn(), onOpenChange = vi.fn()) => {
+    render(
+      <MonthActualDialog
+        open
+        onOpenChange={onOpenChange}
+        memberName="Sivan"
+        source={source}
+        yearMonth={OCT}
+        monthLabel="October 2026"
+        onSave={onSave}
+        lang="en"
+        currency="ILS"
+        locale="he-IL"
+      />,
+    )
+    return { onSave, onOpenChange }
+  }
+  const input = () => screen.getByLabelText('Actual net received this month') as HTMLInputElement
+  const saveBtn = () => screen.getByRole('button', { name: 'Save for October 2026' })
+
+  it('a negative value is never saved', () => {
+    const { onSave } = renderDialog(makeSource())
+    fireEvent.change(input(), { target: { value: '-500' } })
+    fireEvent.click(saveBtn())
+    if (onSave.mock.calls.length > 0) {
+      // MoneyInput may strip the minus — whatever is saved must be ≥ 0
+      expect((onSave.mock.calls[0][0] as IncomeMonthActual).amount).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('non-numeric text is never saved', () => {
+    const { onSave } = renderDialog(makeSource())
+    fireEvent.change(input(), { target: { value: 'abc' } })
+    fireEvent.click(saveBtn())
+    for (const call of onSave.mock.calls) {
+      const a = call[0] as IncomeMonthActual
+      expect(Number.isFinite(a.amount)).toBe(true)
+      expect(a.amount).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('Enter in the amount field saves; free-text note is trimmed', () => {
+    const { onSave, onOpenChange } = renderDialog(makeSource())
+    fireEvent.change(input(), { target: { value: '15000' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 3 vacation days'), { target: { value: '  Overtime x2  ' } })
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    expect(onSave).toHaveBeenCalledWith({ month: OCT, amount: 15000, note: 'Overtime x2' })
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('whitespace-only note is omitted', () => {
+    const { onSave } = renderDialog(makeSource())
+    fireEvent.change(screen.getByPlaceholderText('e.g. 3 vacation days'), { target: { value: '   ' } })
+    fireEvent.click(saveBtn())
+    expect(onSave).toHaveBeenCalledWith({ month: OCT, amount: 14000 })
+  })
+
+  it('tapping a selected reason chip again clears the note', () => {
+    const { onSave } = renderDialog(makeSource())
+    const chip = screen.getByRole('button', { name: 'Bonus' })
+    fireEvent.click(chip)
+    expect(chip).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(chip)
+    expect(chip).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(saveBtn())
+    expect(onSave).toHaveBeenCalledWith({ month: OCT, amount: 14000 })
+  })
+
+  it('a stale actual does not pre-fill — planned is used', () => {
+    renderDialog(makeSource({ monthActual: actual(16300, '2026-09', 'Bonus') }))
+    expect(input().value).toBe('14000')
+  })
+
+  it('Cancel never calls onSave', () => {
+    const { onSave } = renderDialog(makeSource())
+    fireEvent.change(input(), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('renders in Hebrew with Hebrew labels', () => {
+    render(
+      <MonthActualDialog
+        open onOpenChange={() => {}} memberName="סיון" source={makeSource()} yearMonth={OCT}
+        monthLabel="אוקטובר 2026" onSave={vi.fn()} lang="he" currency="ILS" locale="he-IL"
+      />,
+    )
+    expect(screen.getByLabelText('נטו שהתקבל בפועל החודש')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'שמור עבור אוקטובר 2026' })).toBeInTheDocument()
+  })
+})
+
+// ─── SourceDialog: changing the planned amount keeps the actual ─────────────
+
+describe('<SourceDialog /> planned edit with an actual set', () => {
+  it('a new planned amount is saved and monthActual is carried over verbatim', () => {
+    const onSave = vi.fn()
+    const existing = makeSource({ monthActual: actual(16300, OCT, 'Bonus') })
+    render(
+      <SourceDialog
+        open onOpenChange={() => {}} memberId="m1" memberName="Eilon" existing={existing}
+        onSave={onSave} lang="en" currency="ILS" locale="he-IL"
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Monthly Amount'), { target: { value: '15000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Source' }))
+    const saved = onSave.mock.calls[0][1] as IncomeSource
+    expect(saved.amount).toBe(15000)
+    expect(saved.monthActual).toEqual({ month: OCT, amount: 16300, note: 'Bonus' })
+    // The actual still wins for this month, the new plan for next month
+    expect(getNetForMonth(saved, OCT)).toBe(16300)
+    expect(getNetForMonth(saved, NOV)).toBe(15000)
   })
 })
