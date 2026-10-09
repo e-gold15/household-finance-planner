@@ -80,7 +80,15 @@ export function MonthActualDialog({
     onOpenChange(false)
   }
 
+  // Salaries arrive the month after they're earned: what comes in this month is
+  // usually last month's pay, and it funds this month's expenses (v4.2.1 copy).
+  const [y, m] = yearMonth.split('-').map(Number)
+  const loc = lang === 'he' ? 'he-IL' : 'en-US'
+  const payMonth = new Date(y, m - 2, 1).toLocaleDateString(loc, { month: 'long' })
+  const spendMonth = new Date(y, m - 1, 1).toLocaleDateString(loc, { month: 'long' })
+
   const inputId = `month-actual-${source.id}`
+  const hintId = `month-actual-hint-${source.id}`
   const noteId = `month-actual-note-${source.id}`
 
   return (
@@ -89,7 +97,7 @@ export function MonthActualDialog({
         <DialogHeader>
           <DialogTitle>{t("This month's actual", 'בפועל החודש', lang)}</DialogTitle>
           <DialogDescription>
-            <bdi>{memberName}</bdi> · <bdi>{source.name}</bdi> — {monthLabel}
+            <bdi>{memberName}</bdi> · <bdi>{source.name}</bdi> — {t(`received in ${monthLabel}`, `התקבל ב${monthLabel}`, lang)}
           </DialogDescription>
         </DialogHeader>
 
@@ -101,6 +109,13 @@ export function MonthActualDialog({
 
           <div className="space-y-2">
             <Label htmlFor={inputId}>{t('Actual net received this month', 'נטו שהתקבל בפועל החודש', lang)}</Label>
+            <p id={hintId} className="text-xs text-muted-foreground">
+              {t(
+                `Usually ${payMonth}'s pay — it funds ${spendMonth}'s expenses.`,
+                `בדרך כלל משכורת ${payMonth} — היא מממנת את ההוצאות של ${spendMonth}.`,
+                lang,
+              )}
+            </p>
             <MoneyInput
               id={inputId}
               value={value}
@@ -111,6 +126,7 @@ export function MonthActualDialog({
               currency={ownCurrency}
               locale={locale}
               aria-invalid={touched && !valid}
+              aria-describedby={hintId}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') save()
               }}
@@ -174,8 +190,8 @@ export function MonthActualDialog({
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <span>
               {t(
-                `Only ${monthLabel} changes. Your planned amount and future months stay the same.`,
-                `רק ${monthLabel} משתנה. הסכום המתוכנן והחודשים הבאים נשארים ללא שינוי.`,
+                `Counts toward the ${monthLabel} budget only. Your planned amount and future months stay the same.`,
+                `נספר רק בתקציב של ${monthLabel}. הסכום המתוכנן והחודשים הבאים נשארים ללא שינוי.`,
                 lang,
               )}
             </span>

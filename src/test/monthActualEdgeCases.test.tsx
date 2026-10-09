@@ -160,3 +160,29 @@ describe('plannedFreeCashFlow() — Goals tab stays on planned income (QA bug)',
     expect(plannedFreeCashFlow([], members(actual(16300)), 777, TODAY)).toBe(777)
   })
 })
+
+describe('v4.2.1 copy — pay arrives the month after it is earned', () => {
+  const openFor = (yearMonth: string, lang: 'en' | 'he', monthLabel: string) =>
+    render(
+      <MonthActualDialog
+        open onOpenChange={() => {}} memberName="Eilon" source={makeSource()} yearMonth={yearMonth} monthLabel={monthLabel}
+        onSave={() => {}} lang={lang} currency="ILS" locale="he-IL"
+      />,
+    )
+
+  it("names last month's pay funding this month's expenses", () => {
+    openFor(OCT, 'en', 'October 2026')
+    expect(screen.getByText("Usually September's pay — it funds October's expenses.")).toBeTruthy()
+    expect(screen.getByText(/received in October 2026/)).toBeTruthy()
+  })
+
+  it('January names December (year boundary)', () => {
+    openFor('2027-01', 'en', 'January 2027')
+    expect(screen.getByText("Usually December's pay — it funds January's expenses.")).toBeTruthy()
+  })
+
+  it('Hebrew month names', () => {
+    openFor(OCT, 'he', 'אוקטובר 2026')
+    expect(screen.getByText('בדרך כלל משכורת ספטמבר — היא מממנת את ההוצאות של אוקטובר.')).toBeTruthy()
+  })
+})
