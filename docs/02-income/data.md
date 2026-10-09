@@ -25,6 +25,7 @@ Represents a single stream of income for a household member. Stored in `member.s
 | `pensionEmployer` | `number` | % of gross — informational only |
 | `educationFundEmployer` | `number` | % of gross — informational only |
 | `severanceEmployer` | `number` | % of gross — informational only |
+| `monthActual` | `IncomeMonthActual \| undefined` | **v4.2** — net actually received in one month: `{ month: 'YYYY-MM', amount, note? }`. Honoured only while `month` is the current local month; the planned fields are never changed. |
 
 **Period normalisation:** when `period === 'yearly'`, the stored `amount` is the annual total. All calculations use `amount / 12` internally. The UI always displays the monthly figure.
 
@@ -92,6 +93,29 @@ totalIncome = data.members
   .flatMap(m => m.sources)
   .reduce((sum, s) => sum + getNetMonthly(s), 0)
 ```
+
+---
+
+## v4.2 — This month's actual: `getNetForMonth(source, yearMonth)`
+
+Defined in `src/lib/taxEstimation.ts` (helpers in `src/lib/monthActual.ts`).
+
+```
+getNetForMonth(source, 'YYYY-MM') =
+  source.monthActual?.month === yearMonth && amount ≥ 0 ? monthActual.amount
+                                                        : getNetMonthly(source)
+```
+
+| Surface | Income used |
+|---|---|
+| Home "Left to spend this month" (`computeMonthlyPlan`) | actual for the month of `today` (`plan.income`; `plan.plannedIncome` = planned) |
+| `autoSnapshotCurrentMonth` / `snapshotMonth` / `snapshotPreviousMonth` `totalIncome` | actual for that snapshot's month (`householdIncomeForMonth(...).actual`) |
+| Income tab rows, member totals, header | actual + planned shown side by side |
+| Goal allocation, savings projection, `computeLegacyTotals` | **planned** (`getNetMonthly`) |
+
+Rollover is implicit: from the 1st of the next month the stamp no longer matches, so the planned amount is used again. The stale value is inert and overwritten next time.
+
+Sync: the field travels inside the source inside the member; `members` stays additive `mergeById`. `cloudFinance.ts` is unchanged.
 
 ---
 

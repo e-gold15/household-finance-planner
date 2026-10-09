@@ -363,6 +363,28 @@ describe('v4 data freeze — sync layer unchanged vs main', () => {
       return
     }
     const current = node.fs.readFileSync(node.path.resolve(root, file), 'utf8')
-    expect(current === mainContent, `${file} differs from main`).toBe(true)
+    if (current === mainContent) return
+    // v4.2 (spec-v4.2-this-month-actual-income.md) — the ONLY allowed change in
+    // FinanceContext is how snapshot builders compute totalIncome (this month's
+    // actuals). Every added/removed line must match one of these patterns; any
+    // other change (sync, merge, push, pull, realtime) still fails here.
+    // Order-preserving: drop allowed lines from both sides, then the rest must be
+    // identical line by line (a reorder of sync steps would still fail).
+    const allowed = ALLOWED_DIFF_LINES[file] ?? []
+    const norm = (text: string) =>
+      text.split('\n').map((l) => l.trim()).filter((l) => l && !allowed.some((re) => re.test(l)))
+    expect(norm(current), `${file} differs from main outside the allowed lines`).toEqual(norm(mainContent))
   })
 })
+
+/** Allowed added/removed lines per frozen file (trimmed). Empty = byte-identical required. */
+const ALLOWED_DIFF_LINES: Record<string, RegExp[]> = {
+  'src/context/FinanceContext.tsx': [
+    /^import \{ getNetMonthly \} from '@\/lib\/taxEstimation'$/,
+    /^import \{ toYearMonth \} from '@\/lib\/taxEstimation'$/,
+    /^import \{ householdIncomeForMonth \} from '@\/lib\/monthActual'$/,
+    /^const totalIncome\s+= d\.members\.reduce\(\(s, m\) => s \+ m\.sources\.reduce\(\(ss, src\) => ss \+ getNetMonthly\(src\), 0\), 0\)$/,
+    /^const totalIncome\s+= householdIncomeForMonth\(d\.members, (toYearMonth\((new Date\(\)|now)\)|`\$\{prevYear\}-\$\{String\(prevMonth\)\.padStart\(2, '0'\)\}`)\)\.actual$/,
+    /^\/\/ v4\.2 — this month's actuals \(if any\) replace the planned net for the current month\.$/,
+  ],
+}

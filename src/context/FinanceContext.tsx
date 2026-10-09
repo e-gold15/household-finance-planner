@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import type { FinanceData, HouseholdMember, Expense, SavingsAccount, Goal, MonthSnapshot, ExpenseCategory, HistoricalExpense, HistoricalIncome, BriefingResult } from '@/types'
 import { generateId } from '@/lib/utils'
-import { getNetMonthly } from '@/lib/taxEstimation'
+import { toYearMonth } from '@/lib/taxEstimation'
+import { householdIncomeForMonth } from '@/lib/monthActual'
 import { fetchCloudFinanceData, pushCloudFinanceData, mergeFinanceData } from '@/lib/cloudFinance'
 import { applyMonthlyContributions } from '@/lib/contributionEngine'
 import { supabase, supabaseConfigured } from '@/lib/supabase'
@@ -475,7 +476,8 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
 
   const snapshotMonth = () =>
     setData((d) => {
-      const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
+      // v4.2 — this month's actuals (if any) replace the planned net for the current month.
+      const totalIncome   = householdIncomeForMonth(d.members, toYearMonth(new Date())).actual
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
       const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
       const label         = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -515,7 +517,7 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       const prevDate = new Date(prevYear, prevMonth - 1, 1)
       const label = prevDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-      const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
+      const totalIncome   = householdIncomeForMonth(d.members, `${prevYear}-${String(prevMonth).padStart(2, '0')}`).actual
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
       const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
 
@@ -544,7 +546,8 @@ export function FinanceProvider({ children, householdId }: { children: React.Rea
       const currentYear  = now.getFullYear()
       const currentMonth = now.getMonth() + 1   // 1-indexed
 
-      const totalIncome   = d.members.reduce((s, m) => s + m.sources.reduce((ss, src) => ss + getNetMonthly(src), 0), 0)
+      // v4.2 — this month's actuals (if any) replace the planned net for the current month.
+      const totalIncome   = householdIncomeForMonth(d.members, toYearMonth(now)).actual
       const totalExpenses = d.expenses.reduce((s, e) => s + (e.period === 'yearly' ? e.amount / 12 : e.amount), 0)
       const totalSavings  = getUnlinkedContributions(d.accounts, d.expenses)
       const label         = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })

@@ -4,7 +4,8 @@
  * Everything in this file is a pure function of `FinanceData` plus an injected
  * `today: Date`. Nothing here reads or writes storage, and nothing is persisted.
  */
-import { getNetMonthly } from '@/lib/taxEstimation'
+import { getNetForMonth, getNetMonthly, toYearMonth } from '@/lib/taxEstimation'
+import { activeMonthActual } from '@/lib/monthActual'
 import { CATEGORY_META } from '@/lib/categories'
 import { activeGoals } from '@/lib/goals'
 import type {
@@ -70,7 +71,14 @@ export function computeMonthlyPlan(
   today: Date
 ): MonthlyPlan {
   const legacy = computeLegacyTotals(data)
-  const income = legacy.totalIncome
+  const plannedIncome = legacy.totalIncome
+  // v4.2 — this month's actual net (per source) replaces the planned net.
+  // Identical to plannedIncome when no actual is set for the month of `today`.
+  const yearMonth = toYearMonth(today)
+  const hasActuals = data.members.some((m) => m.sources.some((s) => activeMonthActual(s, yearMonth) !== null))
+  const income = hasActuals
+    ? data.members.reduce((sum, m) => sum + m.sources.reduce((s, src) => s + getNetForMonth(src, yearMonth), 0), 0)
+    : plannedIncome
   // Anything that isn't explicitly 'variable' is fixed (undefined = fixed, legacy data).
   const fixed = data.expenses
     .filter((e) => e.expenseType !== 'variable')
@@ -82,7 +90,9 @@ export function computeMonthlyPlan(
   const spendable = income - fixed - savingsContrib
   // ≡ spendable − variableSpent (fixed + variableSpent = totalExpenses). Taken
   // from the legacy expression so it is bit-identical to the old FCF KPI.
-  const leftToSpend = legacy.freeCashFlow
+  // With actuals the income delta is added on top, so the result is still
+  // bit-identical to the legacy FCF whenever no actual is set.
+  const leftToSpend = hasActuals ? legacy.freeCashFlow + (income - plannedIncome) : legacy.freeCashFlow
 
   const daysInMonth = daysInMonthOf(today)
   const dayOfMonth = today.getDate()
@@ -92,13 +102,15 @@ export function computeMonthlyPlan(
   const dailyAllowance = leftToSpend > 0 ? leftToSpend / daysLeft : 0
 
   let status: PaceStatus
-  if (income <= 0) status = 'no-income'
+  // "No income" means nothing is planned — an actual of 0 (unpaid leave) is a real month, shown as over budget.
+  if (plannedIncome <= 0 && income <= 0) status = 'no-income'
   else if (leftToSpend < 0 || spendable <= 0) status = 'over'
   else if (spentPct !== null && spentPct > elapsedPct + PACE_AHEAD_THRESHOLD) status = 'ahead'
   else status = 'on-track'
 
   return {
     income,
+    plannedIncome,
     fixed,
     variableSpent,
     savingsContrib,

@@ -309,6 +309,7 @@ Grid:       grid-cols-2 mobile → grid-cols-4 md
 | `monthlyBriefing.test.ts` | 23 | briefing parser, score clamping, bullet validation, API integration |
 | `v4DataFreeze.test.ts` | 26 | FinanceData shape freeze, merge invariants, sync files identical to main |
 | `v4SaveGuards.test.tsx` | 10 | Quick Add blocked while loading, invalid numbers never saved as 0 |
+| `monthActualIncome.test.tsx` | 30 | getNetForMonth, rollover, Home plan delta, goals stay planned, merge keeps monthActual, dialog guards |
 | **Total** | **913** (as of v4.0 — run `npm test` for live count) | |
 
 ### Rules
@@ -529,6 +530,12 @@ How will we know this feature is working?
 - ✅ Mark goal as done / Reopen — optional `Goal.completedAt` (additive; merge unchanged); done goals in a collapsed "Completed" section, excluded from allocation, Home donut, surplus targets
 - ✅ Mobile bottom nav: Home · Expenses · + · Income · More (Goals moved into More)
 - ✅ `goalDone.test.tsx` (28 tests) — counts never change, merge preserves `completedAt`, edits preserve it
+
+**v4.2 — shipped (Oct 2026)** (spec: `docs/v4/spec-v4.2-this-month-actual-income.md`)
+- ✅ "This month's actual" net income per source — optional `IncomeSource.monthActual { month, amount, note? }` (additive; merge unchanged)
+- ✅ Income tab: ⋯ → "This month's actual" sheet, row shows actual + planned + ▲/▼ chip, header actual vs planned, Reset to planned
+- ✅ Home "Left to spend" and month snapshots use the actual; goal allocation stays on planned income; auto-rollover next month
+- ✅ `monthActualIncome.test.tsx` (30 tests); `v4DataFreeze` now allows only the snapshot `totalIncome` lines to differ in FinanceContext
 
 **Follow-ups (need a Data Safety spec):**
 - [ ] FinanceContext: cancel/replace the pending debounced push when the first cloud pull completes (pre-existing stale-push race for any pre-pull write)
