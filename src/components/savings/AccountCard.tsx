@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { ArrowLeftRight, ChevronDown, Edit2, Trash2, TrendingDown, TrendingUp, Minus, History as HistoryIcon } from 'lucide-react'
+import { ArrowLeftRight, ChevronDown, Edit2, Trash2, TrendingDown, TrendingUp, Minus, History as HistoryIcon, User, Users } from 'lucide-react'
 import { Badge } from '../ui/badge'
 import { Money } from '../ui/money'
 import { ActionMenu, type ActionMenuEntry } from '../ui/action-menu'
 import { ConfirmDelete } from '../ui/confirm-delete'
 import { cn, t } from '@/lib/utils'
-import type { Currency, Locale, SavingsAccount } from '@/types'
+import { JOINT_OWNER, getAccountOwnerId, showOwnerUi } from '@/lib/savingsOwner'
+import type { Currency, HouseholdMember, Locale, SavingsAccount } from '@/types'
 import { ACCOUNT_TYPES, LIQUIDITIES, computeLastMonthBalance } from './savingsMeta'
 import { AccountDialog } from './AccountDialog'
 import { TransferDialog } from './TransferDialog'
@@ -13,6 +14,7 @@ import { TransferDialog } from './TransferDialog'
 export interface AccountCardProps {
   account: SavingsAccount
   allAccounts: SavingsAccount[]
+  members: HouseholdMember[]
   currency: Currency
   locale: Locale
   lang: 'en' | 'he'
@@ -34,6 +36,7 @@ function formatPercentNumber(value: number, locale: Locale): string {
 export function AccountCard({
   account,
   allAccounts,
+  members,
   currency,
   locale,
   lang,
@@ -57,6 +60,11 @@ export function AccountCard({
   const lastMonthBalance = computeLastMonthBalance(account)
   const delta = lastMonthBalance !== null ? account.balance - lastMonthBalance : null
   const historyId = `acct-history-${account.id}`
+
+  const ownerId = getAccountOwnerId(account, members)
+  const ownerMember = ownerId === JOINT_OWNER ? undefined : members.find((m) => m.id === ownerId)
+  const ownerLabel = ownerMember ? ownerMember.name || t('Member', 'חבר/ה', lang) : t('Joint', 'משותף', lang)
+  const OwnerIcon = ownerMember ? User : Users
 
   const menuItems: ActionMenuEntry[] = [
     ...(showTransfer
@@ -82,6 +90,13 @@ export function AccountCard({
 
       {/* Line 2: wrapping badges */}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {showOwnerUi(members) && (
+          <Badge variant="secondary" className="max-w-full gap-1 py-0 text-xs" title={t('Belongs to', 'שייך ל', lang)}>
+            <OwnerIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="sr-only">{t('Belongs to:', 'שייך ל:', lang)} </span>
+            <span className="truncate">{ownerLabel}</span>
+          </Badge>
+        )}
         <Badge variant="outline" className="py-0 text-xs">{lang === 'he' ? typeLabel?.he : typeLabel?.en}</Badge>
         <Badge variant={liq.variant} className="py-0 text-xs">{lang === 'he' ? liq.he : liq.en}</Badge>
         {account.annualReturnPercent > 0 && (
@@ -192,6 +207,7 @@ export function AccountCard({
         onOpenChange={setEditOpen}
         existing={account}
         onSave={onUpdate}
+        members={members}
         currency={currency}
         locale={locale}
         lang={lang}

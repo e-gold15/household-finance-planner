@@ -537,6 +537,11 @@ How will we know this feature is working?
 - ✅ Home "Left to spend" and month snapshots use the actual; goal allocation stays on planned income; auto-rollover next month
 - ✅ `monthActualIncome.test.tsx` (30 tests); `v4DataFreeze` now allows only the snapshot `totalIncome` lines to differ in FinanceContext
 
+**v4.3 — shipped (Oct 2026)** (spec: `docs/v4/spec-v4.3-savings-owner.md`)
+- ✅ Savings account owner — optional `SavingsAccount.ownerMemberId` (absent = Joint; additive; merge unchanged)
+- ✅ "Belongs to" field in AccountDialog (Joint / each member), owner badge on account rows, owner filter on the Savings tab (totals follow the filter)
+- ✅ `savingsOwner.test.tsx` (24 tests) — merge keeps owner, counts never change, all account writers keep it
+
 **Follow-ups (need a Data Safety spec):**
 - [ ] FinanceContext: cancel/replace the pending debounced push when the first cloud pull completes (pre-existing stale-push race for any pre-pull write)
 - [ ] cloudInvites.test.ts hits the live Supabase when `.env.local` is present — mock `@/lib/supabase` in that test

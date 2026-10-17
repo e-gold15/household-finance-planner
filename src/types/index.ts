@@ -189,6 +189,11 @@ export interface SavingsAccount {
    * Capped at the 24 most-recent entries (oldest are dropped).
    */
   autoIncrementLog?: Array<{ month: string; amount: number }>
+  /**
+   * v4.3 — the HouseholdMember.id that owns this account. Absent = Joint.
+   * Travels inside the account, so the accounts mergeById strategy is unchanged.
+   */
+  ownerMemberId?: string
 }
 
 export type GoalPriority = 'high' | 'medium' | 'low'

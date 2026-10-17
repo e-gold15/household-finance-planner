@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Lock, PiggyBank, Plus, Wallet } from 'lucide-react'
+import { Lock, PiggyBank, Plus, User, Users, Wallet } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Money } from './ui/money'
 import { EmptyState } from './ui/empty-state'
+import { SegmentedControl } from './ui/segmented-control'
 import { useFinance } from '@/context/FinanceContext'
 import { t } from '@/lib/utils'
+import { JOINT_OWNER, filterAccountsByOwner, normalizeOwnerFilter, showOwnerUi, type OwnerFilter } from '@/lib/savingsOwner'
 import type { Currency, Locale, SavingsAccount } from '@/types'
 import { AccountCard } from './savings/AccountCard'
 import { AccountDialog } from './savings/AccountDialog'
@@ -36,11 +38,23 @@ export function Savings() {
   const lang = data.language
   const { currency, locale } = data
 
-  const liquid = data.accounts.filter(isLiquid)
-  const locked = data.accounts.filter((a) => !isLiquid(a))
+  // v4.3 — owner filter (view only; React state, never persisted or synced).
+  const [ownerFilterState, setOwnerFilter] = useState<OwnerFilter>('all')
+  const ownerUi = showOwnerUi(data.members)
+  const ownerFilter = ownerUi ? normalizeOwnerFilter(ownerFilterState, data.members) : 'all'
+  const visible = filterAccountsByOwner(data.accounts, data.members, ownerFilter)
+
+  const liquid = visible.filter(isLiquid)
+  const locked = visible.filter((a) => !isLiquid(a))
   const liquidTotal = liquid.reduce((s, a) => s + a.balance, 0)
   const lockedTotal = locked.reduce((s, a) => s + a.balance, 0)
-  const totalContrib = data.accounts.reduce((s, a) => s + a.monthlyContribution, 0)
+  const totalContrib = visible.reduce((s, a) => s + a.monthlyContribution, 0)
+
+  const ownerFilterOptions = [
+    { value: 'all', label: t('All', 'הכל', lang) },
+    ...data.members.map((m) => ({ value: m.id, label: m.name || t('Member', 'חבר/ה', lang), icon: User })),
+    { value: JOINT_OWNER, label: t('Joint', 'משותף', lang), icon: Users },
+  ]
 
   const [addOpen, setAddOpen] = useState(false)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -66,6 +80,7 @@ export function Savings() {
               key={a.id}
               account={a}
               allAccounts={data.accounts}
+              members={data.members}
               currency={currency}
               locale={locale}
               lang={lang}
@@ -108,6 +123,18 @@ export function Savings() {
         </Card>
       ) : (
         <>
+          {ownerUi && (
+            <div className="-mx-1 overflow-x-auto px-1">
+              <SegmentedControl
+                aria-label={t('Show accounts of', 'הצג חשבונות של', lang)}
+                value={ownerFilter}
+                onValueChange={setOwnerFilter}
+                options={ownerFilterOptions}
+                fullWidth={false}
+                className="min-w-full whitespace-nowrap [&>button]:flex-auto [&>button]:shrink-0"
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <TotalTile label={t('Liquid Assets', 'נכסים נזילים', lang)} value={liquidTotal} icon={Wallet} currency={currency} locale={locale} />
             <TotalTile label={t('Locked Assets', 'נכסים נעולים', lang)} value={lockedTotal} icon={Lock} currency={currency} locale={locale} />
@@ -115,6 +142,15 @@ export function Savings() {
 
           {renderGroup(t('Liquid Accounts', 'חשבונות נזילים', lang), liquid)}
           {renderGroup(t('Locked / Long-term', 'נעול / ארוך טווח', lang), locked)}
+          {visible.length === 0 && (
+            <Card>
+              <EmptyState
+                icon={PiggyBank}
+                title={t('No accounts here yet', 'אין כאן חשבונות עדיין', lang)}
+                description={t('Edit an account and choose who it belongs to.', 'ערוך חשבון ובחר למי הוא שייך.', lang)}
+              />
+            </Card>
+          )}
         </>
       )}
 
@@ -122,6 +158,8 @@ export function Savings() {
         open={addOpen}
         onOpenChange={setAddOpen}
         onSave={(a) => addAccount(a)}
+        members={data.members}
+        defaultOwner={ownerFilter === 'all' ? JOINT_OWNER : ownerFilter}
         currency={currency}
         locale={locale}
         lang={lang}
