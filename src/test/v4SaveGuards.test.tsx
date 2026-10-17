@@ -157,7 +157,7 @@ describe('QuickAddSheet — isLoading guard (B1)', () => {
 describe('AccountDialog — invalid number guard (M1)', () => {
   function renderDialog(onSave = vi.fn()) {
     render(
-      <AccountDialog open onOpenChange={() => {}} onSave={onSave} currency="ILS" locale="he-IL" lang="en" />
+      <AccountDialog open onOpenChange={() => {}} onSave={onSave} members={[]} currency="ILS" locale="he-IL" lang="en" />
     )
     return onSave
   }

@@ -5,10 +5,12 @@ import { Label } from '../ui/label'
 import { Switch } from '../ui/switch'
 import { MoneyInput } from '../ui/money-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { SegmentedControl } from '../ui/segmented-control'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
 import { generateId, t } from '@/lib/utils'
 import { parseMoneyInput, sanitizeMoneyTyping, toMoneyInputValue } from '@/lib/moneyInput'
-import type { AccountType, Currency, Liquidity, Locale, SavingsAccount } from '@/types'
+import { JOINT_OWNER, getAccountOwnerId, showOwnerUi, withOwner } from '@/lib/savingsOwner'
+import type { AccountType, Currency, HouseholdMember, Liquidity, Locale, SavingsAccount } from '@/types'
 import { ACCOUNT_TYPES, LIQUIDITIES } from './savingsMeta'
 
 interface AccountForm {
@@ -19,9 +21,11 @@ interface AccountForm {
   annualReturnPercent: string
   monthlyContribution: string
   deductedFromSalary: boolean
+  /** Member id or JOINT_OWNER. */
+  owner: string
 }
 
-function formFrom(existing?: SavingsAccount): AccountForm {
+function formFrom(members: HouseholdMember[], existing?: SavingsAccount, defaultOwner: string = JOINT_OWNER): AccountForm {
   return {
     name: existing?.name ?? '',
     type: existing?.type ?? 'checking',
@@ -30,6 +34,7 @@ function formFrom(existing?: SavingsAccount): AccountForm {
     annualReturnPercent: existing ? toMoneyInputValue(existing.annualReturnPercent) : '',
     monthlyContribution: existing ? toMoneyInputValue(existing.monthlyContribution) : '',
     deductedFromSalary: !!existing?.deductedFromSalary,
+    owner: existing ? getAccountOwnerId(existing, members) : defaultOwner,
   }
 }
 
@@ -39,25 +44,35 @@ export interface AccountDialogProps {
   /** Edit mode when set; add mode otherwise. */
   existing?: SavingsAccount
   onSave: (a: SavingsAccount) => void
+  /** Household members — the owner field is shown when there are 2+. */
+  members: HouseholdMember[]
+  /** Add mode: pre-selected owner (member id or JOINT_OWNER). Defaults to Joint. */
+  defaultOwner?: string
   currency: Currency
   locale: Locale
   lang: 'en' | 'he'
 }
 
 /** Add / edit a savings account. Controlled — the trigger lives with the caller. */
-export function AccountDialog({ open, onOpenChange, existing, onSave, currency, locale, lang }: AccountDialogProps) {
-  const [form, setForm] = useState<AccountForm>(() => formFrom(existing))
+export function AccountDialog({ open, onOpenChange, existing, onSave, members, defaultOwner, currency, locale, lang }: AccountDialogProps) {
+  const [form, setForm] = useState<AccountForm>(() => formFrom(members, existing, defaultOwner))
   const set = <K extends keyof AccountForm>(k: K, v: AccountForm[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   // Re-seed from the latest account values every time the dialog opens.
   useEffect(() => {
-    if (open) setForm(formFrom(existing))
+    if (open) setForm(formFrom(members, existing, defaultOwner))
   }, [open])
 
   // Data safety: an empty field saves as 0, but a non-empty value that fails to
   // parse blocks Save — a typo must never silently zero a stored balance.
   const isInvalid = (s: string) => s.trim() !== '' && parseMoneyInput(s) === null
   const invalidNumber = isInvalid(form.balance) || isInvalid(form.annualReturnPercent) || isInvalid(form.monthlyContribution)
+
+  const ownerUi = showOwnerUi(members)
+  const ownerOptions = [
+    { value: JOINT_OWNER, label: t('Joint', 'משותף', lang) },
+    ...members.map((m) => ({ value: m.id, label: m.name || t('Member', 'חבר/ה', lang) })),
+  ]
 
   const handleSave = () => {
     if (invalidNumber) return
@@ -75,7 +90,7 @@ export function AccountDialog({ open, onOpenChange, existing, onSave, currency, 
       monthlyContribution: 0,
       deductedFromSalary: false,
     }
-    onSave({
+    const saved: SavingsAccount = {
       ...base,
       name: form.name,
       type: form.type,
@@ -84,7 +99,9 @@ export function AccountDialog({ open, onOpenChange, existing, onSave, currency, 
       annualReturnPercent,
       monthlyContribution,
       deductedFromSalary: form.deductedFromSalary,
-    })
+    }
+    // With fewer than 2 members the owner field is hidden — leave the stored owner untouched.
+    onSave(ownerUi ? withOwner(saved, form.owner) : saved)
     onOpenChange(false)
   }
 
@@ -104,6 +121,29 @@ export function AccountDialog({ open, onOpenChange, existing, onSave, currency, 
               placeholder={t('e.g. Emergency Fund', 'למשל: קרן חירום', lang)}
             />
           </div>
+          {ownerUi && (
+            <div className="space-y-1.5">
+              <Label id="acct-owner-label" htmlFor={ownerOptions.length > 4 ? 'acct-owner' : undefined}>{t('Belongs to', 'שייך ל', lang)}</Label>
+              {ownerOptions.length <= 4 ? (
+                <SegmentedControl
+                  id="acct-owner"
+                  aria-labelledby="acct-owner-label"
+                  value={form.owner}
+                  onValueChange={(v) => set('owner', v)}
+                  options={ownerOptions}
+                />
+              ) : (
+                <Select value={form.owner} onValueChange={(v) => set('owner', v)}>
+                  <SelectTrigger id="acct-owner"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ownerOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="acct-type">{t('Type', 'סוג', lang)}</Label>

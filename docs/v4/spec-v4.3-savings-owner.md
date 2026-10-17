@@ -1,6 +1,6 @@
 # Spec — v4.3: Savings account owner (member or joint)
 
-> **Status:** Draft — waiting for the user's approval · October 2026 · Owner: Product
+> **Status:** Approved by the user on 2026-10-17 (filter chips + per-owner totals included; existing accounts = Joint) · October 2026 · Owner: Product
 > Request (user, 2026-10-17): "In the savings section I want to assign each saving to one of the users, or to both jointly — e.g. under Eilon, under Sivan, or under Joint."
 
 ---
@@ -23,7 +23,7 @@ Today there is no way to see whose account is whose, or how much each person has
 **1. Account dialog (add / edit) — new "Owner / שייך ל" field**
 - A segmented control (or Select when there are more than 3 options) listing:
   **Joint / משותף** · one option per household member by name (from the Income tab members, e.g. Eilon · Sivan).
-- Default for a new account: **Joint**.
+- Default for a new account: **Joint** — or the member currently selected in the Savings filter.
 - Shown only when the household has **2 or more members**. With 0–1 members the field is hidden and the account stays Joint.
 
 **2. Account row — owner badge**
@@ -53,9 +53,9 @@ Today there is no way to see whose account is whose, or how much each person has
 | Backward compatibility | Existing accounts have no field → Joint. Old clients ignore the field and keep it when they spread the account. |
 | Item counts | `accounts.length` identical before/after setting an owner (unit test). |
 | localStorage keys | None added. |
-| `v4DataFreeze.test.ts` | Updated to allow only the new optional type field. |
+| `v4DataFreeze.test.ts` | No change needed — it does not pin `SavingsAccount` keys, and `FinanceContext.tsx` / `cloudFinance.ts` stay identical to `main`. |
 
-**Required tests (`src/test/savingsOwner.test.ts`):**
+**Required tests (`src/test/savingsOwner.test.tsx`):**
 - `getAccountOwner(account, members)` helper → member / `'joint'`; absent → joint; ghost id → joint.
 - Filter helper: All returns every account; per-member and Joint partitions together equal All (no account lost or double-counted).
 - `mergeFinanceData` keeps `ownerMemberId` in empty-cloud, empty-local and diverged (A+B / B+C → A+B+C) cases; account counts never decrease.
@@ -79,9 +79,9 @@ Today there is no way to see whose account is whose, or how much each person has
 - Per-owner charts on Home.
 - Linking ownership to login users (auth accounts). Owner is a finance *member* (Income tab), which is what the household already names "Eilon" / "Sivan".
 
-### Open questions for the user
-1. **Filter chips + per-owner totals** on the Savings tab — include in this version (recommended), or just the owner field + badge?
-2. **Existing accounts** — default to Joint (recommended), or show them as "Unassigned" until set?
+### Decisions (user, 2026-10-17)
+1. Filter chips + per-owner totals: **included**.
+2. Existing accounts: **Joint** by default.
 
 ### Success metric
 - ≥ 50% of 2-member households assign an owner to at least one account within a month.
